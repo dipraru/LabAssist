@@ -1,0 +1,125 @@
+import { ReactNode } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAuthStore } from '../store/auth.store';
+import {
+  LayoutDashboard, BookOpen, FlaskConical, Trophy, Bell,
+  LogOut, User, ChevronDown,
+} from 'lucide-react';
+import { useState } from 'react';
+
+const roleNavItems: Record<string, { label: string; href: string; icon: ReactNode }[]> = {
+  office: [
+    { label: 'Dashboard', href: '/office', icon: <LayoutDashboard size={18} /> },
+    { label: 'Teachers', href: '/office/teachers', icon: <User size={18} /> },
+    { label: 'Students', href: '/office/students', icon: <User size={18} /> },
+    { label: 'Courses', href: '/office/courses', icon: <BookOpen size={18} /> },
+    { label: 'Semesters', href: '/office/semesters', icon: <BookOpen size={18} /> },
+    { label: 'Temp Judges', href: '/office/temp-judges', icon: <User size={18} /> },
+  ],
+  teacher: [
+    { label: 'Dashboard', href: '/teacher', icon: <LayoutDashboard size={18} /> },
+    { label: 'Courses', href: '/teacher/courses', icon: <BookOpen size={18} /> },
+    { label: 'Assignments', href: '/teacher/assignments', icon: <BookOpen size={18} /> },
+    { label: 'Lab Tests', href: '/teacher/lab-tests', icon: <FlaskConical size={18} /> },
+    { label: 'Lecture Sheets', href: '/teacher/lecture-sheets', icon: <BookOpen size={18} /> },
+  ],
+  student: [
+    { label: 'Dashboard', href: '/student', icon: <LayoutDashboard size={18} /> },
+    { label: 'Profile', href: '/student/profile', icon: <User size={18} /> },
+    { label: 'Courses', href: '/student/courses', icon: <BookOpen size={18} /> },
+    { label: 'Assignments', href: '/student/assignments', icon: <BookOpen size={18} /> },
+    { label: 'Lab Tests', href: '/student/lab-tests', icon: <FlaskConical size={18} /> },
+  ],
+  temp_judge: [
+    { label: 'Dashboard', href: '/judge', icon: <LayoutDashboard size={18} /> },
+    { label: 'New Contest', href: '/judge/contests/create', icon: <Trophy size={18} /> },
+  ],
+  temp_participant: [],
+};
+
+export function AppShell({ children }: { children: ReactNode }) {
+  const { user, logout } = useAuthStore();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  const navItems = user ? (roleNavItems[user.role] ?? []) : [];
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  return (
+    <div className="flex min-h-screen bg-slate-50">
+      {/* Sidebar */}
+      <aside
+        className={`${sidebarOpen ? 'w-56' : 'w-14'} transition-all duration-200 bg-slate-900 text-white flex flex-col`}
+      >
+        {/* Logo */}
+        <div className="flex items-center gap-2 px-4 py-5 border-b border-slate-700">
+          <FlaskConical size={22} className="text-indigo-400 shrink-0" />
+          {sidebarOpen && <span className="font-bold text-lg tracking-tight">LabAssist</span>}
+        </div>
+
+        {/* Nav */}
+        <nav className="flex-1 py-4 space-y-0.5 px-2">
+          {navItems.map((item) => {
+            const active = location.pathname === item.href || location.pathname.startsWith(item.href + '/');
+            return (
+              <Link
+                key={item.href}
+                to={item.href}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors
+                  ${active ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
+              >
+                {item.icon}
+                {sidebarOpen && <span>{item.label}</span>}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* User footer */}
+        <div className="border-t border-slate-700 p-3">
+          {sidebarOpen && (
+            <div className="mb-2 px-2">
+              <p className="text-xs text-slate-400">Logged in as</p>
+              <p className="text-sm font-medium truncate">{user?.username}</p>
+              <p className="text-xs text-indigo-400">{user?.role}</p>
+            </div>
+          )}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-slate-300 hover:bg-red-900 hover:text-white text-sm transition-colors"
+          >
+            <LogOut size={16} />
+            {sidebarOpen && 'Sign Out'}
+          </button>
+        </div>
+      </aside>
+
+      {/* Main */}
+      <main className="flex-1 flex flex-col min-w-0">
+        {/* Topbar */}
+        <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="text-slate-500 hover:text-slate-800 transition-colors"
+          >
+            <ChevronDown size={20} className={`transition-transform ${sidebarOpen ? '-rotate-90' : 'rotate-90'}`} />
+          </button>
+          <div className="flex items-center gap-3">
+            <Link to={user?.role === 'student' ? '/student/notifications' : '#'}>
+              <Bell size={20} className="text-slate-500 hover:text-slate-800" />
+            </Link>
+          </div>
+        </header>
+
+        <div className="flex-1 p-6 overflow-auto">
+          {children}
+        </div>
+      </main>
+    </div>
+  );
+}
