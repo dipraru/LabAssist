@@ -1,0 +1,86 @@
+# ─── Dependencies ────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# ─── Environment / Secrets ───────────────────────────────────
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+# Keep example files so teammates know what vars are needed
+!.env.example
+!.env.*.example
+
+# ─── Build outputs ───────────────────────────────────────────
+dist/
+build/
+out/
+.next/
+.nuxt/
+
+# ─── NestJS specific ─────────────────────────────────────────
+apps/api/dist/
+
+# ─── Vite / Frontend ─────────────────────────────────────────
+apps/web/dist/
+apps/web/.vite/
+
+# ─── TypeScript ──────────────────────────────────────────────
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# ─── Logs ────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ─── Runtime / OS ────────────────────────────────────────────
+*.pid
+*.seed
+*.pid.lock
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ─── IDE / Editor ────────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*.swo
+
+# ─── Testing ─────────────────────────────────────────────────
+coverage/
+.nyc_output/
+*.lcov
+
+# ─── Uploads / user-generated files ─────────────────────────
+apps/api/uploads/
+
+# ─── Misc ─────────────────────────────────────────────────────
+.cache/
+*.bak
+*.orig
+*.rej
