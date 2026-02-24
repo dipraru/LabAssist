@@ -56,6 +56,9 @@ export class Student {
   @Column({ type: 'varchar', nullable: true })
   profilePhoto: string | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  gender: string | null;
+
   @Column({ default: 'Computer Science and Engineering' })
   department: string;
 

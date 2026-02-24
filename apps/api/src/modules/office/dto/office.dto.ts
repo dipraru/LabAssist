@@ -20,6 +20,10 @@ export class CreateTeacherDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @IsOptional()
+  @IsString()
+  gender?: string;
 }
 
 export class CreateStudentsBulkDto {

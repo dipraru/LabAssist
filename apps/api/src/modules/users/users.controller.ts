@@ -22,6 +22,7 @@ class UpdateStudentProfileDto {
   @IsOptional() @IsString() mothersName?: string;
   @IsOptional() @IsString() presentAddress?: string;
   @IsOptional() @IsString() permanentAddress?: string;
+  @IsOptional() @IsString() gender?: string;
 }
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -41,7 +42,7 @@ export class UsersController {
   async updateProfile(@CurrentUser() user: any, @Body() dto: UpdateStudentProfileDto) {
     const student = await this.users.findStudentByUserId(user.userId);
     if (student) {
-      const updated = await this.users.updateStudent(student.id, {
+      const updated = await this.users.updateStudent(student.userId, {
         fullName: dto.fullName,
         phone: dto.phone,
         email: dto.email,
@@ -51,6 +52,7 @@ export class UsersController {
         mothersName: dto.mothersName,
         presentAddress: dto.presentAddress,
         permanentAddress: dto.permanentAddress,
+        gender: dto.gender,
         profileCompleted: true,
       });
       return updated;
@@ -62,6 +64,7 @@ export class UsersController {
         fullName: dto.fullName,
         email: dto.email,
         phone: dto.phone,
+        gender: dto.gender,
       });
     }
     return { message: 'No profile to update for this role' };
@@ -79,7 +82,7 @@ export class UsersController {
     );
     const student = await this.users.findStudentByUserId(user.userId);
     if (student) {
-      await this.users.updateStudent(student.id, { profilePhoto: saved.url });
+      await this.users.updateStudent(student.userId, { profilePhoto: saved.url });
     }
     return { url: saved.url };
   }

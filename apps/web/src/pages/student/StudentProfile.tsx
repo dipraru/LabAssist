@@ -18,6 +18,7 @@ const schema = z.object({
   mothersName: z.string().optional(),
   presentAddress: z.string().optional(),
   permanentAddress: z.string().optional(),
+  gender: z.enum(['male', 'female', 'other']).optional(),
 });
 type FormData = z.infer<typeof schema>;
 
@@ -32,6 +33,7 @@ export function StudentProfile() {
     defaultValues: {
       fullName: (user?.profile as any)?.fullName ?? '',
       email: (user?.profile as any)?.email ?? '',
+      gender: (user?.profile as any)?.gender ?? 'male',
     },
   });
 
@@ -59,6 +61,8 @@ export function StudentProfile() {
   const onSubmit = async (d: FormData) => {
     await updateMutation.mutateAsync(d);
     if (photoFile) await photoMutation.mutateAsync(photoFile);
+    // mark first login done
+    try { await api.post('/auth/first-login-done'); } catch {}
     // Re-fetch user profile
     try {
       const res = await api.get('/users/profile');
@@ -108,6 +112,14 @@ export function StudentProfile() {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Date of Birth</label>
               <input type="date" {...register('dateOfBirth')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Gender</label>
+              <select {...register('gender')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Father's Name</label>

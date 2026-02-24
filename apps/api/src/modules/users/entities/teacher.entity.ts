@@ -38,6 +38,9 @@ export class Teacher {
   @Column({ type: 'varchar', nullable: true })
   phone: string | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  gender: string | null;
+
   @Column({ default: 'Computer Science and Engineering' })
   department: string;
 

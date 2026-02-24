@@ -14,6 +14,7 @@ const schema = z.object({
   designation: z.enum(['Lecturer','Senior Lecturer','Assistant Professor','Associate Professor','Professor','Head of Department']),
   email: z.string().email(),
   phone: z.string().optional(),
+  gender: z.enum(['male','female','other']).optional(),
 });
 type FormData = z.infer<typeof schema>;
 
@@ -78,6 +79,16 @@ export function ManageTeachers() {
                   )}
                 </div>
               ))}
+
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Gender</label>
+                <select {...register('gender')}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
 
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">Designation</label>

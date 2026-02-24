@@ -74,6 +74,7 @@ export class OfficeService {
         designation: dto.designation,
         email: dto.email,
         phone: dto.phone ?? null,
+        gender: dto.gender ?? null,
         userId: savedUser.id,
       });
       const savedTeacher = await queryRunner.manager.save(teacher);
