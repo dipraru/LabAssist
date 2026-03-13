@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
+import { Modal } from '../../components/Modal';
 import { Plus, Upload } from 'lucide-react';
 
 const singleSchema = z.object({
@@ -88,10 +89,13 @@ export function ManageStudents() {
           </div>
         </div>
 
-        {mode === 'single' && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 mb-6">
-            <h2 className="font-semibold text-slate-800 mb-4">New Student</h2>
-            <form onSubmit={handleSubmit((d) => createSingle.mutate(d))} className="flex gap-4 items-end flex-wrap">
+        <Modal
+          open={mode === 'single'}
+          onClose={() => { setMode('list'); reset(); }}
+          title="New Student"
+          maxWidthClass="max-w-3xl"
+        >
+          <form onSubmit={handleSubmit((d) => createSingle.mutate(d))} className="flex gap-4 items-end flex-wrap">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Student ID (7 digits)</label>
                 <input {...register('studentId')} className="w-36 px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="2107070" />
@@ -109,28 +113,29 @@ export function ManageStudents() {
                 className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">
                 Cancel
               </button>
-            </form>
-          </div>
-        )}
+          </form>
+        </Modal>
 
-        {mode === 'bulk' && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 mb-6">
-            <h2 className="font-semibold text-slate-800 mb-2">Bulk Import via CSV</h2>
-            <p className="text-sm text-slate-500 mb-4">CSV columns: <code className="bg-slate-100 px-1 rounded">studentId,fullName</code></p>
-            <div className="flex gap-4 items-center">
-              <input type="file" accept=".csv" onChange={e => setBulkFile(e.target.files?.[0] ?? null)}
-                className="text-sm text-slate-600" />
-              <button onClick={() => bulkMutation.mutate()} disabled={!bulkFile || bulkMutation.isPending}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
-                Import & Download Credentials
-              </button>
-              <button onClick={() => setMode('list')}
-                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">
-                Cancel
-              </button>
-            </div>
+        <Modal
+          open={mode === 'bulk'}
+          onClose={() => { setMode('list'); setBulkFile(null); }}
+          title="Bulk Import Students"
+          maxWidthClass="max-w-3xl"
+        >
+          <p className="text-sm text-slate-500 mb-4">CSV columns: <code className="bg-slate-100 px-1 rounded">studentId,fullName</code></p>
+          <div className="flex gap-4 items-center">
+            <input type="file" accept=".csv" onChange={e => setBulkFile(e.target.files?.[0] ?? null)}
+              className="text-sm text-slate-600" />
+            <button onClick={() => bulkMutation.mutate()} disabled={!bulkFile || bulkMutation.isPending}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
+              Import & Download Credentials
+            </button>
+            <button onClick={() => setMode('list')}
+              className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">
+              Cancel
+            </button>
           </div>
-        )}
+        </Modal>
 
         {/* Search */}
         <div className="mb-4">

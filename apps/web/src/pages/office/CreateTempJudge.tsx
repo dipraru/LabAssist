@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
+import { Modal } from '../../components/Modal';
 import { Plus, Download, Clock } from 'lucide-react';
 
 const createSchema = z.object({
@@ -86,10 +87,8 @@ export function CreateTempJudge() {
           </div>
         )}
 
-        {showForm && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 mb-6">
-            <h2 className="font-semibold mb-4">New Temp Judge</h2>
-            <form onSubmit={createForm.handleSubmit(d => createMutation.mutate(d))} className="grid grid-cols-2 gap-4">
+        <Modal open={showForm} onClose={() => { setShowForm(false); createForm.reset(); }} title="New Temp Judge">
+          <form onSubmit={createForm.handleSubmit(d => createMutation.mutate(d))} className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Access From</label>
                 <input type="datetime-local" {...createForm.register('accessFrom')}
@@ -117,9 +116,8 @@ export function CreateTempJudge() {
                   Cancel
                 </button>
               </div>
-            </form>
-          </div>
-        )}
+          </form>
+        </Modal>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <table className="w-full text-sm">

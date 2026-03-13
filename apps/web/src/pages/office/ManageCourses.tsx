@@ -6,13 +6,15 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
+import { Modal } from '../../components/Modal';
 import { Plus } from 'lucide-react';
 
 const schema = z.object({
   semesterId: z.string().uuid('Select a semester'),
-  name: z.string().min(2),
-  code: z.string().min(2),
-  teacherIds: z.string(), // comma-separated UUIDs
+  title: z.string().min(2, 'Course title is required'),
+  courseCode: z.string().min(2, 'Course code is required'),
+  type: z.enum(['theory', 'lab']),
+  teacherIds: z.array(z.string()).optional(),
 });
 type FormData = z.infer<typeof schema>;
 
@@ -35,16 +37,29 @@ export function ManageCourses() {
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { teacherIds: '' },
+    defaultValues: { teacherIds: [], type: 'theory' },
   });
 
   const createMutation = useMutation({
-    mutationFn: (d: FormData) => api.post('/courses', {
-      semesterId: d.semesterId,
-      name: d.name,
-      code: d.code,
-      teacherIds: d.teacherIds.split(',').map(s => s.trim()).filter(Boolean),
-    }),
+    mutationFn: async (d: FormData) => {
+      const courseRes = await api.post('/courses', {
+        semesterId: d.semesterId,
+        courseCode: d.courseCode,
+        title: d.title,
+        type: d.type,
+      });
+
+      if (d.teacherIds?.length) {
+        await Promise.all(
+          d.teacherIds.map((teacherId) => api.post('/courses/teachers', {
+            courseId: courseRes.data.id,
+            teacherId,
+          })),
+        );
+      }
+
+      return courseRes.data;
+    },
     onSuccess: () => {
       toast.success('Course created!');
       qc.invalidateQueries({ queryKey: ['courses-office'] });
@@ -65,30 +80,47 @@ export function ManageCourses() {
           </button>
         </div>
 
-        {showForm && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 mb-6">
-            <h2 className="font-semibold mb-4">New Course</h2>
-            <form onSubmit={handleSubmit(d => createMutation.mutate(d))} className="grid grid-cols-2 gap-4">
+        <Modal open={showForm} onClose={() => { setShowForm(false); reset(); }} title="New Course">
+          <form onSubmit={handleSubmit(d => createMutation.mutate(d))} className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Semester</label>
                 <select {...register('semesterId')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                   <option value="">— select —</option>
-                  {semesters.map((s: any) => <option key={s.id} value={s.id}>{s.name} ({s.year})</option>)}
+                  {semesters.map((s: any) => <option key={s.id} value={s.id}>{s.name} ({s.batchYear})</option>)}
                 </select>
                 {errors.semesterId && <p className="text-red-500 text-xs mt-1">{errors.semesterId.message}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Course Name</label>
-                <input {...register('name')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                <label className="block text-sm font-medium text-slate-700 mb-1">Course Type</label>
+                <select {...register('type')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                  <option value="theory">Theory</option>
+                  <option value="lab">Lab</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Course Title</label>
+                <input {...register('title')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                {errors.title && <p className="text-red-500 text-xs mt-1">{errors.title.message}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Course Code</label>
-                <input {...register('code')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="CSE-4111" />
+                <input {...register('courseCode')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="CSE-4111" />
+                {errors.courseCode && <p className="text-red-500 text-xs mt-1">{errors.courseCode.message}</p>}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Teachers (comma-sep UUIDs)</label>
-                <input {...register('teacherIds')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="uuid1, uuid2" />
+
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-2">Assign Teachers (optional)</label>
+                <div className="max-h-40 overflow-auto border border-slate-300 rounded-lg p-3 grid grid-cols-1 gap-2">
+                  {teachers.map((teacher: any) => (
+                    <label key={teacher.id} className="flex items-center gap-2 text-sm text-slate-700">
+                      <input type="checkbox" value={teacher.id} {...register('teacherIds')} />
+                      <span>{teacher.fullName} ({teacher.teacherId})</span>
+                    </label>
+                  ))}
+                  {!teachers.length && <p className="text-sm text-slate-400">No teachers available</p>}
+                </div>
               </div>
+
               <div className="col-span-2 flex gap-3">
                 <button type="submit" disabled={isSubmitting}
                   className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
@@ -99,9 +131,8 @@ export function ManageCourses() {
                   Cancel
                 </button>
               </div>
-            </form>
-          </div>
-        )}
+          </form>
+        </Modal>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <table className="w-full text-sm">
@@ -115,10 +146,10 @@ export function ManageCourses() {
             <tbody className="divide-y divide-slate-100">
               {courses.map((c: any) => (
                 <tr key={c.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-mono font-medium">{c.code}</td>
-                  <td className="px-4 py-3">{c.name}</td>
+                  <td className="px-4 py-3 font-mono font-medium">{c.courseCode}</td>
+                  <td className="px-4 py-3">{c.title}</td>
                   <td className="px-4 py-3">{c.semester?.name ?? '—'}</td>
-                  <td className="px-4 py-3">{c.enrollmentCount ?? '—'}</td>
+                  <td className="px-4 py-3">{c.enrollments?.length ?? '—'}</td>
                 </tr>
               ))}
               {!courses.length && (

@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
+import { Modal } from '../../components/Modal';
 import { Plus, Download } from 'lucide-react';
 
 const schema = z.object({
@@ -60,10 +61,8 @@ export function ManageTeachers() {
           </button>
         </div>
 
-        {showForm && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 mb-6">
-            <h2 className="font-semibold text-slate-800 mb-4">New Teacher</h2>
-            <form onSubmit={handleSubmit((d) => createMutation.mutate(d))} className="grid grid-cols-2 gap-4">
+        <Modal open={showForm} onClose={() => { setShowForm(false); reset(); }} title="New Teacher">
+          <form onSubmit={handleSubmit((d) => createMutation.mutate(d))} className="grid grid-cols-2 gap-4">
               {[
                 { name: 'fullName', label: 'Full Name', type: 'text' },
                 { name: 'teacherId', label: 'Teacher ID', type: 'text' },
@@ -110,9 +109,8 @@ export function ManageTeachers() {
                   Cancel
                 </button>
               </div>
-            </form>
-          </div>
-        )}
+          </form>
+        </Modal>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <table className="w-full text-sm">

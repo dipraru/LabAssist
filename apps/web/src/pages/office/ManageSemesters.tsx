@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
+import { Modal } from '../../components/Modal';
 import { Plus, CheckCircle } from 'lucide-react';
 
 const schema = z.object({
@@ -60,10 +61,8 @@ export function ManageSemesters() {
           </button>
         </div>
 
-        {showForm && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 mb-6">
-            <h2 className="font-semibold mb-4">New Semester</h2>
-            <form onSubmit={handleSubmit(d => createMutation.mutate(d))} className="grid grid-cols-2 gap-4">
+        <Modal open={showForm} onClose={() => { setShowForm(false); reset(); }} title="New Semester">
+          <form onSubmit={handleSubmit(d => createMutation.mutate(d))} className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Semester Name</label>
                 <select {...register('name')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
@@ -99,9 +98,8 @@ export function ManageSemesters() {
                   Cancel
                 </button>
               </div>
-            </form>
-          </div>
-        )}
+          </form>
+        </Modal>
 
         <div className="space-y-3">
           {semesters.map((s: any) => (
@@ -111,7 +109,7 @@ export function ManageSemesters() {
                   <span className="font-semibold text-slate-800">{s.name?.replace('_', ' ')}</span>
                   {s.isCurrent && <span className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full font-medium">Current</span>}
                 </div>
-                <p className="text-sm text-slate-500 mt-0.5">Batch {s.year} · {s.startDate?.slice(0,10)} → {s.endDate?.slice(0,10)}</p>
+                <p className="text-sm text-slate-500 mt-0.5">Batch {s.batchYear} · {s.startDate?.slice(0,10)} → {s.endDate?.slice(0,10)}</p>
               </div>
               {!s.isCurrent && (
                 <button onClick={() => setCurrentMutation.mutate(s.id)}
