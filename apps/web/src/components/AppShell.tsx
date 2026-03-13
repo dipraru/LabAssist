@@ -65,7 +65,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Nav */}
         <nav className="flex-1 py-4 space-y-0.5 px-2">
           {navItems.map((item) => {
-            const active = location.pathname === item.href || location.pathname.startsWith(item.href + '/');
+            const isDashboardItem = item.href === '/office' || item.href === '/teacher' || item.href === '/student' || item.href === '/judge';
+            const active = isDashboardItem
+              ? location.pathname === item.href
+              : (location.pathname === item.href || location.pathname.startsWith(item.href + '/'));
             return (
               <Link
                 key={item.href}
