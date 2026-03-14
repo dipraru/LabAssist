@@ -1,6 +1,8 @@
 import {
   Controller, Post, Get, Patch, Body, Param, Query, UseGuards, Delete,
+  UseInterceptors, UploadedFile, BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { OfficeService } from './office.service';
 import { PdfService } from './pdf.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -64,9 +66,24 @@ export class OfficeController {
   }
 
   @Post('students/bulk')
-  async createStudentsBulk(@Body() dto: CreateStudentsBulkDto) {
-    const result = await this.officeService.createStudentsBulk(dto);
-    return result;
+  @UseInterceptors(FileInterceptor('file'))
+  async createStudentsBulk(
+    @UploadedFile() file?: Express.Multer.File,
+    @Body() dto?: Partial<CreateStudentsBulkDto>,
+  ) {
+    if (file) {
+      const result = await this.officeService.createStudentsBulkFromCsv(file.buffer);
+      const credentialsPdf = await this.pdfService.generateCredentialsPdf(result.credentials);
+      return { ...result, credentialsPdf };
+    }
+
+    if (!dto?.fromStudentId || !dto?.toStudentId || !dto?.batchYear) {
+      throw new BadRequestException('Provide a CSV file or a valid student ID range payload');
+    }
+
+    const result = await this.officeService.createStudentsBulk(dto as CreateStudentsBulkDto);
+    const credentialsPdf = await this.pdfService.generateCredentialsPdf(result.credentials);
+    return { ...result, credentialsPdf };
   }
 
   @Get('students')

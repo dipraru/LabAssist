@@ -49,18 +49,25 @@ export function ManageStudents() {
 
   const bulkMutation = useMutation({
     mutationFn: async () => {
-      if (!bulkFile) return;
+      if (!bulkFile) return null;
       const fd = new FormData();
       fd.append('file', bulkFile);
-      const res = await api.post('/office/students/bulk', fd, { responseType: 'blob' });
-      // Download ZIP
-      const url = URL.createObjectURL(res.data);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'credentials.zip'; a.click();
-      URL.revokeObjectURL(url);
+      const res = await api.post('/office/students/bulk', fd);
+      return res.data;
     },
-    onSuccess: () => {
-      toast.success('Bulk import complete! Credentials ZIP downloaded.');
+    onSuccess: (data) => {
+      if (!data) return;
+
+      if (data.credentialsPdf) {
+        const link = document.createElement('a');
+        link.href = `data:application/pdf;base64,${data.credentialsPdf}`;
+        link.download = 'student_credentials_bulk.pdf';
+        link.click();
+      }
+
+      const created = data.createdCount ?? data.credentials?.length ?? 0;
+      const skipped = data.skippedCount ?? 0;
+      toast.success(`Bulk import complete! Created ${created}${skipped ? `, skipped ${skipped}` : ''}.`);
       qc.invalidateQueries({ queryKey: ['students'] });
       setBulkFile(null);
       setMode('list');
@@ -122,13 +129,13 @@ export function ManageStudents() {
           title="Bulk Import Students"
           maxWidthClass="max-w-3xl"
         >
-          <p className="text-sm text-slate-500 mb-4">CSV columns: <code className="bg-slate-100 px-1 rounded">studentId,fullName</code></p>
+          <p className="text-sm text-slate-500 mb-4">CSV columns: <code className="bg-slate-100 px-1 rounded">studentId,fullName</code> (fullName optional)</p>
           <div className="flex gap-4 items-center">
             <input type="file" accept=".csv" onChange={e => setBulkFile(e.target.files?.[0] ?? null)}
               className="text-sm text-slate-600" />
             <button onClick={() => bulkMutation.mutate()} disabled={!bulkFile || bulkMutation.isPending}
               className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
-              Import & Download Credentials
+              Import & Download PDF
             </button>
             <button onClick={() => setMode('list')}
               className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">

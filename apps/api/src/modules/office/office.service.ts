@@ -32,6 +32,106 @@ function parseStudentId(id: string): { batchYear: string; deptCode: string; roll
   };
 }
 
+function parseCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  result.push(current.trim());
+  return result;
+}
+
+function parseStudentsCsv(csvText: string): { studentId: string; fullName?: string }[] {
+  const normalized = csvText.replace(/^\uFEFF/, '');
+  const lines = normalized
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (!lines.length) {
+    throw new BadRequestException('CSV must include at least one student row');
+  }
+
+  const firstRowColumns = parseCsvLine(lines[0]);
+  const normalizedHeaders = firstRowColumns
+    .map((header) => header.toLowerCase().replace(/\s+/g, ''));
+  const studentIdIndexFromHeader = normalizedHeaders.findIndex((header) =>
+    ['studentid', 'student_id', 'id'].includes(header),
+  );
+  const fullNameIndexFromHeader = normalizedHeaders.findIndex((header) =>
+    ['fullname', 'full_name', 'name'].includes(header),
+  );
+
+  const hasHeader = studentIdIndexFromHeader !== -1;
+  const dataStartIndex = hasHeader ? 1 : 0;
+  const studentIdIndex = hasHeader ? studentIdIndexFromHeader : 0;
+  const fullNameIndex = hasHeader ? fullNameIndexFromHeader : 1;
+
+  if (hasHeader && lines.length < 2) {
+    throw new BadRequestException('CSV includes header but no student rows were found');
+  }
+
+  const rows: { studentId: string; fullName?: string }[] = [];
+  const seenStudentIds = new Set<string>();
+
+  for (let lineIndex = dataStartIndex; lineIndex < lines.length; lineIndex++) {
+    const rowNumber = lineIndex + 1;
+    const columns = parseCsvLine(lines[lineIndex]);
+    const studentId = (columns[studentIdIndex] ?? '').trim();
+    const fullName = fullNameIndex >= 0 ? (columns[fullNameIndex] ?? '').trim() : '';
+
+    if (!studentId) {
+      throw new BadRequestException(`Missing studentId at row ${rowNumber}`);
+    }
+
+    if (!/^\d{7}$/.test(studentId)) {
+      throw new BadRequestException(`Invalid studentId '${studentId}' at row ${rowNumber}. Expected 7 digits.`);
+    }
+
+    if (seenStudentIds.has(studentId)) {
+      throw new BadRequestException(`Duplicate studentId '${studentId}' in CSV at row ${rowNumber}`);
+    }
+
+    seenStudentIds.add(studentId);
+    rows.push({
+      studentId,
+      fullName: fullName || undefined,
+    });
+  }
+
+  if (!rows.length) {
+    throw new BadRequestException('CSV does not contain any student rows');
+  }
+
+  if (rows.length > 200) {
+    throw new BadRequestException('Cannot import more than 200 students at once');
+  }
+
+  return rows;
+}
+
 @Injectable()
 export class OfficeService {
   constructor(
@@ -184,6 +284,77 @@ export class OfficeService {
       }
       await queryRunner.commitTransaction();
       return { credentials };
+    } catch (e) {
+      await queryRunner.rollbackTransaction();
+      throw e;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async createStudentsBulkFromCsv(csvBuffer: Buffer): Promise<{
+    credentials: { username: string; password: string; name: string }[];
+    totalRows: number;
+    createdCount: number;
+    skippedCount: number;
+  }> {
+    const students = parseStudentsCsv(csvBuffer.toString('utf8'));
+    const credentials: { username: string; password: string; name: string }[] = [];
+    let createdCount = 0;
+    let skippedCount = 0;
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      for (const row of students) {
+        const exists = await queryRunner.manager.findOne(User, { where: { username: row.studentId } });
+        if (exists) {
+          skippedCount += 1;
+          continue;
+        }
+
+        const parsed = parseStudentId(row.studentId);
+        const plainPassword = generatePassword();
+        const hashedPassword = await bcrypt.hash(plainPassword, 12);
+
+        const user = queryRunner.manager.create(User, {
+          username: row.studentId,
+          password: hashedPassword,
+          role: UserRole.STUDENT,
+          isFirstLogin: true,
+          isActive: true,
+          passwordChangeSuggested: true,
+        });
+        const savedUser = await queryRunner.manager.save(user);
+
+        const student = queryRunner.manager.create(Student, {
+          studentId: row.studentId,
+          batchYear: parsed.batchYear,
+          deptCode: parsed.deptCode,
+          rollNumber: parsed.rollNumber,
+          fullName: row.fullName ?? null,
+          profileCompleted: false,
+          userId: savedUser.id,
+        });
+        await queryRunner.manager.save(student);
+
+        createdCount += 1;
+        credentials.push({
+          username: row.studentId,
+          password: plainPassword,
+          name: row.fullName ?? `Student ${row.studentId}`,
+        });
+      }
+
+      await queryRunner.commitTransaction();
+      return {
+        credentials,
+        totalRows: students.length,
+        createdCount,
+        skippedCount,
+      };
     } catch (e) {
       await queryRunner.rollbackTransaction();
       throw e;
