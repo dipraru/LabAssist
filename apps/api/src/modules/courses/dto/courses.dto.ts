@@ -27,6 +27,32 @@ export class CreateCourseDto {
   semesterId: string;
 }
 
+export class UpdateCourseDto {
+  @IsOptional()
+  @IsString()
+  courseCode?: string;
+
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsEnum(CourseType)
+  type?: CourseType;
+
+  @IsOptional()
+  @IsNumber()
+  creditHours?: number;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsUUID()
+  semesterId?: string;
+}
+
 export class EnrollStudentsDto {
   @IsUUID()
   courseId: string;

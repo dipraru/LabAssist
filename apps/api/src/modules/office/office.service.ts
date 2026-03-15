@@ -32,6 +32,17 @@ function parseStudentId(id: string): { batchYear: string; deptCode: string; roll
   };
 }
 
+function normalizeBatchYear(batchYear: string): string {
+  const trimmed = batchYear.trim();
+  const digitsOnly = trimmed.replace(/\D/g, '');
+  if (!digitsOnly) {
+    throw new BadRequestException('Batch year is required');
+  }
+  if (digitsOnly.length === 2) return digitsOnly;
+  if (digitsOnly.length === 4) return digitsOnly.slice(2);
+  throw new BadRequestException('Batch year must be 2 or 4 digits (e.g. 21 or 2021)');
+}
+
 function parseCsvLine(line: string): string[] {
   const result: string[] = [];
   let current = '';
@@ -197,6 +208,10 @@ export class OfficeService {
     if (existing) throw new ConflictException(`Student ID ${dto.studentId} already exists`);
 
     const parsed = parseStudentId(dto.studentId);
+    const normalizedBatchYear = normalizeBatchYear(dto.batchYear);
+    if (parsed.batchYear !== normalizedBatchYear) {
+      throw new BadRequestException(`Student ID batch (${parsed.batchYear}) does not match provided batch (${normalizedBatchYear})`);
+    }
     const plainPassword = generatePassword();
     const hashedPassword = await bcrypt.hash(plainPassword, 12);
 
@@ -217,7 +232,7 @@ export class OfficeService {
 
       const student = queryRunner.manager.create(Student, {
         studentId: dto.studentId,
-        batchYear: parsed.batchYear,
+        batchYear: normalizedBatchYear,
         deptCode: parsed.deptCode,
         rollNumber: parsed.rollNumber,
         fullName: dto.fullName ?? null,
@@ -236,6 +251,10 @@ export class OfficeService {
   }
 
   async createStudentsBulk(dto: CreateStudentsBulkDto): Promise<{ credentials: { username: string; password: string; name: string }[] }> {
+    const normalizedBatchYear = normalizeBatchYear(dto.batchYear);
+    if (!dto.fromStudentId || !dto.toStudentId) {
+      throw new BadRequestException('fromStudentId and toStudentId are required for range import');
+    }
     const from = parseInt(dto.fromStudentId, 10);
     const to = parseInt(dto.toStudentId, 10);
     if (isNaN(from) || isNaN(to) || from > to) {
@@ -258,6 +277,9 @@ export class OfficeService {
         if (exists) continue;
 
         const parsed = parseStudentId(studentId);
+        if (parsed.batchYear !== normalizedBatchYear) {
+          throw new BadRequestException(`Student ID ${studentId} does not match batch ${normalizedBatchYear}`);
+        }
         const plainPassword = generatePassword();
         const hashedPassword = await bcrypt.hash(plainPassword, 12);
 
@@ -273,7 +295,7 @@ export class OfficeService {
 
         const student = queryRunner.manager.create(Student, {
           studentId,
-          batchYear: parsed.batchYear,
+          batchYear: normalizedBatchYear,
           deptCode: parsed.deptCode,
           rollNumber: parsed.rollNumber,
           profileCompleted: false,
@@ -292,12 +314,13 @@ export class OfficeService {
     }
   }
 
-  async createStudentsBulkFromCsv(csvBuffer: Buffer): Promise<{
+  async createStudentsBulkFromCsv(csvBuffer: Buffer, batchYear: string): Promise<{
     credentials: { username: string; password: string; name: string }[];
     totalRows: number;
     createdCount: number;
     skippedCount: number;
   }> {
+    const normalizedBatchYear = normalizeBatchYear(batchYear);
     const students = parseStudentsCsv(csvBuffer.toString('utf8'));
     const credentials: { username: string; password: string; name: string }[] = [];
     let createdCount = 0;
@@ -316,6 +339,9 @@ export class OfficeService {
         }
 
         const parsed = parseStudentId(row.studentId);
+        if (parsed.batchYear !== normalizedBatchYear) {
+          throw new BadRequestException(`Student ID ${row.studentId} does not match batch ${normalizedBatchYear}`);
+        }
         const plainPassword = generatePassword();
         const hashedPassword = await bcrypt.hash(plainPassword, 12);
 
@@ -331,7 +357,7 @@ export class OfficeService {
 
         const student = queryRunner.manager.create(Student, {
           studentId: row.studentId,
-          batchYear: parsed.batchYear,
+          batchYear: normalizedBatchYear,
           deptCode: parsed.deptCode,
           rollNumber: parsed.rollNumber,
           fullName: row.fullName ?? null,
@@ -488,5 +514,85 @@ export class OfficeService {
 
   async getAllSemesters() {
     return this.semesterRepo.find({ order: { batchYear: 'DESC', name: 'ASC' } });
+  }
+
+  async resetTeacherCredentials(teacherId: string): Promise<{ teacher: Teacher; plainPassword: string }> {
+    const teacher = await this.teacherRepo.findOne({ where: { id: teacherId } });
+    if (!teacher) throw new NotFoundException('Teacher not found');
+
+    const plainPassword = generatePassword();
+    const hashedPassword = await bcrypt.hash(plainPassword, 12);
+    await this.userRepo.update(teacher.userId, {
+      password: hashedPassword,
+      passwordChangeSuggested: true,
+      isActive: true,
+    });
+    return { teacher, plainPassword };
+  }
+
+  async resetStudentCredentials(studentId: string): Promise<{ student: Student; plainPassword: string }> {
+    const student = await this.studentRepo.findOne({ where: { id: studentId } });
+    if (!student) throw new NotFoundException('Student not found');
+
+    const plainPassword = generatePassword();
+    const hashedPassword = await bcrypt.hash(plainPassword, 12);
+    await this.userRepo.update(student.userId, {
+      password: hashedPassword,
+      passwordChangeSuggested: true,
+      isFirstLogin: true,
+      isActive: true,
+    });
+    return { student, plainPassword };
+  }
+
+  async deleteTeacher(teacherId: string): Promise<void> {
+    const teacher = await this.teacherRepo.findOne({ where: { id: teacherId } });
+    if (!teacher) throw new NotFoundException('Teacher not found');
+    await this.userRepo.delete(teacher.userId);
+  }
+
+  async deleteStudent(studentId: string): Promise<void> {
+    const student = await this.studentRepo.findOne({ where: { id: studentId } });
+    if (!student) throw new NotFoundException('Student not found');
+    await this.userRepo.delete(student.userId);
+  }
+
+  async updateSemester(id: string, dto: {
+    name?: string;
+    batchYear?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<Semester> {
+    const semester = await this.semesterRepo.findOne({ where: { id } });
+    if (!semester) throw new NotFoundException('Semester not found');
+
+    if (dto.name) semester.name = dto.name as Semester['name'];
+    if (dto.batchYear) semester.batchYear = dto.batchYear;
+    if (dto.startDate !== undefined) semester.startDate = dto.startDate ? new Date(dto.startDate) : null;
+    if (dto.endDate !== undefined) semester.endDate = dto.endDate ? new Date(dto.endDate) : null;
+
+    return this.semesterRepo.save(semester);
+  }
+
+  async setCurrentSemester(id: string): Promise<Semester> {
+    const semester = await this.semesterRepo.findOne({ where: { id } });
+    if (!semester) throw new NotFoundException('Semester not found');
+
+    await this.semesterRepo.createQueryBuilder()
+      .update(Semester)
+      .set({ isCurrent: false })
+      .execute();
+
+    semester.isCurrent = true;
+    return this.semesterRepo.save(semester);
+  }
+
+  async deleteSemester(id: string): Promise<void> {
+    const semester = await this.semesterRepo.findOne({ where: { id }, relations: ['courses'] });
+    if (!semester) throw new NotFoundException('Semester not found');
+    if (semester.courses?.length) {
+      throw new BadRequestException('Cannot delete semester with existing courses');
+    }
+    await this.semesterRepo.delete(id);
   }
 }

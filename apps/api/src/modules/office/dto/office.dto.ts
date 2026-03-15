@@ -27,11 +27,13 @@ export class CreateTeacherDto {
 }
 
 export class CreateStudentsBulkDto {
+  @IsOptional()
   @IsString()
-  fromStudentId: string; // e.g. 2107001
+  fromStudentId?: string; // e.g. 2107001
 
+  @IsOptional()
   @IsString()
-  toStudentId: string; // e.g. 2107060
+  toStudentId?: string; // e.g. 2107060
 
   @IsString()
   batchYear: string; // e.g. '21'
@@ -40,6 +42,9 @@ export class CreateStudentsBulkDto {
 export class CreateStudentDto {
   @IsString()
   studentId: string; // e.g. 2107070
+
+  @IsString()
+  batchYear: string;
 
   @IsOptional()
   @IsString()
