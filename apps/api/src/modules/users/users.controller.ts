@@ -35,14 +35,14 @@ export class UsersController {
 
   @Get('profile')
   async getProfile(@CurrentUser() user: any) {
-    return this.users.getProfileByUserId(user.userId, user.role);
+    return this.users.getProfileByUserId(user.id, user.role);
   }
 
   @Patch('profile')
   async updateProfile(@CurrentUser() user: any, @Body() dto: UpdateStudentProfileDto) {
-    const student = await this.users.findStudentByUserId(user.userId);
+    const student = await this.users.findStudentByUserId(user.id);
     if (student) {
-      const updated = await this.users.updateStudent(student.userId, {
+      const updated = await this.users.updateStudent(user.id, {
         fullName: dto.fullName,
         phone: dto.phone,
         email: dto.email,
@@ -58,9 +58,9 @@ export class UsersController {
       return updated;
     }
     // For teachers, delegate to teacher fields
-    const teacher = await this.users.findTeacherByUserId(user.userId);
+    const teacher = await this.users.findTeacherByUserId(user.id);
     if (teacher) {
-      return this.users.updateTeacher(teacher.id, {
+      return this.users.updateTeacher(user.id, {
         fullName: dto.fullName,
         email: dto.email,
         phone: dto.phone,
@@ -80,9 +80,9 @@ export class UsersController {
       'profiles',
       5 * 1024 * 1024, // 5MB max
     );
-    const student = await this.users.findStudentByUserId(user.userId);
+    const student = await this.users.findStudentByUserId(user.id);
     if (student) {
-      await this.users.updateStudent(student.userId, { profilePhoto: saved.url });
+      await this.users.updateStudent(user.id, { profilePhoto: saved.url });
     }
     return { url: saved.url };
   }

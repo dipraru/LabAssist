@@ -38,9 +38,26 @@ function normalizeBatchYear(batchYear: string): string {
   if (!digitsOnly) {
     throw new BadRequestException('Batch year is required');
   }
-  if (digitsOnly.length === 2) return digitsOnly;
-  if (digitsOnly.length === 4) return digitsOnly.slice(2);
-  throw new BadRequestException('Batch year must be 2 or 4 digits (e.g. 21 or 2021)');
+
+  let year: number;
+  if (digitsOnly.length === 2) {
+    year = parseInt(`20${digitsOnly}`, 10);
+  } else if (digitsOnly.length === 4) {
+    year = parseInt(digitsOnly, 10);
+  } else {
+    throw new BadRequestException('Batch year must be a valid year (e.g. 2021)');
+  }
+
+  const currentYear = new Date().getFullYear();
+  if (year < 2000 || year > currentYear + 1) {
+    throw new BadRequestException(`Batch year must be between 2000 and ${currentYear + 1}`);
+  }
+
+  return String(year);
+}
+
+function getTwoDigitBatchFromYear(year: string): string {
+  return year.slice(-2);
 }
 
 function parseCsvLine(line: string): string[] {
@@ -209,7 +226,7 @@ export class OfficeService {
 
     const parsed = parseStudentId(dto.studentId);
     const normalizedBatchYear = normalizeBatchYear(dto.batchYear);
-    if (parsed.batchYear !== normalizedBatchYear) {
+    if (parsed.batchYear !== getTwoDigitBatchFromYear(normalizedBatchYear)) {
       throw new BadRequestException(`Student ID batch (${parsed.batchYear}) does not match provided batch (${normalizedBatchYear})`);
     }
     const plainPassword = generatePassword();
@@ -277,7 +294,7 @@ export class OfficeService {
         if (exists) continue;
 
         const parsed = parseStudentId(studentId);
-        if (parsed.batchYear !== normalizedBatchYear) {
+        if (parsed.batchYear !== getTwoDigitBatchFromYear(normalizedBatchYear)) {
           throw new BadRequestException(`Student ID ${studentId} does not match batch ${normalizedBatchYear}`);
         }
         const plainPassword = generatePassword();
@@ -339,7 +356,7 @@ export class OfficeService {
         }
 
         const parsed = parseStudentId(row.studentId);
-        if (parsed.batchYear !== normalizedBatchYear) {
+        if (parsed.batchYear !== getTwoDigitBatchFromYear(normalizedBatchYear)) {
           throw new BadRequestException(`Student ID ${row.studentId} does not match batch ${normalizedBatchYear}`);
         }
         const plainPassword = generatePassword();
@@ -498,14 +515,15 @@ export class OfficeService {
   }
 
   async createSemester(dto: any) {
+    const normalizedBatchYear = normalizeBatchYear(dto.batchYear);
     const existing = await this.semesterRepo.findOne({
-      where: { name: dto.name, batchYear: dto.batchYear },
+      where: { name: dto.name, batchYear: normalizedBatchYear },
     });
     if (existing) throw new ConflictException('Semester already exists for this batch');
 
     const semester = this.semesterRepo.create({
       name: dto.name,
-      batchYear: dto.batchYear,
+      batchYear: normalizedBatchYear,
       startDate: dto.startDate ? new Date(dto.startDate) : null,
       endDate: dto.endDate ? new Date(dto.endDate) : null,
     });
@@ -567,7 +585,7 @@ export class OfficeService {
     if (!semester) throw new NotFoundException('Semester not found');
 
     if (dto.name) semester.name = dto.name as Semester['name'];
-    if (dto.batchYear) semester.batchYear = dto.batchYear;
+    if (dto.batchYear) semester.batchYear = normalizeBatchYear(dto.batchYear);
     if (dto.startDate !== undefined) semester.startDate = dto.startDate ? new Date(dto.startDate) : null;
     if (dto.endDate !== undefined) semester.endDate = dto.endDate ? new Date(dto.endDate) : null;
 

@@ -17,6 +17,13 @@ import {
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 
+function batchYearVariants(batchYear: string): string[] {
+  const digits = batchYear.replace(/\D/g, '');
+  if (digits.length === 4) return [digits, digits.slice(2)];
+  if (digits.length === 2) return [digits, `20${digits}`];
+  return [batchYear];
+}
+
 @Injectable()
 export class CoursesService {
   constructor(
@@ -45,7 +52,9 @@ export class CoursesService {
     });
     const savedCourse = await this.courseRepo.save(course);
 
-    const students = await this.studentRepo.find({ where: { batchYear: semester.batchYear } });
+    const students = await this.studentRepo.find({
+      where: { batchYear: In(batchYearVariants(semester.batchYear)) },
+    });
     if (students.length) {
       const enrollments = students.map((student) => this.enrollmentRepo.create({
         courseId: savedCourse.id,

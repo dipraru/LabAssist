@@ -9,9 +9,19 @@ import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
 import { Plus, CheckCircle, Pencil, Trash2 } from 'lucide-react';
 
+const MAX_BATCH_YEAR = new Date().getFullYear() + 1;
+
+function isValidBatchYear(value: string): boolean {
+  if (!/^\d{4}$/.test(value)) return false;
+  const year = Number(value);
+  return year >= 2000 && year <= MAX_BATCH_YEAR;
+}
+
 const schema = z.object({
   name: z.string().min(1, 'Name required'),
-  batchYear: z.string().min(4, 'Year required'),
+  batchYear: z.string()
+    .regex(/^\d{4}$/, 'Batch must be a 4-digit year')
+    .refine((value) => Number(value) >= 2000 && Number(value) <= MAX_BATCH_YEAR, `Batch must be between 2000 and ${MAX_BATCH_YEAR}`),
   startDate: z.string().min(1, 'Start date required'),
   endDate: z.string().min(1, 'End date required'),
 });
@@ -133,6 +143,10 @@ export function ManageSemesters() {
                   startDate: String(formData.get('startDate') || ''),
                   endDate: String(formData.get('endDate') || ''),
                 };
+                if (!isValidBatchYear(payload.batchYear)) {
+                  toast.error(`Batch must be a valid year between 2000 and ${MAX_BATCH_YEAR}`);
+                  return;
+                }
                 updateMutation.mutate({ id: editingSemester.id, payload });
               }}
               className="grid grid-cols-2 gap-4"

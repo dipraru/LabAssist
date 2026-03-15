@@ -7,11 +7,21 @@ import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
-import { Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { CheckSquare, Download, Pencil, Plus, Trash2, Upload, X } from 'lucide-react';
+
+const MAX_BATCH_YEAR = new Date().getFullYear() + 1;
+
+function isValidBatchYear(value: string): boolean {
+  if (!/^\d{4}$/.test(value)) return false;
+  const year = Number(value);
+  return year >= 2000 && year <= MAX_BATCH_YEAR;
+}
 
 const singleSchema = z.object({
   studentId: z.string().min(7).max(7),
-  batchYear: z.string().min(2, 'Batch is required'),
+  batchYear: z.string()
+    .regex(/^\d{4}$/, 'Batch must be a 4-digit year')
+    .refine((value) => Number(value) >= 2000 && Number(value) <= MAX_BATCH_YEAR, `Batch must be between 2000 and ${MAX_BATCH_YEAR}`),
   fullName: z.string().optional(),
 });
 type SingleForm = z.infer<typeof singleSchema>;
@@ -85,6 +95,8 @@ export function ManageStudents() {
   const [bulkBatchYear, setBulkBatchYear] = useState('');
   const [previewRows, setPreviewRows] = useState<PreviewRow[]>([]);
   const [editingRowId, setEditingRowId] = useState<number | null>(null);
+  const [selectionMode, setSelectionMode] = useState<'download' | 'delete' | null>(null);
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [search, setSearch] = useState('');
 
   const { data: students = [] } = useQuery({
@@ -151,28 +163,64 @@ export function ManageStudents() {
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Bulk import failed'),
   });
 
-  const resetCredentialsMutation = useMutation({
-    mutationFn: (studentDbId: string) => api.post(`/office/students/${studentDbId}/credentials/reset`),
-    onSuccess: (res) => {
-      toast.success('Credentials regenerated');
-      if (res.data.credentialsPdf) {
+  const bulkCredentialDownloadMutation = useMutation({
+    mutationFn: async (studentIds: string[]) => {
+      const resetResponses = await Promise.all(
+        studentIds.map((studentId) => api.post(`/office/students/${studentId}/credentials/reset`)),
+      );
+
+      const credentials = resetResponses.map((response) => ({
+        username: response.data?.credentials?.username,
+        password: response.data?.credentials?.password,
+        name: response.data?.student?.fullName || response.data?.credentials?.username || 'Student',
+      }));
+
+      const pdfResponse = await api.post('/office/credentials/pdf', { credentials });
+      return { pdf: pdfResponse.data?.pdf, count: credentials.length };
+    },
+    onSuccess: (data) => {
+      if (data?.pdf) {
         const link = document.createElement('a');
-        link.href = `data:application/pdf;base64,${res.data.credentialsPdf}`;
-        link.download = `credentials_${res.data.student?.studentId ?? 'student'}.pdf`;
+        link.href = `data:application/pdf;base64,${data.pdf}`;
+        link.download = 'student_credentials_selected.pdf';
         link.click();
       }
+      toast.success(`Downloaded credentials for ${data?.count ?? 0} students`);
+      setSelectedStudentIds([]);
+      setSelectionMode(null);
     },
-    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to regenerate credentials'),
+    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to download selected credentials'),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (studentDbId: string) => api.delete(`/office/students/${studentDbId}`),
-    onSuccess: () => {
-      toast.success('Student deleted');
-      qc.invalidateQueries({ queryKey: ['students'] });
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (studentIds: string[]) => {
+      await Promise.all(studentIds.map((studentId) => api.delete(`/office/students/${studentId}`)));
     },
-    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to delete student'),
+    onSuccess: () => {
+      toast.success('Selected students deleted');
+      qc.invalidateQueries({ queryKey: ['students'] });
+      setSelectedStudentIds([]);
+      setSelectionMode(null);
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to delete selected students'),
   });
+
+  const toggleStudentSelection = (studentId: string) => {
+    setSelectedStudentIds((prev) => prev.includes(studentId)
+      ? prev.filter((id) => id !== studentId)
+      : [...prev, studentId]);
+  };
+
+  const toggleSelectAllVisible = () => {
+    const visibleIds = filtered.map((student: any) => student.id);
+    const isAllSelected = visibleIds.every((id) => selectedStudentIds.includes(id));
+    setSelectedStudentIds((prev) => {
+      if (isAllSelected) {
+        return prev.filter((id) => !visibleIds.includes(id));
+      }
+      return Array.from(new Set([...prev, ...visibleIds]));
+    });
+  };
 
   const filtered = students.filter((s: any) =>
     !search || s.studentId?.includes(search) || s.fullName?.toLowerCase().includes(search.toLowerCase())
@@ -209,7 +257,7 @@ export function ManageStudents() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Batch (required)</label>
-                <input {...register('batchYear')} className="w-32 px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="21 or 2021" />
+                <input {...register('batchYear')} className="w-32 px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="2021" />
                 {errors.batchYear && <p className="text-red-500 text-xs mt-1">{errors.batchYear.message}</p>}
               </div>
               <div>
@@ -249,8 +297,11 @@ export function ManageStudents() {
                   value={bulkBatchYear}
                   onChange={(event) => setBulkBatchYear(event.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="21 or 2021"
+                  placeholder="2021"
                 />
+                {bulkBatchYear && !isValidBatchYear(bulkBatchYear) && (
+                  <p className="text-red-500 text-xs mt-1">Batch must be a valid year between 2000 and {MAX_BATCH_YEAR}</p>
+                )}
               </div>
 
               <div>
@@ -370,8 +421,8 @@ export function ManageStudents() {
             <div className="flex gap-3 items-center">
               <button
                 onClick={() => {
-                  if (!bulkBatchYear.trim()) {
-                    toast.error('Batch is required');
+                  if (!isValidBatchYear(bulkBatchYear.trim())) {
+                    toast.error(`Batch must be a valid year between 2000 and ${MAX_BATCH_YEAR}`);
                     return;
                   }
                   if (!previewRows.length) {
@@ -394,17 +445,84 @@ export function ManageStudents() {
         </Modal>
 
         {/* Search */}
-        <div className="mb-4">
+        <div className="mb-4 flex flex-wrap gap-3 items-center justify-between">
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search by ID or name…"
             className="px-3 py-2 border border-slate-300 rounded-lg text-sm w-64 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectionMode(selectionMode === 'download' ? null : 'download');
+                setSelectedStudentIds([]);
+              }}
+              className={`inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border ${selectionMode === 'download' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`}
+            >
+              <Download size={14} /> Select for Credentials
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectionMode(selectionMode === 'delete' ? null : 'delete');
+                setSelectedStudentIds([]);
+              }}
+              className={`inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border ${selectionMode === 'delete' ? 'bg-red-50 border-red-300 text-red-700' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`}
+            >
+              <Trash2 size={14} /> Select for Delete
+            </button>
+            {selectionMode && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectionMode(null);
+                  setSelectedStudentIds([]);
+                }}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
+              >
+                <X size={14} /> Cancel Selection
+              </button>
+            )}
+          </div>
         </div>
+
+        {selectionMode && (
+          <div className="mb-4 flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <button
+              type="button"
+              onClick={toggleSelectAllVisible}
+              className="inline-flex items-center gap-2 text-sm text-slate-700 hover:text-slate-900"
+            >
+              <CheckSquare size={14} /> Toggle Select Visible
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!selectedStudentIds.length) {
+                  toast.error('Select at least one student');
+                  return;
+                }
+                if (selectionMode === 'download') {
+                  bulkCredentialDownloadMutation.mutate(selectedStudentIds);
+                  return;
+                }
+                if (window.confirm(`Delete ${selectedStudentIds.length} selected students?`)) {
+                  bulkDeleteMutation.mutate(selectedStudentIds);
+                }
+              }}
+              className={`px-3 py-1.5 text-sm rounded-md text-white ${selectionMode === 'download' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-red-600 hover:bg-red-700'}`}
+            >
+              {selectionMode === 'download' ? `Download Selected (${selectedStudentIds.length})` : `Delete Selected (${selectedStudentIds.length})`}
+            </button>
+          </div>
+        )}
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                {['Student ID','Name','Batch','Roll','Profile','Actions'].map(h => (
+                {selectionMode && <th className="px-4 py-3 w-12" />}
+                {['Student ID','Name','Batch','Roll','Profile'].map(h => (
                   <th key={h} className="px-4 py-3 text-left font-medium text-slate-600">{h}</th>
                 ))}
               </tr>
@@ -412,6 +530,16 @@ export function ManageStudents() {
             <tbody className="divide-y divide-slate-100">
               {filtered.map((s: any) => (
                 <tr key={s.id} className="hover:bg-slate-50">
+                  {selectionMode && (
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedStudentIds.includes(s.id)}
+                        onChange={() => toggleStudentSelection(s.id)}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                      />
+                    </td>
+                  )}
                   <td className="px-4 py-3 font-mono">{s.studentId}</td>
                   <td className="px-4 py-3">{s.fullName ?? <span className="text-slate-400">—</span>}</td>
                   <td className="px-4 py-3">{s.batchYear}</td>
@@ -421,34 +549,10 @@ export function ManageStudents() {
                       {s.profileCompleted ? 'Complete' : 'Incomplete'}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => resetCredentialsMutation.mutate(s.id)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
-                        title="Download credentials"
-                      >
-                        <Download size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm(`Delete student ${s.studentId}?`)) {
-                            deleteMutation.mutate(s.id);
-                          }
-                        }}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-200 text-red-600 hover:bg-red-50"
-                        title="Delete student"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
                 </tr>
               ))}
               {!filtered.length && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No students found</td></tr>
+                <tr><td colSpan={selectionMode ? 6 : 5} className="px-4 py-8 text-center text-slate-400">No students found</td></tr>
               )}
             </tbody>
           </table>
