@@ -25,25 +25,10 @@ export class AuthService {
     private readonly config: ConfigService,
   ) {}
 
-  private async validateLocalUser(username: string, password: string): Promise<User> {
-    const user = await this.usersService.findUserByUsername(username);
-    if (!user) throw new UnauthorizedException('Invalid credentials');
-    if (!user.isActive) throw new UnauthorizedException('Account is inactive');
-
-    if (user.expiresAt && new Date() > user.expiresAt) {
-      throw new UnauthorizedException('Account access has expired');
-    }
-
-    const valid = await bcrypt.compare(password, user.password);
-    if (!valid) throw new UnauthorizedException('Invalid credentials');
-
-    return user;
-  }
-
   async validateUser(username: string, password: string): Promise<User | BridgeUser> {
     const user = await this.usersService.findUserByUsername(username);
     if (!user) {
-      const bridgeUrl = this.config.get<string>('KUETOJ_AUTH_BRIDGE_URL') ?? 'http://localhost:3100/api/auth/validate-user';
+      const bridgeUrl = this.config.get<string>('LABASSIST_AUTH_BRIDGE_URL') ?? 'http://localhost:3000/api/auth/validate-local-user';
       try {
         const response = await fetch(bridgeUrl, {
           method: 'POST',
@@ -60,23 +45,17 @@ export class AuthService {
         throw new UnauthorizedException('Invalid credentials');
       }
     }
+    if (!user.isActive) throw new UnauthorizedException('Account is inactive');
 
-    return this.validateLocalUser(username, password);
-  }
-
-  async validateTempUserForBridge(username: string, password: string) {
-    const user = await this.validateLocalUser(username, password);
-    if (![UserRole.TEMP_JUDGE, UserRole.TEMP_PARTICIPANT].includes(user.role)) {
-      throw new UnauthorizedException('Invalid credentials');
+    // Check expiry for temp accounts
+    if (user.expiresAt && new Date() > user.expiresAt) {
+      throw new UnauthorizedException('Account access has expired');
     }
 
-    return {
-      id: user.id,
-      username: user.username,
-      role: user.role,
-      isFirstLogin: user.isFirstLogin,
-      passwordChangeSuggested: user.passwordChangeSuggested,
-    };
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) throw new UnauthorizedException('Invalid credentials');
+
+    return user;
   }
 
   async login(user: User | BridgeUser) {
@@ -119,5 +98,16 @@ export class AuthService {
 
   async markFirstLoginDone(userId: string) {
     await this.userRepo.update(userId, { isFirstLogin: false });
+  }
+
+  async validateForBridge(username: string, password: string) {
+    const user = await this.validateUser(username, password);
+    return {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      isFirstLogin: user.isFirstLogin,
+      passwordChangeSuggested: user.passwordChangeSuggested,
+    };
   }
 }

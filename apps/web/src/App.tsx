@@ -24,31 +24,31 @@ import { StudentAssignments } from './pages/student/StudentAssignments';
 import { StudentLabTests } from './pages/student/StudentLabTests';
 import { StudentProfile } from './pages/student/StudentProfile';
 
-// Judge
-import { JudgeDashboard } from './pages/judge/JudgeDashboard';
-import { ContestCreate } from './pages/judge/ContestCreate';
-import { ContestManage } from './pages/judge/ContestManage';
-import { ContestStandings as JudgeContestStandings } from './pages/judge/ContestStandings';
-import { ContestParticipants } from './pages/judge/ContestParticipants';
-
-// Participant
-import { ContestView } from './pages/participant/ContestView';
-import { ContestProblem } from './pages/participant/ContestProblem';
-import { ContestSubmit } from './pages/participant/ContestSubmit';
-import { ParticipantStandings } from './pages/participant/ContestStandings';
-import { AskClarification } from './pages/participant/AskClarification';
-
 import { useAuthStore } from './store/auth.store';
 
+const KUETOJ_WEB_URL = import.meta.env.VITE_KUETOJ_WEB_URL ?? 'http://localhost:5174';
+
+function redirectToKuetoj(path = '', token?: string) {
+  const base = KUETOJ_WEB_URL.replace(/\/$/, '');
+  if (token) {
+    const params = new URLSearchParams({ token });
+    window.location.replace(`${base}/bridge-login?${params.toString()}`);
+    return;
+  }
+  window.location.replace(`${base}${path}`);
+}
+
 function RoleRedirect() {
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
   if (!user) return <Navigate to="/login" replace />;
+  if (user.role === 'temp_judge' || user.role === 'temp_participant') {
+    redirectToKuetoj('', token ?? undefined);
+    return null;
+  }
   const map: Record<string, string> = {
     office: '/office',
     teacher: '/teacher',
     student: '/student',
-    temp_judge: '/judge',
-    temp_participant: '/contest',
   };
   return <Navigate to={map[user.role] ?? '/login'} replace />;
 }
@@ -91,23 +91,8 @@ export default function App() {
         <Route path="/student/profile" element={<StudentProfile />} />
       </Route>
 
-      {/* Judge */}
-      <Route element={<ProtectedRoute allowedRoles={['temp_judge']} />}>
-        <Route path="/judge" element={<JudgeDashboard />} />
-        <Route path="/judge/contests/create" element={<ContestCreate />} />
-        <Route path="/judge/contests/:id" element={<ContestManage />} />
-        <Route path="/judge/contests/:id/standings" element={<JudgeContestStandings />} />
-        <Route path="/judge/contests/:id/participants" element={<ContestParticipants />} />
-      </Route>
-
-      {/* Participant */}
-      <Route element={<ProtectedRoute allowedRoles={['temp_participant']} />}>
-        <Route path="/contest/:id" element={<ContestView />} />
-        <Route path="/contest/:id/problems/:problemId" element={<ContestProblem />} />
-        <Route path="/contest/:id/submit" element={<ContestSubmit />} />
-        <Route path="/contest/:id/standings" element={<ParticipantStandings />} />
-        <Route path="/contest/:id/clarifications" element={<AskClarification />} />
-      </Route>
+      <Route path="/judge/*" element={<RoleRedirect />} />
+      <Route path="/contest/*" element={<RoleRedirect />} />
 
       <Route path="/" element={<RoleRedirect />} />
       <Route path="*" element={<Navigate to="/" replace />} />

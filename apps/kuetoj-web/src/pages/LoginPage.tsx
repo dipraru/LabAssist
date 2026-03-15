@@ -13,8 +13,6 @@ const schema = z.object({
 });
 type FormData = z.infer<typeof schema>;
 
-const KUETOJ_WEB_URL = import.meta.env.VITE_KUETOJ_WEB_URL ?? 'http://localhost:5174';
-
 export function LoginPage() {
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
@@ -26,20 +24,18 @@ export function LoginPage() {
     try {
       const res = await api.post('/auth/login', data);
       const { accessToken, user } = res.data;
-      login(accessToken, user);
 
-      if (user.role === 'temp_judge' || user.role === 'temp_participant') {
-        const base = KUETOJ_WEB_URL.replace(/\/$/, '');
-        const params = new URLSearchParams({ token: accessToken });
-        window.location.href = `${base}/bridge-login?${params.toString()}`;
+      if (user.role !== 'temp_judge' && user.role !== 'temp_participant') {
+        toast.error('Only temporary judges/participants can access KUETOJ');
         return;
       }
 
+      login(accessToken, user);
+
       // Role-based redirect
       const roleMap: Record<string, string> = {
-        office: '/office',
-        teacher: '/teacher',
-        student: user.isFirstLogin ? '/student/profile' : '/student',
+        temp_judge: '/judge',
+        temp_participant: '/contest',
       };
       navigate(roleMap[user.role] ?? '/');
     } catch (err: any) {
@@ -55,8 +51,8 @@ export function LoginPage() {
           <div className="bg-indigo-100 rounded-full p-3 mb-3">
             <FlaskConical size={32} className="text-indigo-600" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900">LabAssist</h1>
-          <p className="text-slate-500 text-sm mt-1">CSE Department Portal</p>
+          <h1 className="text-2xl font-bold text-slate-900">KUETOJ</h1>
+          <p className="text-slate-500 text-sm mt-1">Online Judge Portal</p>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

@@ -10,7 +10,8 @@ import { AppShell } from '../../components/AppShell';
 import { Users, Download, Plus } from 'lucide-react';
 
 const schema = z.object({ count: z.coerce.number().int().min(1).max(100) });
-type FormData = z.infer<typeof schema>;
+type FormInput = z.input<typeof schema>;
+type FormData = z.output<typeof schema>;
 
 export function ContestParticipants() {
   const { id } = useParams<{ id: string }>();
@@ -22,7 +23,7 @@ export function ContestParticipants() {
     queryFn: () => api.get(`/contests/${id}/participants`).then(r => r.data),
   });
 
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormInput, unknown, FormData>({
     resolver: zodResolver(schema),
     defaultValues: { count: 10 },
   });

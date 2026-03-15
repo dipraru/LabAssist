@@ -16,9 +16,9 @@ export class AuthController {
     return this.authService.login(user);
   }
 
-  @Post('validate-local-user')
-  async validateLocalUserForBridge(@Body() dto: LoginDto) {
-    return this.authService.validateTempUserForBridge(dto.username, dto.password);
+  @Post('validate-user')
+  async validateUserForBridge(@Body() dto: LoginDto) {
+    return this.authService.validateForBridge(dto.username, dto.password);
   }
 
   @UseGuards(JwtAuthGuard)
