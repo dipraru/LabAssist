@@ -54,11 +54,9 @@ export class CreateStudentDto {
 }
 
 export class CreateTempJudgeDto {
+  @IsOptional()
   @IsString()
-  fullName: string;
-
-  @IsDateString()
-  accessFrom: string;
+  fullName?: string;
 
   @IsDateString()
   accessUntil: string;

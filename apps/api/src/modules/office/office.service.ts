@@ -416,6 +416,15 @@ export class OfficeService {
 
     const plainPassword = generatePassword();
     const hashedPassword = await bcrypt.hash(plainPassword, 12);
+    const accessFrom = new Date();
+    const accessUntil = new Date(dto.accessUntil);
+
+    if (isNaN(accessUntil.getTime())) {
+      throw new BadRequestException('Invalid access until date');
+    }
+    if (accessUntil <= accessFrom) {
+      throw new BadRequestException('Access until must be after current time');
+    }
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -427,16 +436,16 @@ export class OfficeService {
         role: UserRole.TEMP_JUDGE,
         isFirstLogin: false,
         isActive: true,
-        expiresAt: new Date(dto.accessUntil),
+        expiresAt: accessUntil,
         passwordChangeSuggested: false,
       });
       const savedUser = await queryRunner.manager.save(user);
 
       const judge = queryRunner.manager.create(TempJudge, {
         judgeId,
-        fullName: dto.fullName,
-        accessFrom: new Date(dto.accessFrom),
-        accessUntil: new Date(dto.accessUntil),
+        fullName: dto.fullName?.trim() || `Temp Judge ${judgeId}`,
+        accessFrom,
+        accessUntil,
         notes: dto.notes ?? null,
         userId: savedUser.id,
         createdByOfficeId: officeUserId,
@@ -456,9 +465,34 @@ export class OfficeService {
     const judge = await this.judgeRepo.findOne({ where: { id: judgeId } });
     if (!judge) throw new NotFoundException('Judge not found');
 
-    judge.accessUntil = new Date(dto.newAccessUntil);
-    await this.userRepo.update(judge.userId, { expiresAt: new Date(dto.newAccessUntil) });
+    const nextUntil = new Date(dto.newAccessUntil);
+    if (isNaN(nextUntil.getTime())) {
+      throw new BadRequestException('Invalid extension date');
+    }
+    if (nextUntil <= new Date()) {
+      throw new BadRequestException('New access deadline must be in the future');
+    }
+
+    judge.accessUntil = nextUntil;
+    await this.userRepo.update(judge.userId, { expiresAt: nextUntil, isActive: true });
     return this.judgeRepo.save(judge);
+  }
+
+  async resetTempJudgeCredentials(judgeId: string): Promise<{ judge: TempJudge; plainPassword: string }> {
+    const judge = await this.judgeRepo.findOne({ where: { id: judgeId } });
+    if (!judge) throw new NotFoundException('Judge not found');
+
+    const plainPassword = generatePassword();
+    const hashedPassword = await bcrypt.hash(plainPassword, 12);
+
+    await this.userRepo.update(judge.userId, {
+      password: hashedPassword,
+      isActive: true,
+      passwordChangeSuggested: false,
+      expiresAt: judge.accessUntil,
+    });
+
+    return { judge, plainPassword };
   }
 
   async getAllJudges(): Promise<TempJudge[]> {

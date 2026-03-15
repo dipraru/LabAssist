@@ -11,13 +11,12 @@ import { Plus, Download, Clock } from 'lucide-react';
 
 const createSchema = z.object({
   notes: z.string().optional(),
-  accessFrom: z.string().min(1, 'Required'),
   accessUntil: z.string().min(1, 'Required'),
 });
 type CreateData = z.infer<typeof createSchema>;
 
 const extendSchema = z.object({
-  accessUntil: z.string().min(1, 'Required'),
+  newAccessUntil: z.string().min(1, 'Required'),
 });
 type ExtendData = z.infer<typeof extendSchema>;
 
@@ -39,7 +38,7 @@ export function CreateTempJudge() {
     mutationFn: (d: CreateData) => api.post('/office/judges', d),
     onSuccess: (res) => {
       toast.success('Temp judge created!');
-      if (res.data.pdf) setPdfBase64(res.data.pdf);
+      if (res.data.credentialsPdf) setPdfBase64(res.data.credentialsPdf);
       qc.invalidateQueries({ queryKey: ['temp-judges'] });
       createForm.reset();
       setShowForm(false);
@@ -57,6 +56,17 @@ export function CreateTempJudge() {
       extendForm.reset();
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
+  });
+
+  const resetCredentialsMutation = useMutation({
+    mutationFn: (judgeId: string) => api.post(`/office/judges/${judgeId}/credentials/reset`),
+    onSuccess: (res) => {
+      toast.success('Credentials regenerated');
+      if (res.data.credentialsPdf) {
+        downloadPdf(res.data.credentialsPdf);
+      }
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to regenerate credentials'),
   });
 
   const downloadPdf = (base64: string) => {
@@ -89,13 +99,7 @@ export function CreateTempJudge() {
 
         <Modal open={showForm} onClose={() => { setShowForm(false); createForm.reset(); }} title="New Temp Judge">
           <form onSubmit={createForm.handleSubmit(d => createMutation.mutate(d))} className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Access From</label>
-                <input type="datetime-local" {...createForm.register('accessFrom')}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
-                {createForm.formState.errors.accessFrom && <p className="text-red-500 text-xs mt-1">{createForm.formState.errors.accessFrom.message}</p>}
-              </div>
-              <div>
+              <div className="col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">Access Until</label>
                 <input type="datetime-local" {...createForm.register('accessUntil')}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
@@ -139,16 +143,26 @@ export function CreateTempJudge() {
                     {extendId === j.id ? (
                       <form onSubmit={extendForm.handleSubmit(d => extendMutation.mutate({ id: j.id, data: d }))}
                         className="flex gap-2 items-center">
-                        <input type="datetime-local" {...extendForm.register('accessUntil')}
+                        <input type="datetime-local" {...extendForm.register('newAccessUntil')}
                           className="px-2 py-1 border border-slate-300 rounded text-xs" />
                         <button type="submit" className="px-2 py-1 bg-indigo-600 text-white rounded text-xs">Save</button>
                         <button type="button" onClick={() => setExtendId(null)} className="px-2 py-1 border border-slate-300 rounded text-xs">✕</button>
                       </form>
                     ) : (
-                      <button onClick={() => setExtendId(j.id)}
-                        className="flex items-center gap-1 px-2 py-1 border border-slate-300 rounded text-xs hover:bg-slate-50">
-                        <Clock size={12} /> Extend
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setExtendId(j.id)}
+                          className="flex items-center gap-1 px-2 py-1 border border-slate-300 rounded text-xs hover:bg-slate-50">
+                          <Clock size={12} /> Extend
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => resetCredentialsMutation.mutate(j.id)}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-300 text-slate-600 hover:bg-slate-50"
+                          title="Download credentials"
+                        >
+                          <Download size={12} />
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
