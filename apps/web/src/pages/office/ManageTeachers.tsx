@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
-import { Plus, Download } from 'lucide-react';
+import { Plus, Download, Trash2 } from 'lucide-react';
 
 const schema = z.object({
   fullName: z.string().min(1),
@@ -48,6 +48,29 @@ export function ManageTeachers() {
       setShowForm(false);
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
+  });
+
+  const resetCredentialsMutation = useMutation({
+    mutationFn: (teacherId: string) => api.post(`/office/teachers/${teacherId}/credentials/reset`),
+    onSuccess: (res) => {
+      toast.success('Credentials regenerated');
+      if (res.data.credentialsPdf) {
+        const link = document.createElement('a');
+        link.href = `data:application/pdf;base64,${res.data.credentialsPdf}`;
+        link.download = `credentials_${res.data.teacher?.teacherId ?? 'teacher'}.pdf`;
+        link.click();
+      }
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to regenerate credentials'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (teacherId: string) => api.delete(`/office/teachers/${teacherId}`),
+    onSuccess: () => {
+      toast.success('Teacher deleted');
+      qc.invalidateQueries({ queryKey: ['teachers'] });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to delete teacher'),
   });
 
   return (
@@ -116,7 +139,7 @@ export function ManageTeachers() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                {['Teacher ID','Name','Designation','Email','Phone'].map(h => (
+                {['Teacher ID','Name','Designation','Email','Phone','Actions'].map(h => (
                   <th key={h} className="px-4 py-3 text-left font-medium text-slate-600">{h}</th>
                 ))}
               </tr>
@@ -129,10 +152,34 @@ export function ManageTeachers() {
                   <td className="px-4 py-3">{t.designation}</td>
                   <td className="px-4 py-3">{t.email}</td>
                   <td className="px-4 py-3">{t.phone ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => resetCredentialsMutation.mutate(t.id)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
+                        title="Download credentials"
+                      >
+                        <Download size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm(`Delete teacher ${t.teacherId}?`)) {
+                            deleteMutation.mutate(t.id);
+                          }
+                        }}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-200 text-red-600 hover:bg-red-50"
+                        title="Delete teacher"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
               {!teachers.length && (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400">No teachers yet</td></tr>
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No teachers yet</td></tr>
               )}
             </tbody>
           </table>

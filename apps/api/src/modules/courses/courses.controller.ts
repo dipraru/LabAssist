@@ -1,5 +1,6 @@
 import {
   Controller, Get, Post, Delete, Body, Param, Query, UseGuards,
+  Patch,
 } from '@nestjs/common';
 import { CoursesService } from './courses.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -8,7 +9,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/role.enum';
 import {
-  CreateCourseDto, EnrollStudentsDto, AddTeacherToCourseDto,
+  CreateCourseDto, UpdateCourseDto, EnrollStudentsDto, AddTeacherToCourseDto,
   CreateScheduleDto, CreateLectureSheetDto,
 } from './dto/courses.dto';
 
@@ -105,5 +106,20 @@ export class CoursesController {
   @Get(':courseId/lecture-sheets')
   getLectureSheets(@Param('courseId') courseId: string) {
     return this.coursesService.getLectureSheets(courseId);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.OFFICE)
+  @Patch(':id')
+  updateCourse(@Param('id') id: string, @Body() dto: UpdateCourseDto) {
+    return this.coursesService.updateCourse(id, dto);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.OFFICE)
+  @Delete(':id')
+  async deleteCourse(@Param('id') id: string) {
+    await this.coursesService.deleteCourse(id);
+    return { success: true };
   }
 }

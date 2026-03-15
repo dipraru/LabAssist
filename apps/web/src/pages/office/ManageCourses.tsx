@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
-import { Plus } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 
 const schema = z.object({
   semesterId: z.string().uuid('Select a semester'),
@@ -21,6 +21,7 @@ type FormData = z.infer<typeof schema>;
 export function ManageCourses() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<any | null>(null);
 
   const { data: courses = [] } = useQuery({
     queryKey: ['courses-office'],
@@ -67,6 +68,25 @@ export function ManageCourses() {
       setShowForm(false);
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Omit<FormData, 'teacherIds'> }) => api.patch(`/courses/${id}`, payload),
+    onSuccess: () => {
+      toast.success('Course updated');
+      qc.invalidateQueries({ queryKey: ['courses-office'] });
+      setEditingCourse(null);
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to update course'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/courses/${id}`),
+    onSuccess: () => {
+      toast.success('Course deleted');
+      qc.invalidateQueries({ queryKey: ['courses-office'] });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to delete course'),
   });
 
   return (
@@ -134,11 +154,68 @@ export function ManageCourses() {
           </form>
         </Modal>
 
+        <Modal
+          open={!!editingCourse}
+          onClose={() => setEditingCourse(null)}
+          title="Edit Course"
+        >
+          {editingCourse && (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                const formData = new FormData(event.currentTarget);
+                const payload = {
+                  semesterId: String(formData.get('semesterId') || ''),
+                  type: String(formData.get('type') || 'theory') as 'theory' | 'lab',
+                  title: String(formData.get('title') || ''),
+                  courseCode: String(formData.get('courseCode') || ''),
+                };
+                if (!payload.semesterId || !payload.title || !payload.courseCode) {
+                  toast.error('Semester, title and course code are required');
+                  return;
+                }
+                updateMutation.mutate({ id: editingCourse.id, payload });
+              }}
+              className="grid grid-cols-2 gap-4"
+            >
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Semester</label>
+                <select name="semesterId" defaultValue={editingCourse.semesterId} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                  {semesters.map((s: any) => <option key={s.id} value={s.id}>{s.name} ({s.batchYear})</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Course Type</label>
+                <select name="type" defaultValue={editingCourse.type} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                  <option value="theory">Theory</option>
+                  <option value="lab">Lab</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Course Title</label>
+                <input name="title" defaultValue={editingCourse.title} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Course Code</label>
+                <input name="courseCode" defaultValue={editingCourse.courseCode} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+              <div className="col-span-2 flex gap-3">
+                <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
+                  Save Changes
+                </button>
+                <button type="button" onClick={() => setEditingCourse(null)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+        </Modal>
+
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                {['Code','Name','Semester','Enrolled'].map(h => (
+                {['Code','Name','Semester','Enrolled','Actions'].map(h => (
                   <th key={h} className="px-4 py-3 text-left font-medium text-slate-600">{h}</th>
                 ))}
               </tr>
@@ -150,10 +227,34 @@ export function ManageCourses() {
                   <td className="px-4 py-3">{c.title}</td>
                   <td className="px-4 py-3">{c.semester?.name ?? '—'}</td>
                   <td className="px-4 py-3">{c.enrollments?.length ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingCourse(c)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
+                        title="Edit course"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm(`Delete course ${c.courseCode}?`)) {
+                            deleteMutation.mutate(c.id);
+                          }
+                        }}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-200 text-red-600 hover:bg-red-50"
+                        title="Delete course"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
               {!courses.length && (
-                <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-400">No courses yet</td></tr>
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400">No courses yet</td></tr>
               )}
             </tbody>
           </table>

@@ -1,6 +1,6 @@
 import {
   IsString, IsEmail, IsOptional, IsEnum, IsDateString,
-  IsPhoneNumber, IsArray, IsInt, Min, Max,
+  IsPhoneNumber, IsArray, IsInt, Min, Max, Matches,
 } from 'class-validator';
 import { TeacherDesignation } from '../../users/entities/teacher.entity';
 
@@ -27,19 +27,26 @@ export class CreateTeacherDto {
 }
 
 export class CreateStudentsBulkDto {
+  @IsOptional()
   @IsString()
-  fromStudentId: string; // e.g. 2107001
+  fromStudentId?: string; // e.g. 2107001
+
+  @IsOptional()
+  @IsString()
+  toStudentId?: string; // e.g. 2107060
 
   @IsString()
-  toStudentId: string; // e.g. 2107060
-
-  @IsString()
+  @Matches(/^\d{4}$/, { message: 'batchYear must be a 4-digit year (e.g. 2021)' })
   batchYear: string; // e.g. '21'
 }
 
 export class CreateStudentDto {
   @IsString()
   studentId: string; // e.g. 2107070
+
+  @IsString()
+  @Matches(/^\d{4}$/, { message: 'batchYear must be a 4-digit year (e.g. 2021)' })
+  batchYear: string;
 
   @IsOptional()
   @IsString()
@@ -101,6 +108,7 @@ export class CreateSemesterDto {
   name: string;
 
   @IsString()
+  @Matches(/^\d{4}$/, { message: 'batchYear must be a 4-digit year (e.g. 2021)' })
   batchYear: string;
 
   @IsOptional()

@@ -45,6 +45,21 @@ export class OfficeController {
     return this.officeService.getAllTeachers();
   }
 
+  @Post('teachers/:id/credentials/reset')
+  async resetTeacherCredentials(@Param('id') id: string) {
+    const { teacher, plainPassword } = await this.officeService.resetTeacherCredentials(id);
+    const pdf = await this.pdfService.generateCredentialsPdf([
+      { username: teacher.teacherId, password: plainPassword, name: teacher.fullName ?? teacher.teacherId },
+    ]);
+    return { teacher, credentials: { username: teacher.teacherId, password: plainPassword }, credentialsPdf: pdf };
+  }
+
+  @Delete('teachers/:id')
+  async deleteTeacher(@Param('id') id: string) {
+    await this.officeService.deleteTeacher(id);
+    return { success: true };
+  }
+
   @Patch('teachers/correct')
   correctTeacher(@Body() dto: CorrectTeacherDto) {
     return this.officeService.correctTeacherInfo(dto);
@@ -72,7 +87,10 @@ export class OfficeController {
     @Body() dto?: Partial<CreateStudentsBulkDto>,
   ) {
     if (file) {
-      const result = await this.officeService.createStudentsBulkFromCsv(file.buffer);
+      if (!dto?.batchYear) {
+        throw new BadRequestException('batchYear is required for CSV bulk import');
+      }
+      const result = await this.officeService.createStudentsBulkFromCsv(file.buffer, dto.batchYear);
       const credentialsPdf = await this.pdfService.generateCredentialsPdf(result.credentials);
       return { ...result, credentialsPdf };
     }
@@ -89,6 +107,21 @@ export class OfficeController {
   @Get('students')
   getAllStudents(@Query('batch') batch?: string) {
     return this.officeService.getAllStudents(batch);
+  }
+
+  @Post('students/:id/credentials/reset')
+  async resetStudentCredentials(@Param('id') id: string) {
+    const { student, plainPassword } = await this.officeService.resetStudentCredentials(id);
+    const pdf = await this.pdfService.generateCredentialsPdf([
+      { username: student.studentId, password: plainPassword, name: student.fullName ?? `Student ${student.studentId}` },
+    ]);
+    return { student, credentials: { username: student.studentId, password: plainPassword }, credentialsPdf: pdf };
+  }
+
+  @Delete('students/:id')
+  async deleteStudent(@Param('id') id: string) {
+    await this.officeService.deleteStudent(id);
+    return { success: true };
   }
 
   @Patch('students/correct')
@@ -129,6 +162,22 @@ export class OfficeController {
   @Post('semesters')
   createSemester(@Body() dto: CreateSemesterDto) {
     return this.officeService.createSemester(dto);
+  }
+
+  @Patch('semesters/:id')
+  updateSemester(@Param('id') id: string, @Body() dto: Partial<CreateSemesterDto>) {
+    return this.officeService.updateSemester(id, dto);
+  }
+
+  @Patch('semesters/:id/set-current')
+  setCurrentSemester(@Param('id') id: string) {
+    return this.officeService.setCurrentSemester(id);
+  }
+
+  @Delete('semesters/:id')
+  async deleteSemester(@Param('id') id: string) {
+    await this.officeService.deleteSemester(id);
+    return { success: true };
   }
 
   @Get('semesters')

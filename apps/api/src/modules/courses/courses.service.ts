@@ -11,11 +11,18 @@ import { LectureSheet } from './entities/lecture-sheet.entity';
 import { Student } from '../users/entities/student.entity';
 import { Teacher } from '../users/entities/teacher.entity';
 import {
-  CreateCourseDto, EnrollStudentsDto, AddTeacherToCourseDto,
+  CreateCourseDto, UpdateCourseDto, EnrollStudentsDto, AddTeacherToCourseDto,
   CreateScheduleDto, CreateLectureSheetDto,
 } from './dto/courses.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
+
+function batchYearVariants(batchYear: string): string[] {
+  const digits = batchYear.replace(/\D/g, '');
+  if (digits.length === 4) return [digits, digits.slice(2)];
+  if (digits.length === 2) return [digits, `20${digits}`];
+  return [batchYear];
+}
 
 @Injectable()
 export class CoursesService {
@@ -43,7 +50,47 @@ export class CoursesService {
       semesterId: dto.semesterId,
       teachers: [],
     });
-    return this.courseRepo.save(course);
+    const savedCourse = await this.courseRepo.save(course);
+
+    const students = await this.studentRepo.find({
+      where: { batchYear: In(batchYearVariants(semester.batchYear)) },
+    });
+    if (students.length) {
+      const enrollments = students.map((student) => this.enrollmentRepo.create({
+        courseId: savedCourse.id,
+        studentId: student.id,
+        isActive: true,
+      }));
+      await this.enrollmentRepo.save(enrollments);
+    }
+
+    return this.getCourseById(savedCourse.id);
+  }
+
+  async updateCourse(id: string, dto: UpdateCourseDto): Promise<Course> {
+    const course = await this.courseRepo.findOne({ where: { id } });
+    if (!course) throw new NotFoundException('Course not found');
+
+    if (dto.semesterId && dto.semesterId !== course.semesterId) {
+      const semester = await this.semesterRepo.findOne({ where: { id: dto.semesterId } });
+      if (!semester) throw new NotFoundException('Semester not found');
+      course.semesterId = dto.semesterId;
+    }
+
+    if (dto.courseCode !== undefined) course.courseCode = dto.courseCode;
+    if (dto.title !== undefined) course.title = dto.title;
+    if (dto.type !== undefined) course.type = dto.type;
+    if (dto.creditHours !== undefined) course.creditHours = dto.creditHours;
+    if (dto.description !== undefined) course.description = dto.description ?? null;
+
+    await this.courseRepo.save(course);
+    return this.getCourseById(id);
+  }
+
+  async deleteCourse(id: string): Promise<void> {
+    const course = await this.courseRepo.findOne({ where: { id } });
+    if (!course) throw new NotFoundException('Course not found');
+    await this.courseRepo.remove(course);
   }
 
   async getCourseById(id: string): Promise<Course> {
