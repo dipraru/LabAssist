@@ -69,7 +69,7 @@ export function ContestSubmit() {
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Submission failed'),
   });
 
-  const problems: any[] = contest?.contestProblems ?? [];
+  const problems: any[] = contest?.problems ?? contest?.contestProblems ?? [];
 
   return (
     <AppShell>

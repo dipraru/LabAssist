@@ -11,7 +11,8 @@ export function ContestProblem() {
     queryFn: () => api.get(`/contests/${id}`).then(r => r.data),
   });
 
-  const cp = contest?.contestProblems?.find((p: any) => p.problem?.id === problemId);
+  const contestProblems: any[] = contest?.problems ?? contest?.contestProblems ?? [];
+  const cp = contestProblems.find((p: any) => p.problem?.id === problemId);
   const problem = cp?.problem;
 
   if (!problem) return (

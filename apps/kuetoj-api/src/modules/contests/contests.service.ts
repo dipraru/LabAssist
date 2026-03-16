@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, ForbiddenException, BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
 import { Contest } from './entities/contest.entity';
 import { Problem } from './entities/problem.entity';
 import { ContestProblem } from './entities/contest-problem.entity';
@@ -22,6 +22,7 @@ import {
   CreateProblemDto,
   CreateTempParticipantsDto,
   GradeContestSubmissionDto,
+  UpdateProblemDto,
 } from './dto/contests.dto';
 import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -55,10 +56,45 @@ export class ContestsService {
     private credentialsPdf: CredentialsPdfService,
   ) {}
 
+  private contestPhase(startTime: Date, endTime: Date): 'upcoming' | 'running' | 'old' {
+    const now = new Date();
+    if (now < startTime) return 'upcoming';
+    if (now > endTime) return 'old';
+    return 'running';
+  }
+
+  private async getNextProblemCode(): Promise<string> {
+    const last = await this.problemRepo.createQueryBuilder('p')
+      .where('p.problemCode IS NOT NULL')
+      .orderBy('p.problemCode', 'DESC')
+      .getOne();
+
+    const lastNumber = last?.problemCode
+      ? Number.parseInt(last.problemCode.replace('KOJ-', ''), 10)
+      : 0;
+    const nextNumber = Number.isNaN(lastNumber) ? 1 : lastNumber + 1;
+    return `KOJ-${String(nextNumber).padStart(5, '0')}`;
+  }
+
+  private async ensureProblemCodes(): Promise<void> {
+    const missing = await this.problemRepo.find({
+      where: { problemCode: IsNull() },
+      order: { createdAt: 'ASC' },
+    });
+    if (!missing.length) return;
+
+    for (const problem of missing) {
+      problem.problemCode = await this.getNextProblemCode();
+      await this.problemRepo.save(problem);
+    }
+  }
+
   // ─── PROBLEM BANK ────────────────────────────────────────────────────────────
 
   async createProblem(dto: CreateProblemDto, judgeUserId: string): Promise<Problem> {
+    const problemCode = await this.getNextProblemCode();
     const p = this.problemRepo.create({
+      problemCode,
       title: dto.title,
       statement: dto.statement,
       timeLimitMs: dto.timeLimitMs ?? null,
@@ -70,20 +106,35 @@ export class ContestsService {
   }
 
   async listMyProblems(judgeUserId: string): Promise<Problem[]> {
+    await this.ensureProblemCodes();
     return this.problemRepo.find({ where: { authorId: judgeUserId } });
   }
 
   async getProblemById(id: string): Promise<Problem> {
+    await this.ensureProblemCodes();
     const p = await this.problemRepo.findOneBy({ id });
     if (!p) throw new NotFoundException('Problem not found');
     return p;
   }
 
-  async updateProblem(id: string, dto: Partial<CreateProblemDto>, judgeUserId: string) {
+  async updateProblem(id: string, dto: UpdateProblemDto, judgeUserId: string) {
     const p = await this.getProblemById(id);
     if (p.authorId !== judgeUserId) throw new ForbiddenException();
     Object.assign(p, dto);
     return this.problemRepo.save(p);
+  }
+
+  async deleteProblem(id: string, judgeUserId: string) {
+    const problem = await this.getProblemById(id);
+    if (problem.authorId !== judgeUserId) throw new ForbiddenException();
+
+    const usageCount = await this.cpRepo.count({ where: { problemId: id } });
+    if (usageCount > 0) {
+      throw new BadRequestException('Problem is already used in a contest and cannot be deleted');
+    }
+
+    await this.problemRepo.remove(problem);
+    return { deleted: true, id };
   }
 
   async uploadProblemFile(
@@ -109,11 +160,20 @@ export class ContestsService {
 
   async createContest(dto: CreateContestDto, judgeUserId: string): Promise<Contest> {
     const startTime = new Date(dto.startTime);
-    const endTime = new Date(dto.endTime);
+    const durationHours = dto.durationHours ?? 0;
+    const durationMinutes = dto.durationMinutes ?? 0;
+    const durationTotalMinutes = durationHours * 60 + durationMinutes;
+
+    const endTime = dto.endTime
+      ? new Date(dto.endTime)
+      : new Date(startTime.getTime() + durationTotalMinutes * 60 * 1000);
     const freezeTime = dto.freezeTime ? new Date(dto.freezeTime) : null;
 
     if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
       throw new BadRequestException('Invalid contest start/end time');
+    }
+    if (!dto.endTime && durationTotalMinutes <= 0) {
+      throw new BadRequestException('Contest duration must be greater than zero');
     }
     if (endTime <= startTime) {
       throw new BadRequestException('End time must be after start time');
@@ -137,7 +197,7 @@ export class ContestsService {
         endTime,
         freezeTime,
         createdById: judgeUserId,
-        status: ContestStatus.DRAFT,
+        status: ContestStatus.SCHEDULED,
         isStandingFrozen: false,
       });
       await qr.manager.save(contest);
@@ -175,15 +235,37 @@ export class ContestsService {
       relations: ['problems', 'problems.problem'],
     });
     if (!c) throw new NotFoundException('Contest not found');
+    const phase = this.contestPhase(c.startTime, c.endTime);
+    c.status = phase === 'upcoming'
+      ? ContestStatus.SCHEDULED
+      : phase === 'running'
+        ? ContestStatus.RUNNING
+        : ContestStatus.ENDED;
     return c;
   }
 
   async listContests(): Promise<Contest[]> {
-    return this.contestRepo.find({ order: { startTime: 'DESC' } });
+    const contests = await this.contestRepo.find({ order: { startTime: 'DESC' } });
+    return contests.map((contest) => ({
+      ...contest,
+      status: this.contestPhase(contest.startTime, contest.endTime) === 'upcoming'
+        ? ContestStatus.SCHEDULED
+        : this.contestPhase(contest.startTime, contest.endTime) === 'running'
+          ? ContestStatus.RUNNING
+          : ContestStatus.ENDED,
+    }));
   }
 
   async listMyContests(judgeUserId: string): Promise<Contest[]> {
-    return this.contestRepo.find({ where: { createdById: judgeUserId }, order: { startTime: 'DESC' } });
+    const contests = await this.contestRepo.find({ where: { createdById: judgeUserId }, order: { startTime: 'DESC' } });
+    return contests.map((contest) => ({
+      ...contest,
+      status: this.contestPhase(contest.startTime, contest.endTime) === 'upcoming'
+        ? ContestStatus.SCHEDULED
+        : this.contestPhase(contest.startTime, contest.endTime) === 'running'
+          ? ContestStatus.RUNNING
+          : ContestStatus.ENDED,
+    }));
   }
 
   async updateContestStatus(contestId: string, status: ContestStatus, judgeUserId: string) {
@@ -326,7 +408,8 @@ export class ContestsService {
     const contest = await this.contestRepo.findOneBy({ id: contestId });
     if (!contest) throw new NotFoundException();
     const now = new Date();
-    if (contest.status !== ContestStatus.RUNNING)
+    const phase = this.contestPhase(contest.startTime, contest.endTime);
+    if (phase !== 'running')
       throw new ForbiddenException('Contest is not running');
     if (now < contest.startTime || now > contest.endTime)
       throw new ForbiddenException('Contest window closed');
@@ -566,13 +649,21 @@ export class ContestsService {
     try {
       const results: { username: string; password: string; participantId: string; name: string }[] = [];
 
-      // Find the highest existing TP number for this contest
+      // Find the highest existing TP serial for this contest
       const existing = await qr.manager.find(TempParticipant, { where: { contestId: dto.contestId } });
-      let counter = existing.length;
+      const existingSerials = existing
+        .map((participant) => {
+          const match = participant.participantId?.match(/(\d+)$/);
+          return match ? Number.parseInt(match[1], 10) : 0;
+        })
+        .filter((value) => Number.isFinite(value));
+      let counter = existingSerials.length ? Math.max(...existingSerials) : 0;
+
+      const contestCode = dto.contestId.replace(/-/g, '').slice(0, 6).toUpperCase();
 
       for (let i = 0; i < dto.count; i++) {
         counter++;
-        const participantId = `TP-${String(counter).padStart(3, '0')}`;
+        const participantId = `TP-${contestCode}-${String(counter).padStart(3, '0')}`;
         const username = `tp_${dto.contestId.slice(0, 8)}_${String(counter).padStart(3, '0')}`;
         const plainPassword = Math.random().toString(36).slice(-8).toUpperCase();
         const fullName = `Participant ${counter}`;
@@ -636,6 +727,35 @@ export class ContestsService {
       accessUntil: tp.accessUntil,
       createdAt: tp.createdAt,
     }));
+  }
+
+  async getAssignedContestsForParticipant(participantUserId: string) {
+    const assignments = await this.tpRepo.find({
+      where: { userId: participantUserId },
+      relations: ['contest'],
+      order: { createdAt: 'DESC' },
+    });
+
+    return assignments
+      .filter(a => a.contest)
+      .map((assignment) => ({
+        participantId: assignment.participantId,
+        accessFrom: assignment.accessFrom,
+        accessUntil: assignment.accessUntil,
+        contest: {
+          id: assignment.contest!.id,
+          title: assignment.contest!.title,
+          type: assignment.contest!.type,
+          startTime: assignment.contest!.startTime,
+          endTime: assignment.contest!.endTime,
+          phase: this.contestPhase(assignment.contest!.startTime, assignment.contest!.endTime),
+          status: this.contestPhase(assignment.contest!.startTime, assignment.contest!.endTime) === 'upcoming'
+            ? ContestStatus.SCHEDULED
+            : this.contestPhase(assignment.contest!.startTime, assignment.contest!.endTime) === 'running'
+              ? ContestStatus.RUNNING
+              : ContestStatus.ENDED,
+        },
+      }));
   }
 
   async getContestCredentialsPdf(contestId: string, judgeUserId: string) {

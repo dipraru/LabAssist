@@ -28,22 +28,38 @@ export class AuthService {
   async validateUser(username: string, password: string): Promise<User | BridgeUser> {
     const user = await this.usersService.findUserByUsername(username);
     if (!user) {
-      const bridgeUrl = this.config.get<string>('LABASSIST_AUTH_BRIDGE_URL') ?? 'http://localhost:3000/api/auth/validate-local-user';
-      try {
-        const response = await fetch(bridgeUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password }),
-        });
-        if (!response.ok) throw new UnauthorizedException('Invalid credentials');
-        const bridgeUser = await response.json() as BridgeUser;
-        if (![UserRole.TEMP_JUDGE, UserRole.TEMP_PARTICIPANT].includes(bridgeUser.role)) {
-          throw new UnauthorizedException('Invalid credentials');
+      const configuredBridgeUrl = this.config.get<string>('LABASSIST_AUTH_BRIDGE_URL');
+      const bridgeUrls = [
+        configuredBridgeUrl,
+        'http://localhost:3000/api/auth/validate-local-user',
+        'http://localhost:3000/api/auth/validate-user',
+      ].filter((url): url is string => Boolean(url));
+
+      for (const bridgeUrl of bridgeUrls) {
+        try {
+          const response = await fetch(bridgeUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password }),
+          });
+          if (!response.ok) continue;
+
+          const bridgeUser = await response.json() as BridgeUser;
+          if (
+            !bridgeUser?.id
+            || !bridgeUser?.username
+            || ![UserRole.TEMP_JUDGE, UserRole.TEMP_PARTICIPANT].includes(bridgeUser.role)
+          ) {
+            continue;
+          }
+
+          return bridgeUser;
+        } catch {
+          continue;
         }
-        return bridgeUser;
-      } catch {
-        throw new UnauthorizedException('Invalid credentials');
       }
+
+      throw new UnauthorizedException('Invalid credentials');
     }
     if (!user.isActive) throw new UnauthorizedException('Account is inactive');
 

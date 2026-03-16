@@ -42,7 +42,7 @@ export function AskClarification() {
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
   });
 
-  const problems: any[] = contest?.contestProblems ?? [];
+  const problems: any[] = contest?.problems ?? contest?.contestProblems ?? [];
 
   return (
     <AppShell>
