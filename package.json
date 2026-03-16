@@ -5,14 +5,22 @@
   "private": true,
   "workspaces": [
     "apps/api",
-    "apps/web"
+    "apps/web",
+    "apps/kuetoj-api",
+    "apps/kuetoj-web"
   ],
   "scripts": {
-    "dev": "concurrently --kill-others-on-fail --names \"API,WEB\" --prefix-colors \"blue,green\" \"npm run start:dev --workspace=apps/api\" \"npm run dev --workspace=apps/web\"",
+    "dev": "concurrently --kill-others-on-fail --names \"API,WEB,KOJ-API,KOJ-WEB\" --prefix-colors \"blue,green,magenta,cyan\" \"npm run start:dev --workspace=apps/api\" \"npm run dev --workspace=apps/web\" \"PORT=3100 FRONTEND_URL=http://localhost:5174 npm run start:dev --workspace=apps/kuetoj-api\" \"npm run dev --workspace=apps/kuetoj-web\"",
+    "dev:labassist": "concurrently --kill-others-on-fail --names \"API,WEB\" --prefix-colors \"blue,green\" \"npm run start:dev --workspace=apps/api\" \"npm run dev --workspace=apps/web\"",
     "dev:api": "npm run start:dev --workspace=apps/api",
     "dev:web": "npm run dev --workspace=apps/web",
     "build:api": "npm run build --workspace=apps/api",
     "build:web": "npm run build --workspace=apps/web",
+    "dev:kuetoj": "concurrently --kill-others-on-fail --names \"KOJ-API,KOJ-WEB\" --prefix-colors \"magenta,cyan\" \"PORT=3100 FRONTEND_URL=http://localhost:5174 npm run start:dev --workspace=apps/kuetoj-api\" \"npm run dev --workspace=apps/kuetoj-web\"",
+    "dev:kuetoj-api": "PORT=3100 FRONTEND_URL=http://localhost:5174 npm run start:dev --workspace=apps/kuetoj-api",
+    "dev:kuetoj-web": "npm run dev --workspace=apps/kuetoj-web",
+    "build:kuetoj-api": "npm run build --workspace=apps/kuetoj-api",
+    "build:kuetoj-web": "npm run build --workspace=apps/kuetoj-web",
     "lint": "npm run lint --workspaces --if-present"
   },
   "keywords": [],

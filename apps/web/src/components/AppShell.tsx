@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth.store';
 import {
-  LayoutDashboard, BookOpen, FlaskConical, Trophy, Bell,
+  LayoutDashboard, BookOpen, FlaskConical, Bell,
   LogOut, User, ChevronDown,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -30,11 +30,6 @@ const roleNavItems: Record<string, { label: string; href: string; icon: ReactNod
     { label: 'Assignments', href: '/student/assignments', icon: <BookOpen size={18} /> },
     { label: 'Lab Tests', href: '/student/lab-tests', icon: <FlaskConical size={18} /> },
   ],
-  temp_judge: [
-    { label: 'Dashboard', href: '/judge', icon: <LayoutDashboard size={18} /> },
-    { label: 'New Contest', href: '/judge/contests/create', icon: <Trophy size={18} /> },
-  ],
-  temp_participant: [],
 };
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -65,7 +60,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Nav */}
         <nav className="flex-1 py-4 space-y-0.5 px-2">
           {navItems.map((item) => {
-            const isDashboardItem = item.href === '/office' || item.href === '/teacher' || item.href === '/student' || item.href === '/judge';
+            const isDashboardItem = item.href === '/office' || item.href === '/teacher' || item.href === '/student';
             const active = isDashboardItem
               ? location.pathname === item.href
               : (location.pathname === item.href || location.pathname.startsWith(item.href + '/'));

@@ -6,6 +6,15 @@ import * as bcrypt from 'bcryptjs';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
+import { ConfigService } from '@nestjs/config';
+
+type BridgeUser = {
+  id: string;
+  username: string;
+  role: UserRole;
+  isFirstLogin: boolean;
+  passwordChangeSuggested: boolean;
+};
 
 @Injectable()
 export class AuthService {
@@ -13,14 +22,14 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     @InjectRepository(User) private userRepo: Repository<User>,
+    private readonly config: ConfigService,
   ) {}
 
-  async validateUser(username: string, password: string) {
+  private async validateLocalUser(username: string, password: string): Promise<User> {
     const user = await this.usersService.findUserByUsername(username);
     if (!user) throw new UnauthorizedException('Invalid credentials');
     if (!user.isActive) throw new UnauthorizedException('Account is inactive');
 
-    // Check expiry for temp accounts
     if (user.expiresAt && new Date() > user.expiresAt) {
       throw new UnauthorizedException('Account access has expired');
     }
@@ -31,12 +40,53 @@ export class AuthService {
     return user;
   }
 
-  async login(user: User) {
+  async validateUser(username: string, password: string): Promise<User | BridgeUser> {
+    const user = await this.usersService.findUserByUsername(username);
+    if (!user) {
+      const bridgeUrl = this.config.get<string>('KUETOJ_AUTH_BRIDGE_URL') ?? 'http://localhost:3100/api/auth/validate-user';
+      try {
+        const response = await fetch(bridgeUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        if (!response.ok) throw new UnauthorizedException('Invalid credentials');
+        const bridgeUser = await response.json() as BridgeUser;
+        if (![UserRole.TEMP_JUDGE, UserRole.TEMP_PARTICIPANT].includes(bridgeUser.role)) {
+          throw new UnauthorizedException('Invalid credentials');
+        }
+        return bridgeUser;
+      } catch {
+        throw new UnauthorizedException('Invalid credentials');
+      }
+    }
+
+    return this.validateLocalUser(username, password);
+  }
+
+  async validateTempUserForBridge(username: string, password: string) {
+    const user = await this.validateLocalUser(username, password);
+    if (![UserRole.TEMP_JUDGE, UserRole.TEMP_PARTICIPANT].includes(user.role)) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    return {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      isFirstLogin: user.isFirstLogin,
+      passwordChangeSuggested: user.passwordChangeSuggested,
+    };
+  }
+
+  async login(user: User | BridgeUser) {
     const payload = { sub: user.id, username: user.username, role: user.role };
     const token = this.jwtService.sign(payload);
 
-    // Load profile depending on role
-    const profile = await this.usersService.getProfileByUserId(user.id, user.role);
+    const shouldLoadProfile = ![UserRole.TEMP_JUDGE, UserRole.TEMP_PARTICIPANT].includes(user.role);
+    const profile = shouldLoadProfile
+      ? await this.usersService.getProfileByUserId(user.id, user.role)
+      : null;
 
     return {
       accessToken: token,

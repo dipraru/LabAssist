@@ -145,7 +145,10 @@ export class OfficeController {
     @CurrentUser() user: { id: string },
   ) {
     const { judge, plainPassword } = await this.officeService.createTempJudge(dto, user.id);
-    return { judge, credentials: { username: judge.judgeId, password: plainPassword } };
+    const pdf = await this.pdfService.generateCredentialsPdf([
+      { username: judge.judgeId, password: plainPassword, name: judge.fullName ?? judge.judgeId },
+    ]);
+    return { judge, credentials: { username: judge.judgeId, password: plainPassword }, credentialsPdf: pdf };
   }
 
   @Get('judges')
@@ -156,6 +159,15 @@ export class OfficeController {
   @Patch('judges/:id/extend')
   extendJudge(@Param('id') id: string, @Body() dto: ExtendTempJudgeDto) {
     return this.officeService.extendTempJudge(id, dto);
+  }
+
+  @Post('judges/:id/credentials/reset')
+  async resetJudgeCredentials(@Param('id') id: string) {
+    const { judge, plainPassword } = await this.officeService.resetTempJudgeCredentials(id);
+    const pdf = await this.pdfService.generateCredentialsPdf([
+      { username: judge.judgeId, password: plainPassword, name: judge.fullName ?? judge.judgeId },
+    ]);
+    return { judge, credentials: { username: judge.judgeId, password: plainPassword }, credentialsPdf: pdf };
   }
 
   // ── Semesters ─────────────────────────────────────────────

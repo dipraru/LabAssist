@@ -13,6 +13,8 @@ const schema = z.object({
 });
 type FormData = z.infer<typeof schema>;
 
+const KUETOJ_WEB_URL = import.meta.env.VITE_KUETOJ_WEB_URL ?? 'http://localhost:5174';
+
 export function LoginPage() {
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
@@ -27,29 +29,18 @@ export function LoginPage() {
       const { accessToken, user } = res.data;
       login(accessToken, user);
 
-      let studentProfileCompleted = Boolean((user?.profile as any)?.profileCompleted);
-
-      // Always refresh student profile from server right after login to avoid stale local state.
-      if (user.role === 'student') {
-        try {
-          const profileRes = await api.get('/users/profile', {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          });
-          const freshProfile = profileRes.data;
-          studentProfileCompleted = Boolean(freshProfile?.profileCompleted);
-          setUser({ ...user, profile: freshProfile });
-        } catch {
-          // Fall back to login payload profile if profile refresh fails.
-        }
+      if (user.role === 'temp_judge' || user.role === 'temp_participant') {
+        const base = KUETOJ_WEB_URL.replace(/\/$/, '');
+        const params = new URLSearchParams({ token: accessToken });
+        window.location.href = `${base}/bridge-login?${params.toString()}`;
+        return;
       }
 
       // Role-based redirect
       const roleMap: Record<string, string> = {
         office: '/office',
         teacher: '/teacher',
-        student: user.isFirstLogin || !studentProfileCompleted ? '/student/profile' : '/student',
-        temp_judge: '/judge',
-        temp_participant: '/contest',
+        student: user.isFirstLogin ? '/student/profile' : '/student',
       };
       navigate(roleMap[user.role] ?? '/');
     } catch (err: any) {

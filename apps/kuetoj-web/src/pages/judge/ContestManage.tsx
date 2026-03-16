@@ -7,14 +7,15 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
-import { ChevronDown, ChevronRight, Megaphone } from 'lucide-react';
+import { Megaphone } from 'lucide-react';
 
 const gradeSchema = z.object({
   manualVerdict: z.string().min(1, 'Select verdict'),
   score: z.coerce.number().min(0).optional(),
   penaltyMinutes: z.coerce.number().min(0).optional(),
 });
-type GradeData = z.infer<typeof gradeSchema>;
+type GradeInput = z.input<typeof gradeSchema>;
+type GradeData = z.output<typeof gradeSchema>;
 
 const announcementSchema = z.object({
   title: z.string().min(2),
@@ -53,7 +54,7 @@ export function ContestManage() {
     queryFn: () => api.get(`/contests/${id}/clarifications`).then(r => r.data),
   });
 
-  const gradeForm = useForm<GradeData>({ resolver: zodResolver(gradeSchema) });
+  const gradeForm = useForm<GradeInput, unknown, GradeData>({ resolver: zodResolver(gradeSchema) });
   const announcementForm = useForm<AnnouncementData>({ resolver: zodResolver(announcementSchema) });
 
   const gradeMutation = useMutation({

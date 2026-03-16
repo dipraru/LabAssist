@@ -16,6 +16,11 @@ export class AuthController {
     return this.authService.login(user);
   }
 
+  @Post('validate-local-user')
+  async validateLocalUserForBridge(@Body() dto: LoginDto) {
+    return this.authService.validateTempUserForBridge(dto.username, dto.password);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('me')
   async me(@CurrentUser() user: { id: string; role: string }) {

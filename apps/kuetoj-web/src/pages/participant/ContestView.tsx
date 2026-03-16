@@ -42,7 +42,7 @@ export function ContestView() {
 
   return (
     <AppShell>
-      <AnnouncementModal contestId={id!} />
+      <AnnouncementModal />
       <div className="max-w-4xl">
         {contest ? (
           <>

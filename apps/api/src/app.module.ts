@@ -7,7 +7,6 @@ import { OfficeModule } from './modules/office/office.module';
 import { CoursesModule } from './modules/courses/courses.module';
 import { AssignmentsModule } from './modules/assignments/assignments.module';
 import { LabTestsModule } from './modules/lab-tests/lab-tests.module';
-import { ContestsModule } from './modules/contests/contests.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { StorageModule } from './modules/storage/storage.module';
 
@@ -69,7 +68,6 @@ import { Notification } from './modules/notifications/entities/notification.enti
     CoursesModule,
     AssignmentsModule,
     LabTestsModule,
-    ContestsModule,
     NotificationsModule,
   ],
 })
