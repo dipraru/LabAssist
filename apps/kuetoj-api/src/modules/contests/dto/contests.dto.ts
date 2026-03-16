@@ -35,7 +35,7 @@ export class AddContestProblemDto {
 
 export class CreateContestDto {
   @IsString() title: string;
-  @IsString() description: string;
+  @IsOptional() @IsString() description?: string;
   @IsEnum(ContestType) type: ContestType;
   @IsDateString() startTime: string;
   @IsDateString() endTime: string;
@@ -84,8 +84,8 @@ export class AskClarificationDto {
 export class CreateTempParticipantsDto {
   @IsUUID() contestId: string;
   @IsInt() count: number;
-  @IsDateString() accessFrom: string;
-  @IsDateString() accessUntil: string;
+  @IsOptional() @IsDateString() accessFrom?: string;
+  @IsOptional() @IsDateString() accessUntil?: string;
 }
 
 // ─── Judge webhook ───────────────────────────────────────────────────────────

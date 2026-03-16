@@ -167,6 +167,18 @@ export class ContestsController {
     return this.svc.createTempParticipants(dto, user.id);
   }
 
+  @Roles(UserRole.TEMP_JUDGE)
+  @Get(':id/participants')
+  contestParticipants(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.svc.getContestParticipants(id, user.id);
+  }
+
+  @Roles(UserRole.TEMP_JUDGE)
+  @Get(':id/participants/credentials-pdf')
+  contestCredentialsPdf(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.svc.getContestCredentialsPdf(id, user.id);
+  }
+
   // ─── PARTICIPANT / STUDENT: SUBMIT ───────────────────────────────────────────
 
   @Roles(UserRole.TEMP_PARTICIPANT)

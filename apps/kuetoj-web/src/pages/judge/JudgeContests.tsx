@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { Plus, GripVertical, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
+import { Modal } from '../../components/Modal';
 
 type ProblemItem = {
   id: string;
@@ -19,6 +20,15 @@ type SelectedProblem = {
   score?: number;
 };
 
+type ContestItem = {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  startTime?: string;
+  endTime?: string;
+};
+
 const STATUS_COLOR: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700',
   scheduled: 'bg-blue-100 text-blue-700',
@@ -31,7 +41,8 @@ export function JudgeContests() {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const [showCreate, setShowCreate] = useState(false);
+  const [showCreateContestModal, setShowCreateContestModal] = useState(false);
+  const [showParticipantsModal, setShowParticipantsModal] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   const [title, setTitle] = useState('');
@@ -41,6 +52,12 @@ export function JudgeContests() {
   const [endTime, setEndTime] = useState('');
   const [freezeTime, setFreezeTime] = useState('');
   const [selected, setSelected] = useState<SelectedProblem[]>([]);
+
+  const [participantsContest, setParticipantsContest] = useState<ContestItem | null>(null);
+  const [participantCount, setParticipantCount] = useState(10);
+  const [participantAccessFrom, setParticipantAccessFrom] = useState('');
+  const [participantAccessUntil, setParticipantAccessUntil] = useState('');
+  const [latestPdfBase64, setLatestPdfBase64] = useState<string | null>(null);
 
   const { data: contests = [] } = useQuery({
     queryKey: ['judge-contests'],
@@ -57,6 +74,38 @@ export function JudgeContests() {
     [myProblems, selected],
   );
 
+  const toLocalInput = (iso: string) => {
+    const date = new Date(iso);
+    const tzOffset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
+  };
+
+  const downloadPdfBase64 = (base64: string, fileName: string) => {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i += 1) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const resetCreateContestForm = () => {
+    setTitle('');
+    setDescription('');
+    setType('icpc');
+    setStartTime('');
+    setEndTime('');
+    setFreezeTime('');
+    setSelected([]);
+  };
+
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!title.trim() || !startTime || !endTime || selected.length === 0) {
@@ -72,7 +121,7 @@ export function JudgeContests() {
 
       return api.post('/contests', {
         title,
-        description: description || 'Contest created by judge',
+        description: description || undefined,
         type,
         startTime: new Date(startTime).toISOString(),
         endTime: new Date(endTime).toISOString(),
@@ -83,14 +132,8 @@ export function JudgeContests() {
     onSuccess: (res) => {
       toast.success('Contest created');
       qc.invalidateQueries({ queryKey: ['judge-contests'] });
-      setShowCreate(false);
-      setTitle('');
-      setDescription('');
-      setType('icpc');
-      setStartTime('');
-      setEndTime('');
-      setFreezeTime('');
-      setSelected([]);
+      setShowCreateContestModal(false);
+      resetCreateContestForm();
       navigate(`/judge/contests/${res.data.id}`);
     },
     onError: (err: any) => {
@@ -117,6 +160,67 @@ export function JudgeContests() {
     setDragIndex(null);
   };
 
+  const openParticipantsModal = (contest: ContestItem) => {
+    const fallbackFrom = contest.startTime ? toLocalInput(contest.startTime) : '';
+    const fallbackUntil = contest.endTime ? toLocalInput(contest.endTime) : '';
+    setParticipantsContest(contest);
+    setParticipantCount(10);
+    setParticipantAccessFrom(fallbackFrom);
+    setParticipantAccessUntil(fallbackUntil);
+    setLatestPdfBase64(null);
+    setShowParticipantsModal(true);
+  };
+
+  const createParticipantsMutation = useMutation({
+    mutationFn: () => {
+      if (!participantsContest) throw new Error('Contest not selected');
+      return api.post('/contests/participants/bulk', {
+        contestId: participantsContest.id,
+        count: participantCount,
+        accessFrom: participantAccessFrom ? new Date(participantAccessFrom).toISOString() : undefined,
+        accessUntil: participantAccessUntil ? new Date(participantAccessUntil).toISOString() : undefined,
+      });
+    },
+    onSuccess: (res) => {
+      const pdf = res.data?.credentialsPdfBase64;
+      const created = res.data?.participants?.length ?? 0;
+      toast.success(`${created} participants created`);
+      if (pdf) {
+        setLatestPdfBase64(pdf);
+      }
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message ?? err.message ?? 'Failed to create participants');
+    },
+  });
+
+  const downloadAllCredentialsMutation = useMutation({
+    mutationFn: (contestId: string) => api.get(`/contests/${contestId}/participants/credentials-pdf`),
+    onSuccess: (res, contestId) => {
+      const pdf = res.data?.credentialsPdfBase64;
+      if (!pdf) {
+        toast.error('No credentials PDF returned');
+        return;
+      }
+      downloadPdfBase64(pdf, `contest-${contestId}-all-credentials.pdf`);
+      toast.success('Downloaded all contest credentials');
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message ?? err.message ?? 'Failed to download credentials');
+    },
+  });
+
+  const contestDurationText = useMemo(() => {
+    if (!startTime || !endTime) return '';
+    const start = new Date(startTime).getTime();
+    const end = new Date(endTime).getTime();
+    if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return 'End time must be after start time';
+    const minutes = Math.floor((end - start) / 60000);
+    const hours = Math.floor(minutes / 60);
+    const restMinutes = minutes % 60;
+    return `Duration: ${hours}h ${restMinutes}m`;
+  }, [startTime, endTime]);
+
   return (
     <AppShell>
       <div className="space-y-6">
@@ -133,7 +237,7 @@ export function JudgeContests() {
               <Plus size={16} /> Create New Problem
             </button>
             <button
-              onClick={() => setShowCreate((v) => !v)}
+              onClick={() => setShowCreateContestModal(true)}
               className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium"
             >
               <Plus size={16} /> Create New Contest
@@ -141,130 +245,9 @@ export function JudgeContests() {
           </div>
         </section>
 
-        {showCreate && (
-          <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Create Contest</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-3">
-                <div>
-                  <label className="text-xs font-medium text-slate-600">Title</label>
-                  <input value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-slate-600">Description</label>
-                  <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm resize-none" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-medium text-slate-600">Type</label>
-                    <select value={type} onChange={(e) => setType(e.target.value as 'icpc' | 'score_based')} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm">
-                      <option value="icpc">ICPC</option>
-                      <option value="score_based">Score Based</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-slate-600">Freeze Time (optional)</label>
-                    <input type="datetime-local" value={freezeTime} onChange={(e) => setFreezeTime(e.target.value)} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-medium text-slate-600">Start</label>
-                    <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-slate-600">End</label>
-                    <input type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-slate-800">Available My Problems</h3>
-                <div className="border border-slate-200 rounded-md max-h-60 overflow-auto">
-                  {availableProblems.map((problem) => (
-                    <button
-                      key={problem.id}
-                      type="button"
-                      onClick={() => addProblem(problem)}
-                      className="w-full text-left px-3 py-2 border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
-                    >
-                      <p className="text-sm font-medium text-slate-800">{problem.title}</p>
-                      <p className="text-xs text-slate-500">TL {problem.timeLimitMs ?? '—'} · ML {problem.memoryLimitKb ?? '—'}</p>
-                    </button>
-                  ))}
-                  {!availableProblems.length && <p className="text-xs text-slate-500 p-3">No more problems to add.</p>}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5">
-              <h3 className="text-sm font-semibold text-slate-800 mb-2">Selected Problems (Drag to reorder)</h3>
-              <div className="border border-slate-200 rounded-md overflow-hidden">
-                {selected.map((item, index) => (
-                  <div
-                    key={item.problemId}
-                    draggable
-                    onDragStart={() => setDragIndex(index)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => onDropAt(index)}
-                    className="grid grid-cols-12 items-center gap-2 px-3 py-2 border-b border-slate-100 last:border-b-0 bg-white"
-                  >
-                    <div className="col-span-1 text-slate-400 cursor-grab">
-                      <GripVertical size={16} />
-                    </div>
-                    <div className="col-span-1 text-xs font-semibold text-indigo-700">
-                      {String.fromCharCode(65 + index)}
-                    </div>
-                    <div className="col-span-7 text-sm text-slate-800">{item.title}</div>
-                    {type === 'score_based' && (
-                      <div className="col-span-2">
-                        <input
-                          type="number"
-                          value={item.score ?? 100}
-                          onChange={(e) => {
-                            const value = Number(e.target.value || 0);
-                            setSelected((prev) => prev.map((p) => (p.problemId === item.problemId ? { ...p, score: value } : p)));
-                          }}
-                          className="w-full border border-slate-300 rounded-md px-2 py-1 text-xs"
-                        />
-                      </div>
-                    )}
-                    {type !== 'score_based' && <div className="col-span-2" />}
-                    <div className="col-span-1 text-right">
-                      <button type="button" onClick={() => removeProblem(item.problemId)} className="text-red-500 hover:text-red-700">
-                        <X size={14} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {!selected.length && <p className="text-sm text-slate-500 p-4">Select at least one problem from your list.</p>}
-              </div>
-            </div>
-
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowCreate(false)}
-                className="px-4 py-2 border border-slate-300 rounded-md text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => createMutation.mutate()}
-                disabled={createMutation.isPending}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-md text-sm font-medium"
-              >
-                {createMutation.isPending ? 'Creating…' : 'Create Contest'}
-              </button>
-            </div>
-          </section>
-        )}
-
         <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <div className="space-y-3">
-            {(contests as any[]).map((contest: any) => (
+            {(contests as ContestItem[]).map((contest) => (
               <article key={contest.id} className="border border-slate-200 rounded-lg p-4">
                 <div className="flex items-center justify-between gap-4">
                   <div>
@@ -279,16 +262,225 @@ export function JudgeContests() {
                 </div>
                 <div className="mt-3 flex gap-2">
                   <button onClick={() => navigate(`/judge/contests/${contest.id}`)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Manage</button>
-                  <button onClick={() => navigate(`/judge/contests/${contest.id}/participants`)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Participants</button>
+                  <button onClick={() => openParticipantsModal(contest)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Create Participants</button>
+                  <button
+                    onClick={() => downloadAllCredentialsMutation.mutate(contest.id)}
+                    disabled={downloadAllCredentialsMutation.isPending}
+                    className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    Download All Credentials
+                  </button>
                   <button onClick={() => navigate(`/judge/contests/${contest.id}/standings`)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Standings</button>
                 </div>
               </article>
             ))}
-            {!(contests as any[]).length && (
+            {!(contests as ContestItem[]).length && (
               <p className="text-sm text-slate-500 text-center py-8">No contests yet. Create your first contest.</p>
             )}
           </div>
         </section>
+
+        <Modal
+          open={showCreateContestModal}
+          title="Create New Contest"
+          onClose={() => {
+            setShowCreateContestModal(false);
+            resetCreateContestForm();
+          }}
+          maxWidthClass="max-w-5xl"
+        >
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-3">
+              <div>
+                <label className="text-xs font-medium text-slate-600">Title</label>
+                <input value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600">Description (optional)</label>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm resize-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-600">Type</label>
+                  <select value={type} onChange={(e) => setType(e.target.value as 'icpc' | 'score_based')} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm">
+                    <option value="icpc">ICPC</option>
+                    <option value="score_based">Score Based</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-600">Freeze Time (optional)</label>
+                  <input type="datetime-local" min={startTime || undefined} max={endTime || undefined} value={freezeTime} onChange={(e) => setFreezeTime(e.target.value)} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-600">Start</label>
+                  <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-600">End</label>
+                  <input type="datetime-local" min={startTime || undefined} value={endTime} onChange={(e) => setEndTime(e.target.value)} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
+                </div>
+              </div>
+              {contestDurationText && <p className="text-xs text-slate-500">{contestDurationText}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-slate-800">Available My Problems</h3>
+              <div className="border border-slate-200 rounded-md max-h-60 overflow-auto">
+                {availableProblems.map((problem) => (
+                  <button
+                    key={problem.id}
+                    type="button"
+                    onClick={() => addProblem(problem)}
+                    className="w-full text-left px-3 py-2 border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
+                  >
+                    <p className="text-sm font-medium text-slate-800">{problem.title}</p>
+                    <p className="text-xs text-slate-500">TL {problem.timeLimitMs ?? '—'} · ML {problem.memoryLimitKb ?? '—'}</p>
+                  </button>
+                ))}
+                {!availableProblems.length && <p className="text-xs text-slate-500 p-3">No more problems to add.</p>}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <h3 className="text-sm font-semibold text-slate-800 mb-2">Selected Problems (Drag to reorder)</h3>
+            <div className="border border-slate-200 rounded-md overflow-hidden">
+              {selected.map((item, index) => (
+                <div
+                  key={item.problemId}
+                  draggable
+                  onDragStart={() => setDragIndex(index)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => onDropAt(index)}
+                  className="grid grid-cols-12 items-center gap-2 px-3 py-2 border-b border-slate-100 last:border-b-0 bg-white"
+                >
+                  <div className="col-span-1 text-slate-400 cursor-grab">
+                    <GripVertical size={16} />
+                  </div>
+                  <div className="col-span-1 text-xs font-semibold text-indigo-700">
+                    {String.fromCharCode(65 + index)}
+                  </div>
+                  <div className="col-span-7 text-sm text-slate-800">{item.title}</div>
+                  {type === 'score_based' && (
+                    <div className="col-span-2">
+                      <input
+                        type="number"
+                        value={item.score ?? 100}
+                        onChange={(e) => {
+                          const value = Number(e.target.value || 0);
+                          setSelected((prev) => prev.map((p) => (p.problemId === item.problemId ? { ...p, score: value } : p)));
+                        }}
+                        className="w-full border border-slate-300 rounded-md px-2 py-1 text-xs"
+                      />
+                    </div>
+                  )}
+                  {type !== 'score_based' && <div className="col-span-2" />}
+                  <div className="col-span-1 text-right">
+                    <button type="button" onClick={() => removeProblem(item.problemId)} className="text-red-500 hover:text-red-700">
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {!selected.length && <p className="text-sm text-slate-500 p-4">Select at least one problem from your list.</p>}
+            </div>
+          </div>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowCreateContestModal(false);
+                resetCreateContestForm();
+              }}
+              className="px-4 py-2 border border-slate-300 rounded-md text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => createMutation.mutate()}
+              disabled={createMutation.isPending}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-md text-sm font-medium"
+            >
+              {createMutation.isPending ? 'Creating…' : 'Create Contest'}
+            </button>
+          </div>
+        </Modal>
+
+        <Modal
+          open={showParticipantsModal}
+          title={participantsContest ? `Create Participants — ${participantsContest.title}` : 'Create Participants'}
+          onClose={() => setShowParticipantsModal(false)}
+          maxWidthClass="max-w-2xl"
+        >
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium text-slate-600">Number of Accounts</label>
+              <input
+                type="number"
+                min={1}
+                max={200}
+                value={participantCount}
+                onChange={(e) => setParticipantCount(Number(e.target.value || 0))}
+                className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+              />
+              <p className="text-xs text-slate-500 mt-1">You can run this multiple times to create more.</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-600">Access From (optional)</label>
+                <input
+                  type="datetime-local"
+                  value={participantAccessFrom}
+                  onChange={(e) => setParticipantAccessFrom(e.target.value)}
+                  className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600">Access Until (optional)</label>
+                <input
+                  type="datetime-local"
+                  min={participantAccessFrom || undefined}
+                  value={participantAccessUntil}
+                  onChange={(e) => setParticipantAccessUntil(e.target.value)}
+                  className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            {latestPdfBase64 && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                <p className="text-sm text-emerald-800">Latest batch created successfully.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!participantsContest) return;
+                    downloadPdfBase64(latestPdfBase64, `contest-${participantsContest.id}-latest-credentials.pdf`);
+                  }}
+                  className="mt-2 px-3 py-1.5 text-xs border border-emerald-300 rounded-md hover:bg-emerald-100"
+                >
+                  Download Latest Credentials
+                </button>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setShowParticipantsModal(false)} className="px-4 py-2 border border-slate-300 rounded-md text-sm">Close</button>
+              <button
+                type="button"
+                onClick={() => createParticipantsMutation.mutate()}
+                disabled={createParticipantsMutation.isPending}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-md text-sm font-medium"
+              >
+                {createParticipantsMutation.isPending ? 'Creating…' : 'Create Participants'}
+              </button>
+            </div>
+          </div>
+        </Modal>
       </div>
     </AppShell>
   );

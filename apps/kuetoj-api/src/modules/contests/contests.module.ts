@@ -10,6 +10,7 @@ import { User } from '../users/entities/user.entity';
 import { TempParticipant } from '../users/entities/temp-participant.entity';
 import { ContestsService } from './contests.service';
 import { ContestsController } from './contests.controller';
+import { CredentialsPdfService } from './credentials-pdf.service';
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { ContestsController } from './contests.controller';
       ContestAnnouncement, ContestClarification, User, TempParticipant,
     ]),
   ],
-  providers: [ContestsService],
+  providers: [ContestsService, CredentialsPdfService],
   controllers: [ContestsController],
   exports: [ContestsService],
 })

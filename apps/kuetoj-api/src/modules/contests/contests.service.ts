@@ -27,6 +27,7 @@ import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { NotificationType } from '../notifications/entities/notification.entity';
+import { CredentialsPdfService } from './credentials-pdf.service';
 import {
   ContestStatus, ContestType, ManualVerdict, SubmissionStatus,
 } from '../../common/enums';
@@ -51,6 +52,7 @@ export class ContestsService {
     private storage: StorageService,
     private notifications: NotificationsService,
     private gateway: NotificationsGateway,
+    private credentialsPdf: CredentialsPdfService,
   ) {}
 
   // ─── PROBLEM BANK ────────────────────────────────────────────────────────────
@@ -106,17 +108,34 @@ export class ContestsService {
   // ─── CONTEST CRUD ────────────────────────────────────────────────────────────
 
   async createContest(dto: CreateContestDto, judgeUserId: string): Promise<Contest> {
+    const startTime = new Date(dto.startTime);
+    const endTime = new Date(dto.endTime);
+    const freezeTime = dto.freezeTime ? new Date(dto.freezeTime) : null;
+
+    if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
+      throw new BadRequestException('Invalid contest start/end time');
+    }
+    if (endTime <= startTime) {
+      throw new BadRequestException('End time must be after start time');
+    }
+    if (freezeTime && Number.isNaN(freezeTime.getTime())) {
+      throw new BadRequestException('Invalid freeze time');
+    }
+    if (freezeTime && (freezeTime < startTime || freezeTime > endTime)) {
+      throw new BadRequestException('Freeze time must be between start and end time');
+    }
+
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
     await qr.startTransaction();
     try {
       const contest = qr.manager.create(Contest, {
         title: dto.title,
-        description: dto.description,
+        description: dto.description ?? '',
         type: dto.type,
-        startTime: new Date(dto.startTime),
-        endTime: new Date(dto.endTime),
-        freezeTime: dto.freezeTime ? new Date(dto.freezeTime) : null,
+        startTime,
+        endTime,
+        freezeTime,
         createdById: judgeUserId,
         status: ContestStatus.DRAFT,
         isStandingFrozen: false,
@@ -528,11 +547,24 @@ export class ContestsService {
     if (dto.count < 1 || dto.count > 200)
       throw new BadRequestException('Count must be between 1 and 200');
 
+    const now = new Date();
+    const accessFrom = dto.accessFrom
+      ? new Date(dto.accessFrom)
+      : (contest.startTime > now ? contest.startTime : now);
+    const accessUntil = dto.accessUntil ? new Date(dto.accessUntil) : contest.endTime;
+
+    if (Number.isNaN(accessFrom.getTime()) || Number.isNaN(accessUntil.getTime())) {
+      throw new BadRequestException('Invalid participant access window');
+    }
+    if (accessUntil <= accessFrom) {
+      throw new BadRequestException('Participant access end must be after start');
+    }
+
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
     await qr.startTransaction();
     try {
-      const results: { username: string; password: string; participantId: string }[] = [];
+      const results: { username: string; password: string; participantId: string; name: string }[] = [];
 
       // Find the highest existing TP number for this contest
       const existing = await qr.manager.find(TempParticipant, { where: { contestId: dto.contestId } });
@@ -543,6 +575,7 @@ export class ContestsService {
         const participantId = `TP-${String(counter).padStart(3, '0')}`;
         const username = `tp_${dto.contestId.slice(0, 8)}_${String(counter).padStart(3, '0')}`;
         const plainPassword = Math.random().toString(36).slice(-8).toUpperCase();
+        const fullName = `Participant ${counter}`;
 
         const user = qr.manager.create(User, {
           username,
@@ -550,32 +583,85 @@ export class ContestsService {
           role: UserRole.TEMP_PARTICIPANT,
           isFirstLogin: false,
           isActive: true,
-          expiresAt: new Date(dto.accessUntil),
+          expiresAt: accessUntil,
         });
         await qr.manager.save(user);
 
         const tp = qr.manager.create(TempParticipant, {
           participantId,
-          fullName: `Participant ${counter}`,
+          fullName,
           contestId: dto.contestId,
-          accessFrom: new Date(dto.accessFrom),
-          accessUntil: new Date(dto.accessUntil),
+          accessFrom,
+          accessUntil,
           createdByJudgeId: judgeUserId,
           userId: user.id,
+          loginPassword: plainPassword,
         });
         await qr.manager.save(tp);
 
-        results.push({ username, password: plainPassword, participantId });
+        results.push({ username, password: plainPassword, participantId, name: fullName });
       }
 
       await qr.commitTransaction();
-      return results;
+      const credentialsPdfBase64 = await this.credentialsPdf.generateCredentialsPdf(results);
+      return {
+        participants: results,
+        credentialsPdfBase64,
+      };
     } catch (err) {
       await qr.rollbackTransaction();
       throw err;
     } finally {
       await qr.release();
     }
+  }
+
+  async getContestParticipants(contestId: string, judgeUserId: string) {
+    const contest = await this.contestRepo.findOneBy({ id: contestId });
+    if (!contest) throw new NotFoundException('Contest not found');
+    if (contest.createdById !== judgeUserId) throw new ForbiddenException();
+
+    const participants = await this.tpRepo.find({
+      where: { contestId },
+      order: { createdAt: 'ASC' },
+    });
+
+    return participants.map((tp) => ({
+      id: tp.id,
+      participantId: tp.participantId,
+      fullName: tp.fullName,
+      username: tp.user?.username ?? null,
+      password: tp.loginPassword ?? null,
+      accessFrom: tp.accessFrom,
+      accessUntil: tp.accessUntil,
+      createdAt: tp.createdAt,
+    }));
+  }
+
+  async getContestCredentialsPdf(contestId: string, judgeUserId: string) {
+    const participants = await this.getContestParticipants(contestId, judgeUserId);
+    if (!participants.length) {
+      throw new BadRequestException('No temporary participants found for this contest');
+    }
+
+    const credentials = participants
+      .filter(p => p.username && p.password)
+      .map(p => ({
+        username: p.username as string,
+        password: p.password as string,
+        name: p.fullName,
+      }));
+
+    if (!credentials.length) {
+      throw new BadRequestException('No credential records available to export');
+    }
+
+    const credentialsPdfBase64 = await this.credentialsPdf.generateCredentialsPdf(credentials);
+    return {
+      totalParticipants: participants.length,
+      exportedCredentials: credentials.length,
+      credentialsPdfBase64,
+    };
   }
 
   // ─── FUTURE JUDGE WEBHOOK ─────────────────────────────────────────────────────
