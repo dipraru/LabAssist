@@ -15,7 +15,7 @@ export function ParticipantContestEntry() {
   });
 
   if (!isLoading && (assigned as AssignedContest[]).length > 0) {
-    return <Navigate to={`/contest/${(assigned as AssignedContest[])[0].contest.id}`} replace />;
+    return <Navigate to={`/contest/${(assigned as AssignedContest[])[0].contest.id}/problems`} replace />;
   }
 
   return (

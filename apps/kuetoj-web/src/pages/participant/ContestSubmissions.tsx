@@ -33,40 +33,46 @@ export function ContestSubmissions() {
     <AppShell>
       <div className="w-full">
         {id && <ParticipantContestHeader contestId={id} />}
+        {id && <ParticipantContestNav contestId={id} />}
         <h1 className="mb-1 text-2xl font-bold text-slate-900">My Submissions</h1>
         <p className="mb-4 text-sm text-slate-500">All submissions in this contest</p>
-        {id && <ParticipantContestNav contestId={id} />}
 
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="border-b border-slate-200 bg-slate-50">
               <tr>
                 <th className="px-4 py-3 text-left">ID</th>
+                <th className="px-4 py-3 text-left">Who</th>
                 <th className="px-4 py-3 text-left">Problem</th>
-                <th className="px-4 py-3 text-left">Language</th>
+                <th className="px-4 py-3 text-left">When</th>
+                <th className="px-4 py-3 text-left">Lang</th>
                 <th className="px-4 py-3 text-left">Verdict</th>
                 <th className="px-4 py-3 text-left">Time</th>
+                <th className="px-4 py-3 text-left">Memory</th>
                 <th className="px-4 py-3 text-left">Action</th>
               </tr>
             </thead>
             <tbody>
               {isLoading && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Loading submissions…</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">Loading submissions…</td></tr>
               )}
 
               {!isLoading && !(submissions as any[]).length && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No submissions yet.</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">No submissions yet.</td></tr>
               )}
 
               {(submissions as any[]).map((submission: any) => (
                 <tr key={submission.id} className="border-t border-slate-100">
                   <td className="px-4 py-3 font-mono text-xs">#{submission.submissionDisplayId}</td>
+                  <td className="px-4 py-3">{submission.participantName ?? submission.participantId ?? '—'}</td>
                   <td className="px-4 py-3">{submission.contestProblem?.label ?? '—'}</td>
+                  <td className="px-4 py-3 text-slate-500">{new Date(submission.submittedAt).toLocaleString()}</td>
                   <td className="px-4 py-3">{submission.language ?? '—'}</td>
                   <td className={`px-4 py-3 font-medium ${VERDICT_COLOR[submission.manualVerdict ?? submission.submissionStatus] ?? 'text-slate-600'}`}>
                     {submission.manualVerdict ?? submission.submissionStatus}
                   </td>
-                  <td className="px-4 py-3 text-slate-500">{new Date(submission.submittedAt).toLocaleString()}</td>
+                  <td className="px-4 py-3">{submission.executionTimeMs != null ? `${submission.executionTimeMs} ms` : '—'}</td>
+                  <td className="px-4 py-3">{submission.memoryUsedKb != null ? `${submission.memoryUsedKb} KB` : '—'}</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-3">
                       <button

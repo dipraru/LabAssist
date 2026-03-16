@@ -68,9 +68,7 @@ export function ParticipantStandings() {
             <tbody className="divide-y divide-slate-100">
               {rows.map((row: any, idx: number) => (
                 <tr key={row.participantId ?? idx} className={`hover:bg-slate-50 ${idx < 3 ? 'font-semibold' : ''}`}>
-                  <td className="px-4 py-3 text-slate-500">
-                    {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
-                  </td>
+                  <td className="px-4 py-3 text-slate-500">{idx + 1}</td>
                   <td className="px-4 py-3">{row.participantName ?? row.participantId}</td>
                   {isIcpc ? (
                     <>
