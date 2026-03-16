@@ -16,6 +16,7 @@ type FormData = z.infer<typeof schema>;
 export function LoginPage() {
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
+  const setUser = useAuthStore((s) => s.setUser);
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
@@ -26,7 +27,21 @@ export function LoginPage() {
       const { accessToken, user } = res.data;
       login(accessToken, user);
 
-      const studentProfileCompleted = Boolean((user?.profile as any)?.profileCompleted);
+      let studentProfileCompleted = Boolean((user?.profile as any)?.profileCompleted);
+
+      // Always refresh student profile from server right after login to avoid stale local state.
+      if (user.role === 'student') {
+        try {
+          const profileRes = await api.get('/users/profile', {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          const freshProfile = profileRes.data;
+          studentProfileCompleted = Boolean(freshProfile?.profileCompleted);
+          setUser({ ...user, profile: freshProfile });
+        } catch {
+          // Fall back to login payload profile if profile refresh fails.
+        }
+      }
 
       // Role-based redirect
       const roleMap: Record<string, string> = {
