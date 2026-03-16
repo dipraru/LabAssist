@@ -1,8 +1,9 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { RefreshCw } from 'lucide-react';
+import { ParticipantContestNav } from '../../components/ParticipantContestNav';
 
 export function ParticipantStandings() {
   const { id } = useParams<{ id: string }>();
@@ -24,9 +25,7 @@ export function ParticipantStandings() {
   return (
     <AppShell>
       <div className="max-w-4xl">
-        <Link to={`/contest/${id}`} className="text-sm text-indigo-600 hover:underline mb-4 inline-block">
-          ← Back
-        </Link>
+        {id && <ParticipantContestNav contestId={id} />}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Standings</h1>

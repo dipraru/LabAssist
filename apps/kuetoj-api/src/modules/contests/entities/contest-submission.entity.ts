@@ -2,6 +2,7 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
+  Generated,
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
@@ -15,6 +16,10 @@ import { SubmissionStatus, ManualVerdict, ProgrammingLanguage } from '../../../c
 export class ContestSubmission {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Column({ type: 'int', unique: true, nullable: true })
+  @Generated('increment')
+  submissionNumber: number | null;
 
   @ManyToOne(() => Contest, (c) => c.submissions, { onDelete: 'CASCADE' })
   @JoinColumn()

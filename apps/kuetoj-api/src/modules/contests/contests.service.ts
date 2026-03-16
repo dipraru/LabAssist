@@ -63,6 +63,18 @@ export class ContestsService {
     return 'running';
   }
 
+  private formatSubmissionDisplayId(submissionNumber: number | null | undefined): string {
+    if (!submissionNumber || submissionNumber < 1) return '0000000';
+    return String(submissionNumber).padStart(7, '0');
+  }
+
+  private serializeSubmission(submission: ContestSubmission) {
+    return {
+      ...submission,
+      submissionDisplayId: this.formatSubmissionDisplayId(submission.submissionNumber),
+    };
+  }
+
   private async getNextProblemCode(): Promise<string> {
     const last = await this.problemRepo.createQueryBuilder('p')
       .where('p.problemCode IS NOT NULL')
@@ -242,6 +254,23 @@ export class ContestsService {
         ? ContestStatus.RUNNING
         : ContestStatus.ENDED;
     return c;
+  }
+
+  async getContestByIdForUser(id: string, user: { id: string; role: UserRole }) {
+    const contest = await this.getContestById(id);
+    if (user.role !== UserRole.TEMP_PARTICIPANT) {
+      return contest;
+    }
+
+    const phase = this.contestPhase(contest.startTime, contest.endTime);
+    if (phase === 'upcoming') {
+      return {
+        ...contest,
+        problems: [],
+      };
+    }
+
+    return contest;
   }
 
   async listContests(): Promise<Contest[]> {
@@ -441,24 +470,37 @@ export class ContestsService {
       submissionStatus: SubmissionStatus.PENDING,
       judgeToken: uuidv4(),
     });
-    return this.subRepo.save(sub);
+    const saved = await this.subRepo.save(sub);
+    return this.serializeSubmission(saved);
   }
 
   async getMySubmissions(contestId: string, participantUserId: string) {
-    return this.subRepo.find({
+    const submissions = await this.subRepo.find({
       where: { contestId, participantId: participantUserId },
       order: { submittedAt: 'DESC' },
     });
+    return submissions.map((submission) => this.serializeSubmission(submission));
+  }
+
+  async getMySubmissionById(contestId: string, submissionId: string, participantUserId: string) {
+    const submission = await this.subRepo.findOne({
+      where: { id: submissionId, contestId, participantId: participantUserId },
+    });
+    if (!submission) {
+      throw new NotFoundException('Submission not found');
+    }
+    return this.serializeSubmission(submission);
   }
 
   async getAllSubmissions(contestId: string, judgeUserId: string) {
     const c = await this.contestRepo.findOneBy({ id: contestId });
     if (!c) throw new NotFoundException();
     if (c.createdById !== judgeUserId) throw new ForbiddenException();
-    return this.subRepo.find({
+    const submissions = await this.subRepo.find({
       where: { contestId },
       order: { submittedAt: 'DESC' },
     });
+    return submissions.map((submission) => this.serializeSubmission(submission));
   }
 
   async gradeSubmission(subId: string, dto: GradeContestSubmissionDto, judgeUserId: string) {
@@ -490,7 +532,7 @@ export class ContestsService {
       participantId: sub.participantId,
       verdict: sub.manualVerdict,
     });
-    return saved;
+    return this.serializeSubmission(saved);
   }
 
   // ─── ANNOUNCEMENTS ────────────────────────────────────────────────────────────
@@ -798,6 +840,6 @@ export class ContestsService {
       submissionId: sub.id,
       verdict: saved.submissionStatus,
     });
-    return saved;
+    return this.serializeSubmission(saved);
   }
 }

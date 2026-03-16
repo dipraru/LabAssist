@@ -12,8 +12,10 @@ import { ContestParticipants } from './pages/judge/ContestParticipants';
 
 // Participant
 import { ContestView } from './pages/participant/ContestView';
+import { ContestProblems } from './pages/participant/ContestProblems';
 import { ContestProblem } from './pages/participant/ContestProblem';
-import { ContestSubmit } from './pages/participant/ContestSubmit';
+import { ContestSubmissions } from './pages/participant/ContestSubmissions';
+import { ContestSubmissionDetail } from './pages/participant/ContestSubmissionDetail';
 import { ParticipantStandings } from './pages/participant/ContestStandings';
 import { AskClarification } from './pages/participant/AskClarification';
 import { ParticipantHome } from './pages/participant/ParticipantHome';
@@ -55,8 +57,10 @@ export default function App() {
       <Route element={<ProtectedRoute allowedRoles={['temp_participant']} />}>
         <Route path="/contest" element={<ParticipantHome />} />
         <Route path="/contest/:id" element={<ContestView />} />
+        <Route path="/contest/:id/problems" element={<ContestProblems />} />
         <Route path="/contest/:id/problems/:problemId" element={<ContestProblem />} />
-        <Route path="/contest/:id/submit" element={<ContestSubmit />} />
+        <Route path="/contest/:id/submissions" element={<ContestSubmissions />} />
+        <Route path="/contest/:id/submissions/:submissionId" element={<ContestSubmissionDetail />} />
         <Route path="/contest/:id/standings" element={<ParticipantStandings />} />
         <Route path="/contest/:id/clarifications" element={<AskClarification />} />
       </Route>
