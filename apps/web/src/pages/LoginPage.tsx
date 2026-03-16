@@ -18,6 +18,7 @@ const KUETOJ_WEB_URL = import.meta.env.VITE_KUETOJ_WEB_URL ?? 'http://localhost:
 export function LoginPage() {
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
+  const setUser = useAuthStore((s) => s.setUser);
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
   });

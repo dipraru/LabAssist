@@ -84,3 +84,6 @@ apps/api/uploads/
 *.bak
 *.orig
 *.rej
+
+# ─── Local text notes ─────────────────────────────────────────
+*.txt

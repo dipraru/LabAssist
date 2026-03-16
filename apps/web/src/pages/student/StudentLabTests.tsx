@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
@@ -9,7 +9,15 @@ import 'ace-builds/src-noconflict/mode-python';
 import 'ace-builds/src-noconflict/mode-javascript';
 import 'ace-builds/src-noconflict/theme-monokai';
 import toast from 'react-hot-toast';
-import { Code, Upload, ChevronDown, ChevronRight, Clock } from 'lucide-react';
+import { Upload, Clock } from 'lucide-react';
+
+function courseCode(course: any): string {
+  return course?.courseCode ?? course?.code ?? 'N/A';
+}
+
+function courseTitle(course: any): string {
+  return course?.title ?? course?.name ?? 'Untitled Course';
+}
 
 const LANG_MODES: Record<string, string> = {
   c: 'c_cpp', cpp: 'c_cpp', java: 'java',
@@ -105,7 +113,7 @@ export function StudentLabTests() {
           <select value={filterCourse} onChange={e => setFilterCourse(e.target.value)}
             className="px-3 py-2 border border-slate-300 rounded-lg text-sm">
             <option value="">— select course —</option>
-            {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+            {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{courseCode(c)} — {courseTitle(c)}</option>)}
           </select>
         </div>
 

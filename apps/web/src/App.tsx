@@ -23,6 +23,7 @@ import { StudentCourses } from './pages/student/StudentCourses';
 import { StudentAssignments } from './pages/student/StudentAssignments';
 import { StudentLabTests } from './pages/student/StudentLabTests';
 import { StudentProfile } from './pages/student/StudentProfile';
+import { StudentNotifications } from './pages/student/StudentNotifications';
 
 import { useAuthStore } from './store/auth.store';
 
@@ -89,6 +90,7 @@ export default function App() {
         <Route path="/student/assignments" element={<StudentAssignments />} />
         <Route path="/student/lab-tests" element={<StudentLabTests />} />
         <Route path="/student/profile" element={<StudentProfile />} />
+        <Route path="/student/notifications" element={<StudentNotifications />} />
       </Route>
 
       <Route path="/judge/*" element={<RoleRedirect />} />
