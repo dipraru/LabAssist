@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { useAuthStore } from '../../store/auth.store';
-import { BookOpen, ClipboardList, Bell, FlaskConical } from 'lucide-react';
+import { BookOpen, ClipboardList, Bell } from 'lucide-react';
 
 export function StudentDashboard() {
   const { user } = useAuthStore();
@@ -33,7 +34,9 @@ export function StudentDashboard() {
 
         <div className="grid grid-cols-3 gap-4 mb-8">
           <StatCard icon={<BookOpen className="text-indigo-500" size={22} />} label="Enrolled Courses" value={(courses as any[]).length} />
-          <StatCard icon={<Bell className="text-amber-500" size={22} />} label="Unread Notifications" value={unread.length} />
+          <Link to="/student/notifications">
+            <StatCard icon={<Bell className="text-amber-500" size={22} />} label="Unread Notifications" value={unread.length} />
+          </Link>
           <StatCard icon={<ClipboardList className="text-green-500" size={22} />} label="Active Contests" value={0} />
         </div>
 
