@@ -1,9 +1,17 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Upload, FileText, ChevronDown, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+function courseCode(course: any): string {
+  return course?.courseCode ?? course?.code ?? 'N/A';
+}
+
+function courseTitle(course: any): string {
+  return course?.title ?? course?.name ?? 'Untitled Course';
+}
 
 const STATUS_COLOR: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700',
@@ -57,7 +65,7 @@ export function StudentAssignments() {
           <select value={filterCourse} onChange={e => setFilterCourse(e.target.value)}
             className="px-3 py-2 border border-slate-300 rounded-lg text-sm">
             <option value="">— select course —</option>
-            {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+            {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{courseCode(c)} — {courseTitle(c)}</option>)}
           </select>
         </div>
 
