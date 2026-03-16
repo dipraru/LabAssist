@@ -7,7 +7,7 @@ type ParticipantContestNavProps = {
 const tabs = [
   { label: 'Problems', href: (contestId: string) => `/contest/${contestId}/problems` },
   { label: 'My Submissions', href: (contestId: string) => `/contest/${contestId}/submissions` },
-  { label: 'Status', href: (contestId: string) => `/contest/${contestId}` },
+  { label: 'Status', href: (contestId: string) => `/contest/${contestId}/status` },
   { label: 'Standing', href: (contestId: string) => `/contest/${contestId}/standings` },
   { label: 'Clarifications', href: (contestId: string) => `/contest/${contestId}/clarifications` },
 ];

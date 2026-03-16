@@ -11,9 +11,7 @@ const roleNavItems: Record<string, { label: string; href: string }[]> = {
     { label: 'Contests', href: '/judge/contests' },
     { label: 'Problems', href: '/judge/problems' },
   ],
-  temp_participant: [
-    { label: 'Contest', href: '/contest' },
-  ],
+  temp_participant: [],
 };
 
 export function AppShell({ children }: { children: ReactNode }) {

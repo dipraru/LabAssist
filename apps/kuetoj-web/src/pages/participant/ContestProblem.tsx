@@ -1,9 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
-import { ParticipantContestHeader } from '../../components/ParticipantContestHeader';
 import { Modal } from '../../components/Modal';
 import AceEditor from 'react-ace';
 import toast from 'react-hot-toast';
@@ -11,7 +10,7 @@ import 'ace-builds/src-noconflict/mode-c_cpp';
 import 'ace-builds/src-noconflict/mode-java';
 import 'ace-builds/src-noconflict/mode-python';
 import 'ace-builds/src-noconflict/mode-javascript';
-import 'ace-builds/src-noconflict/theme-monokai';
+import 'ace-builds/src-noconflict/theme-textmate';
 
 const LANG_MODES: Record<string, string> = {
   c: 'c_cpp',
@@ -24,6 +23,15 @@ const LANG_MODES: Record<string, string> = {
 
 const LANGUAGES = ['c', 'cpp', 'java', 'python', 'python3', 'javascript'];
 
+function formatRemainingTime(endTime?: string) {
+  if (!endTime) return '00:00:00';
+  const remainingSeconds = Math.max(0, Math.floor((new Date(endTime).getTime() - Date.now()) / 1000));
+  const hours = Math.floor(remainingSeconds / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const seconds = remainingSeconds % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
 export function ContestProblem() {
   const { id, problemId } = useParams<{ id: string; problemId: string }>();
   const queryClient = useQueryClient();
@@ -32,6 +40,7 @@ export function ContestProblem() {
   const [activeTab, setActiveTab] = useState<'statement' | 'submissions'>('statement');
   const [leftPanePercent, setLeftPanePercent] = useState(55);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
+  const [remainingTime, setRemainingTime] = useState('00:00:00');
 
   const { data: submissions = [] } = useQuery({
     queryKey: ['my-contest-submissions', id],
@@ -47,6 +56,15 @@ export function ContestProblem() {
   const contestProblems: any[] = contest?.problems ?? contest?.contestProblems ?? [];
   const cp = contestProblems.find((p: any) => p.problem?.id === problemId);
   const problem = cp?.problem;
+
+  useEffect(() => {
+    if (!contest?.endTime) return;
+    setRemainingTime(formatRemainingTime(contest.endTime));
+    const timer = window.setInterval(() => {
+      setRemainingTime(formatRemainingTime(contest.endTime));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [contest?.endTime]);
 
   const submitMutation = useMutation({
     mutationFn: () => {
@@ -104,10 +122,9 @@ export function ContestProblem() {
   return (
     <AppShell>
       <div className="w-full">
-        {id && <ParticipantContestHeader contestId={id} />}
-
         <div className="mb-6 overflow-x-auto">
-          <div className="inline-flex min-w-full gap-2 rounded-xl border border-slate-200 bg-white p-2">
+          <div className="flex min-w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-2">
+            <div className="inline-flex gap-2">
             <button
               type="button"
               onClick={() => setActiveTab('statement')}
@@ -123,11 +140,15 @@ export function ContestProblem() {
               My Submissions
             </button>
             <Link
-              to={`/contest/${id}`}
+              to={`/contest/${id}/problems`}
               className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
             >
               Back to Dashboard
             </Link>
+            </div>
+            <div className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
+              Remaining: {remainingTime}
+            </div>
           </div>
         </div>
 
@@ -180,14 +201,14 @@ export function ContestProblem() {
               onMouseDown={handleDividerMouseDown}
             />
 
-            <section className="h-full flex-1 border-l border-slate-200 bg-slate-950/95 p-4">
+            <section className="h-full flex-1 border-l border-slate-200 bg-white p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold text-slate-100">Code Editor</h2>
+                <h2 className="text-sm font-semibold text-slate-700">Code Editor</h2>
                 <div className="flex items-center gap-2">
                   <select
                     value={language}
                     onChange={(event) => setLanguage(event.target.value)}
-                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-100"
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700"
                   >
                     {LANGUAGES.map((item) => (
                       <option key={item} value={item}>{item}</option>
@@ -206,7 +227,7 @@ export function ContestProblem() {
 
               <AceEditor
                 mode={LANG_MODES[language] ?? 'c_cpp'}
-                theme="monokai"
+                theme="textmate"
                 value={code}
                 onChange={setCode}
                 name="integrated-problem-editor"
@@ -224,10 +245,14 @@ export function ContestProblem() {
             <table className="w-full text-sm">
               <thead className="border-b border-slate-200 bg-slate-50">
                 <tr>
-                  <th className="px-4 py-3 text-left">Submission ID</th>
-                  <th className="px-4 py-3 text-left">Language</th>
+                  <th className="px-4 py-3 text-left">ID</th>
+                  <th className="px-4 py-3 text-left">Who</th>
+                  <th className="px-4 py-3 text-left">Problem</th>
+                  <th className="px-4 py-3 text-left">When</th>
+                  <th className="px-4 py-3 text-left">Lang</th>
                   <th className="px-4 py-3 text-left">Verdict</th>
-                  <th className="px-4 py-3 text-left">Submitted</th>
+                  <th className="px-4 py-3 text-left">Time</th>
+                  <th className="px-4 py-3 text-left">Memory</th>
                 </tr>
               </thead>
               <tbody>
@@ -242,14 +267,18 @@ export function ContestProblem() {
                         #{submission.submissionDisplayId}
                       </button>
                     </td>
+                    <td className="px-4 py-3">{submission.participantName ?? submission.participantId ?? '—'}</td>
+                    <td className="px-4 py-3">{cp.label}. {problem.title}</td>
+                    <td className="px-4 py-3 text-slate-500">{new Date(submission.submittedAt).toLocaleString()}</td>
                     <td className="px-4 py-3">{submission.language ?? '—'}</td>
                     <td className="px-4 py-3">{submission.manualVerdict ?? submission.submissionStatus}</td>
-                    <td className="px-4 py-3 text-slate-500">{new Date(submission.submittedAt).toLocaleString()}</td>
+                    <td className="px-4 py-3">{submission.executionTimeMs != null ? `${submission.executionTimeMs} ms` : '—'}</td>
+                    <td className="px-4 py-3">{submission.memoryUsedKb != null ? `${submission.memoryUsedKb} KB` : '—'}</td>
                   </tr>
                 ))}
                 {!problemSubmissions.length && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-10 text-center text-slate-400">No submissions for this problem yet.</td>
+                    <td colSpan={8} className="px-4 py-10 text-center text-slate-400">No submissions for this problem yet.</td>
                   </tr>
                 )}
               </tbody>

@@ -56,7 +56,8 @@ export default function App() {
       {/* Participant */}
       <Route element={<ProtectedRoute allowedRoles={['temp_participant']} />}>
         <Route path="/contest" element={<ParticipantContestEntry />} />
-        <Route path="/contest/:id" element={<ContestView />} />
+        <Route path="/contest/:id" element={<Navigate to="problems" replace />} />
+        <Route path="/contest/:id/status" element={<ContestView />} />
         <Route path="/contest/:id/problems" element={<ContestProblems />} />
         <Route path="/contest/:id/problems/:problemId" element={<ContestProblem />} />
         <Route path="/contest/:id/submissions" element={<ContestSubmissions />} />
