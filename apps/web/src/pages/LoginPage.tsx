@@ -26,11 +26,13 @@ export function LoginPage() {
       const { accessToken, user } = res.data;
       login(accessToken, user);
 
+      const studentProfileCompleted = Boolean((user?.profile as any)?.profileCompleted);
+
       // Role-based redirect
       const roleMap: Record<string, string> = {
         office: '/office',
         teacher: '/teacher',
-        student: user.isFirstLogin ? '/student/profile' : '/student',
+        student: user.isFirstLogin || !studentProfileCompleted ? '/student/profile' : '/student',
         temp_judge: '/judge',
         temp_participant: '/contest',
       };
