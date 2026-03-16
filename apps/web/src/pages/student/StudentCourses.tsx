@@ -2,7 +2,22 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
-import { BookOpen, ExternalLink } from 'lucide-react';
+import { BookOpen, ExternalLink, User } from 'lucide-react';
+
+function getCourseCode(course: any): string {
+  return course?.courseCode ?? course?.code ?? 'N/A';
+}
+
+function getCourseTitle(course: any): string {
+  return course?.title ?? course?.name ?? 'Untitled Course';
+}
+
+function getTeacherNames(course: any): string[] {
+  const teachers = Array.isArray(course?.teachers) ? course.teachers : [];
+  return teachers
+    .map((t: any) => t?.fullName || t?.teacherId)
+    .filter((v: unknown): v is string => Boolean(v));
+}
 
 export function StudentCourses() {
   const [selectedCourse, setSelectedCourse] = useState<any>(null);
@@ -30,8 +45,12 @@ export function StudentCourses() {
                 selectedCourse?.id === c.id ? 'border-indigo-400 bg-indigo-50' : 'border-slate-100 bg-white hover:border-slate-300'
               }`}>
               <BookOpen size={18} className="text-indigo-500 mb-2" />
-              <p className="font-semibold text-slate-800 text-sm">{c.code}</p>
-              <p className="text-xs text-slate-500 mt-0.5 truncate">{c.name}</p>
+              <p className="font-semibold text-slate-800 text-sm">{getCourseCode(c)}</p>
+              <p className="text-xs text-slate-500 mt-0.5 truncate">{getCourseTitle(c)}</p>
+              <div className="mt-2 text-[11px] text-slate-500 flex items-center gap-1 truncate">
+                <User size={12} />
+                <span className="truncate">{getTeacherNames(c).join(', ') || 'Teacher not assigned yet'}</span>
+              </div>
             </button>
           ))}
           {!(courses as any[]).length && <p className="col-span-3 text-slate-400 py-4">Not enrolled in any courses</p>}
@@ -39,7 +58,13 @@ export function StudentCourses() {
 
         {selectedCourse && (
           <div>
-            <h2 className="text-lg font-semibold text-slate-800 mb-3">Lecture Sheets — {selectedCourse.name}</h2>
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 mb-4">
+              <h2 className="text-lg font-semibold text-slate-800">{getCourseTitle(selectedCourse)}</h2>
+              <p className="text-sm text-slate-500 mt-0.5">{getCourseCode(selectedCourse)} · {selectedCourse.type ?? 'course'}</p>
+              <p className="text-sm text-slate-600 mt-2">Teacher: {getTeacherNames(selectedCourse).join(', ') || 'Not assigned yet'}</p>
+            </div>
+
+            <h3 className="text-lg font-semibold text-slate-800 mb-3">Lecture Sheets</h3>
             {!(sheets as any[]).length ? (
               <p className="text-slate-400 text-sm">No lecture sheets yet</p>
             ) : (
