@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Megaphone } from 'lucide-react';
+import { ContestCountdownBar } from '../../components/ContestCountdownBar';
 
 const gradeSchema = z.object({
   manualVerdict: z.string().min(1, 'Select verdict'),
@@ -46,12 +47,12 @@ export function ContestManage() {
 
   const { data: submissions = [] } = useQuery({
     queryKey: ['contest-submissions', id],
-    queryFn: () => api.get(`/contests/${id}/submissions`).then(r => r.data),
+    queryFn: () => api.get(`/contests/${id}/submissions/all`).then(r => r.data),
   });
 
   const { data: clarifications = [] } = useQuery({
     queryKey: ['contest-clarifications', id],
-    queryFn: () => api.get(`/contests/${id}/clarifications`).then(r => r.data),
+    queryFn: () => api.get(`/contests/${id}/clarifications/pending`).then(r => r.data),
   });
 
   const gradeForm = useForm<GradeInput, unknown, GradeData>({ resolver: zodResolver(gradeSchema) });
@@ -59,14 +60,17 @@ export function ContestManage() {
 
   const gradeMutation = useMutation({
     mutationFn: ({ subId, d }: { subId: string; d: GradeData }) =>
-      api.post(`/contests/${id}/submissions/${subId}/grade`, d),
+      api.patch(`/contests/submissions/${subId}/grade`, {
+        verdict: d.manualVerdict,
+        score: d.score,
+      }),
     onSuccess: () => { toast.success('Graded!'); qc.invalidateQueries({ queryKey: ['contest-submissions'] }); setGradingId(null); gradeForm.reset(); },
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
   });
 
   const answerMutation = useMutation({
     mutationFn: ({ clarId, answer }: { clarId: string; answer: string }) =>
-      api.post(`/contests/${id}/clarifications/${clarId}/answer`, { answer }),
+      api.patch(`/contests/clarifications/${clarId}/answer`, { answer }),
     onSuccess: () => { toast.success('Answered!'); qc.invalidateQueries({ queryKey: ['contest-clarifications'] }); },
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
   });
@@ -92,6 +96,12 @@ export function ContestManage() {
             <Megaphone size={15} /> Announce
           </button>
         </div>
+
+        {contest?.startTime && contest?.endTime && (
+          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 mb-6">
+            <ContestCountdownBar startTime={contest.startTime} endTime={contest.endTime} />
+          </div>
+        )}
 
         {showAnnouncement && (
           <div className="bg-white rounded-xl border border-amber-200 shadow-sm p-5 mb-6">

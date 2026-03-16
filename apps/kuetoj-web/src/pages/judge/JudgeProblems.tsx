@@ -4,7 +4,7 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
-import { Plus, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
@@ -23,6 +23,7 @@ type ProblemData = z.output<typeof problemSchema>;
 export function JudgeProblems() {
   const qc = useQueryClient();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingProblemId, setEditingProblemId] = useState<string | null>(null);
 
   const { data: problems = [] } = useQuery({
     queryKey: ['judge-problems'],
@@ -43,11 +44,17 @@ export function JudgeProblems() {
     name: 'sampleTestCases',
   });
 
-  const createMutation = useMutation({
-    mutationFn: (payload: ProblemData) => api.post('/contests/problems', payload),
+  const saveMutation = useMutation({
+    mutationFn: (payload: ProblemData) => {
+      if (editingProblemId) {
+        return api.patch(`/contests/problems/${editingProblemId}`, payload);
+      }
+      return api.post('/contests/problems', payload);
+    },
     onSuccess: () => {
-      toast.success('Problem created');
+      toast.success(editingProblemId ? 'Problem updated' : 'Problem created');
       setShowCreateModal(false);
+      setEditingProblemId(null);
       form.reset({
         title: '',
         statement: '',
@@ -58,9 +65,50 @@ export function JudgeProblems() {
       qc.invalidateQueries({ queryKey: ['judge-problems'] });
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message ?? 'Failed to create problem');
+      toast.error(err.response?.data?.message ?? 'Failed to save problem');
     },
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (problemId: string) => api.delete(`/contests/problems/${problemId}`),
+    onSuccess: () => {
+      toast.success('Problem deleted');
+      qc.invalidateQueries({ queryKey: ['judge-problems'] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message ?? 'Failed to delete problem');
+    },
+  });
+
+  const openCreate = () => {
+    setEditingProblemId(null);
+    form.reset({
+      title: '',
+      statement: '',
+      timeLimitMs: 2000,
+      memoryLimitKb: 262144,
+      sampleTestCases: [{ input: '', output: '' }],
+    });
+    setShowCreateModal(true);
+  };
+
+  const openEdit = (problem: any) => {
+    setEditingProblemId(problem.id);
+    form.reset({
+      title: problem.title ?? '',
+      statement: problem.statement ?? '',
+      timeLimitMs: problem.timeLimitMs ?? 2000,
+      memoryLimitKb: problem.memoryLimitKb ?? 262144,
+      sampleTestCases: problem.sampleTestCases?.length ? problem.sampleTestCases : [{ input: '', output: '' }],
+    });
+    setShowCreateModal(true);
+  };
+
+  const handleDelete = (problem: any) => {
+    const confirmed = window.confirm(`Delete problem ${problem.problemCode ?? problem.id}?`);
+    if (!confirmed) return;
+    deleteMutation.mutate(problem.id);
+  };
 
   return (
     <AppShell>
@@ -72,7 +120,7 @@ export function JudgeProblems() {
           </div>
           <button
             type="button"
-            onClick={() => setShowCreateModal(true)}
+            onClick={openCreate}
             className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium"
           >
             <Plus size={16} /> Create New Problem
@@ -90,13 +138,31 @@ export function JudgeProblems() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h3 className="font-medium text-slate-900">{problem.title}</h3>
+                    <p className="text-xs text-indigo-700 font-medium mt-1">{problem.problemCode ?? problem.id}</p>
                     <p className="text-xs text-slate-500 mt-1">
                       TL: {problem.timeLimitMs ?? '—'} ms · ML: {problem.memoryLimitKb ?? '—'} KB
                     </p>
                   </div>
-                  <span className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-600">
-                    {problem.sampleTestCases?.length ?? 0} samples
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-600">
+                      {problem.sampleTestCases?.length ?? 0} samples
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => openEdit(problem)}
+                      className="inline-flex items-center gap-1 px-2 py-1 border border-slate-300 rounded-md text-xs hover:bg-slate-50"
+                    >
+                      <Pencil size={12} /> Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(problem)}
+                      disabled={deleteMutation.isPending}
+                      className="inline-flex items-center gap-1 px-2 py-1 border border-red-300 text-red-700 rounded-md text-xs hover:bg-red-50 disabled:opacity-60"
+                    >
+                      <Trash2 size={12} /> Delete
+                    </button>
+                  </div>
                 </div>
               </article>
             ))}
@@ -109,11 +175,14 @@ export function JudgeProblems() {
 
       <Modal
         open={showCreateModal}
-        title="Create New Problem"
-        onClose={() => setShowCreateModal(false)}
+        title={editingProblemId ? 'Edit Problem' : 'Create New Problem'}
+        onClose={() => {
+          setShowCreateModal(false);
+          setEditingProblemId(null);
+        }}
         maxWidthClass="max-w-3xl"
       >
-        <form onSubmit={form.handleSubmit((d) => createMutation.mutate(d))} className="space-y-3">
+        <form onSubmit={form.handleSubmit((d) => saveMutation.mutate(d))} className="space-y-3">
           <div>
             <label className="text-xs font-medium text-slate-600">Title</label>
             <input
@@ -193,13 +262,22 @@ export function JudgeProblems() {
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={() => setShowCreateModal(false)} className="px-4 py-2 border border-slate-300 rounded-md text-sm">Cancel</button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowCreateModal(false);
+                setEditingProblemId(null);
+              }}
+              className="px-4 py-2 border border-slate-300 rounded-md text-sm"
+            >
+              Cancel
+            </button>
             <button
               type="submit"
-              disabled={createMutation.isPending}
+              disabled={saveMutation.isPending}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-md text-sm font-medium"
             >
-              {createMutation.isPending ? 'Creating…' : 'Create Problem'}
+              {saveMutation.isPending ? 'Saving…' : editingProblemId ? 'Save Changes' : 'Create Problem'}
             </button>
           </div>
         </form>

@@ -16,6 +16,7 @@ import { ContestProblem } from './pages/participant/ContestProblem';
 import { ContestSubmit } from './pages/participant/ContestSubmit';
 import { ParticipantStandings } from './pages/participant/ContestStandings';
 import { AskClarification } from './pages/participant/AskClarification';
+import { ParticipantHome } from './pages/participant/ParticipantHome';
 
 import { useAuthStore } from './store/auth.store';
 
@@ -27,14 +28,6 @@ function RoleRedirect() {
     temp_participant: '/contest',
   };
   return <Navigate to={map[user.role] ?? '/login'} replace />;
-}
-
-function ParticipantLanding() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white px-4">
-      <p className="text-sm text-center">Open your assigned contest link to start participating.</p>
-    </div>
-  );
 }
 
 export default function App() {
@@ -60,7 +53,7 @@ export default function App() {
 
       {/* Participant */}
       <Route element={<ProtectedRoute allowedRoles={['temp_participant']} />}>
-        <Route path="/contest" element={<ParticipantLanding />} />
+        <Route path="/contest" element={<ParticipantHome />} />
         <Route path="/contest/:id" element={<ContestView />} />
         <Route path="/contest/:id/problems/:problemId" element={<ContestProblem />} />
         <Route path="/contest/:id/submit" element={<ContestSubmit />} />

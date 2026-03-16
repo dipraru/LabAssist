@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, Param, Patch, Post, UploadedFiles,
+  Body, Controller, Delete, Get, Param, Patch, Post, UploadedFiles,
   UseGuards, UseInterceptors, UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
@@ -13,7 +13,7 @@ import { ContestsService } from './contests.service';
 import {
   AddContestProblemDto, AnswerClarificationDto, AskClarificationDto,
   ContestJudgeResultDto, ContestSubmitDto, CreateAnnouncementDto,
-  CreateContestDto, CreateProblemDto, CreateTempParticipantsDto,
+  CreateContestDto, CreateProblemDto, CreateTempParticipantsDto, UpdateProblemDto,
   GradeContestSubmissionDto,
 } from './dto/contests.dto';
 import { ContestStatus } from '../../common/enums';
@@ -27,6 +27,12 @@ export class ContestsController {
 
   @Get()
   listContests() { return this.svc.listContests(); }
+
+  @Roles(UserRole.TEMP_PARTICIPANT)
+  @Get('assigned/mine')
+  myAssignedContests(@CurrentUser() user: any) {
+    return this.svc.getAssignedContestsForParticipant(user.id);
+  }
 
   @Roles(UserRole.TEMP_JUDGE)
   @Get('mine')
@@ -68,8 +74,14 @@ export class ContestsController {
 
   @Roles(UserRole.TEMP_JUDGE)
   @Patch('problems/:id')
-  updateProblem(@Param('id') id: string, @Body() dto: Partial<CreateProblemDto>, @CurrentUser() user: any) {
+  updateProblem(@Param('id') id: string, @Body() dto: UpdateProblemDto, @CurrentUser() user: any) {
     return this.svc.updateProblem(id, dto, user.id);
+  }
+
+  @Roles(UserRole.TEMP_JUDGE)
+  @Delete('problems/:id')
+  deleteProblem(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.svc.deleteProblem(id, user.id);
   }
 
   @Roles(UserRole.TEMP_JUDGE)

@@ -6,6 +6,7 @@ import { Plus, GripVertical, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
+import { ContestCountdownBar, getContestPhase } from '../../components/ContestCountdownBar';
 
 type ProblemItem = {
   id: string;
@@ -37,6 +38,12 @@ const STATUS_COLOR: Record<string, string> = {
   ended: 'bg-slate-100 text-slate-500',
 };
 
+const PHASE_COLOR: Record<string, string> = {
+  upcoming: 'bg-blue-100 text-blue-700',
+  running: 'bg-emerald-100 text-emerald-700',
+  old: 'bg-slate-100 text-slate-600',
+};
+
 export function JudgeContests() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -49,7 +56,8 @@ export function JudgeContests() {
   const [description, setDescription] = useState('');
   const [type, setType] = useState<'icpc' | 'score_based'>('icpc');
   const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
+  const [durationHours, setDurationHours] = useState(2);
+  const [durationMinutes, setDurationMinutes] = useState(0);
   const [freezeTime, setFreezeTime] = useState('');
   const [selected, setSelected] = useState<SelectedProblem[]>([]);
 
@@ -101,15 +109,19 @@ export function JudgeContests() {
     setDescription('');
     setType('icpc');
     setStartTime('');
-    setEndTime('');
+    setDurationHours(2);
+    setDurationMinutes(0);
     setFreezeTime('');
     setSelected([]);
   };
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      if (!title.trim() || !startTime || !endTime || selected.length === 0) {
-        throw new Error('Please fill title, time range, and select at least one problem');
+      if (!title.trim() || !startTime || selected.length === 0) {
+        throw new Error('Please fill title, start time, and select at least one problem');
+      }
+      if (durationHours * 60 + durationMinutes <= 0) {
+        throw new Error('Contest duration must be greater than zero');
       }
 
       const problems = selected.map((p, idx) => ({
@@ -124,7 +136,8 @@ export function JudgeContests() {
         description: description || undefined,
         type,
         startTime: new Date(startTime).toISOString(),
-        endTime: new Date(endTime).toISOString(),
+        durationHours,
+        durationMinutes,
         freezeTime: freezeTime ? new Date(freezeTime).toISOString() : undefined,
         problems,
       });
@@ -211,15 +224,33 @@ export function JudgeContests() {
   });
 
   const contestDurationText = useMemo(() => {
-    if (!startTime || !endTime) return '';
-    const start = new Date(startTime).getTime();
-    const end = new Date(endTime).getTime();
-    if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return 'End time must be after start time';
-    const minutes = Math.floor((end - start) / 60000);
+    const minutes = durationHours * 60 + durationMinutes;
+    if (minutes <= 0) return 'Contest duration must be greater than zero';
     const hours = Math.floor(minutes / 60);
     const restMinutes = minutes % 60;
     return `Duration: ${hours}h ${restMinutes}m`;
-  }, [startTime, endTime]);
+  }, [durationHours, durationMinutes]);
+
+  const computedEndTime = useMemo(() => {
+    if (!startTime) return null;
+    const minutes = durationHours * 60 + durationMinutes;
+    if (minutes <= 0) return null;
+    const start = new Date(startTime);
+    if (Number.isNaN(start.getTime())) return null;
+    return new Date(start.getTime() + minutes * 60 * 1000);
+  }, [startTime, durationHours, durationMinutes]);
+
+  const sortedContests = useMemo(() => {
+    const order: Record<string, number> = { running: 0, upcoming: 1, old: 2 };
+    return [...(contests as ContestItem[])].sort((a, b) => {
+      const phaseA = getContestPhase(a.startTime ?? '', a.endTime ?? '');
+      const phaseB = getContestPhase(b.startTime ?? '', b.endTime ?? '');
+      if (order[phaseA] !== order[phaseB]) return order[phaseA] - order[phaseB];
+      const timeA = new Date(a.startTime ?? '').getTime();
+      const timeB = new Date(b.startTime ?? '').getTime();
+      return timeA - timeB;
+    });
+  }, [contests]);
 
   return (
     <AppShell>
@@ -247,19 +278,31 @@ export function JudgeContests() {
 
         <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <div className="space-y-3">
-            {(contests as ContestItem[]).map((contest) => (
+            {sortedContests.map((contest) => {
+              const phase = getContestPhase(contest.startTime ?? '', contest.endTime ?? '');
+              return (
               <article key={contest.id} className="border border-slate-200 rounded-lg p-4">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <h3 className="font-semibold text-slate-900">{contest.title}</h3>
                     <p className="text-xs text-slate-500 mt-1">
-                      {contest.type} · {contest.startTime?.slice(0, 16).replace('T', ' ')}
+                      {contest.type} · {new Date(contest.startTime ?? '').toLocaleString()}
                     </p>
                   </div>
-                  <span className={`text-xs px-2 py-1 rounded-full ${STATUS_COLOR[contest.status] ?? 'bg-slate-100 text-slate-700'}`}>
-                    {contest.status}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs px-2 py-1 rounded-full ${PHASE_COLOR[phase] ?? 'bg-slate-100 text-slate-700'}`}>
+                      {phase}
+                    </span>
+                    <span className={`text-xs px-2 py-1 rounded-full ${STATUS_COLOR[contest.status] ?? 'bg-slate-100 text-slate-700'}`}>
+                      {contest.status}
+                    </span>
+                  </div>
                 </div>
+                {contest.startTime && contest.endTime && (
+                  <div className="mt-3">
+                    <ContestCountdownBar startTime={contest.startTime} endTime={contest.endTime} compact />
+                  </div>
+                )}
                 <div className="mt-3 flex gap-2">
                   <button onClick={() => navigate(`/judge/contests/${contest.id}`)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Manage</button>
                   <button onClick={() => openParticipantsModal(contest)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Create Participants</button>
@@ -273,7 +316,8 @@ export function JudgeContests() {
                   <button onClick={() => navigate(`/judge/contests/${contest.id}/standings`)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Standings</button>
                 </div>
               </article>
-            ))}
+              );
+            })}
             {!(contests as ContestItem[]).length && (
               <p className="text-sm text-slate-500 text-center py-8">No contests yet. Create your first contest.</p>
             )}
@@ -309,17 +353,28 @@ export function JudgeContests() {
                 </div>
                 <div>
                   <label className="text-xs font-medium text-slate-600">Freeze Time (optional)</label>
-                  <input type="datetime-local" min={startTime || undefined} max={endTime || undefined} value={freezeTime} onChange={(e) => setFreezeTime(e.target.value)} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
+                  <input
+                    type="datetime-local"
+                    min={startTime || undefined}
+                    max={computedEndTime ? toLocalInput(computedEndTime.toISOString()) : undefined}
+                    value={freezeTime}
+                    onChange={(e) => setFreezeTime(e.target.value)}
+                    className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+                  />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs font-medium text-slate-600">Start</label>
                   <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-slate-600">End</label>
-                  <input type="datetime-local" min={startTime || undefined} value={endTime} onChange={(e) => setEndTime(e.target.value)} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
+                  <label className="text-xs font-medium text-slate-600">Duration Hours</label>
+                  <input type="number" min={0} value={durationHours} onChange={(e) => setDurationHours(Number(e.target.value || 0))} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-600">Duration Minutes</label>
+                  <input type="number" min={0} max={59} value={durationMinutes} onChange={(e) => setDurationMinutes(Number(e.target.value || 0))} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
                 </div>
               </div>
               {contestDurationText && <p className="text-xs text-slate-500">{contestDurationText}</p>}

@@ -22,6 +22,15 @@ export class CreateProblemDto {
   sampleTestCases?: SampleTestCaseDto[];
 }
 
+export class UpdateProblemDto {
+  @IsOptional() @IsString() title?: string;
+  @IsOptional() @IsString() statement?: string;
+  @IsOptional() @IsInt() timeLimitMs?: number;
+  @IsOptional() @IsInt() memoryLimitKb?: number;
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => SampleTestCaseDto)
+  sampleTestCases?: SampleTestCaseDto[];
+}
+
 // ─── Contest Problem (link existing problem to contest) ──────────────────────
 
 export class AddContestProblemDto {
@@ -38,7 +47,9 @@ export class CreateContestDto {
   @IsOptional() @IsString() description?: string;
   @IsEnum(ContestType) type: ContestType;
   @IsDateString() startTime: string;
-  @IsDateString() endTime: string;
+  @IsOptional() @IsDateString() endTime?: string;
+  @IsOptional() @IsInt() durationHours?: number;
+  @IsOptional() @IsInt() durationMinutes?: number;
   @IsOptional() @IsDateString() freezeTime?: string;
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => AddContestProblemDto)
   problems?: AddContestProblemDto[];

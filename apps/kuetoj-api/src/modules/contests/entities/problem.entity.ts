@@ -14,6 +14,9 @@ export class Problem {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column({ type: 'varchar', unique: true, nullable: true })
+  problemCode: string | null;
+
   @Column()
   title: string;
 
