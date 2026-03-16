@@ -4,6 +4,7 @@ import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { RefreshCw } from 'lucide-react';
 import { ParticipantContestNav } from '../../components/ParticipantContestNav';
+import { ParticipantContestHeader } from '../../components/ParticipantContestHeader';
 
 export function ParticipantStandings() {
   const { id } = useParams<{ id: string }>();
@@ -24,7 +25,8 @@ export function ParticipantStandings() {
 
   return (
     <AppShell>
-      <div className="max-w-4xl">
+      <div className="w-full">
+        {id && <ParticipantContestHeader contestId={id} />}
         {id && <ParticipantContestNav contestId={id} />}
         <div className="flex items-center justify-between mb-6">
           <div>

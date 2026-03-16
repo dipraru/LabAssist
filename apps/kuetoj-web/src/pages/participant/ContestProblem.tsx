@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
-import { ParticipantContestNav } from '../../components/ParticipantContestNav';
+import { ParticipantContestHeader } from '../../components/ParticipantContestHeader';
+import { Modal } from '../../components/Modal';
 import AceEditor from 'react-ace';
 import toast from 'react-hot-toast';
 import 'ace-builds/src-noconflict/mode-c_cpp';
@@ -28,6 +29,9 @@ export function ContestProblem() {
   const queryClient = useQueryClient();
   const [language, setLanguage] = useState('cpp');
   const [code, setCode] = useState('');
+  const [activeTab, setActiveTab] = useState<'statement' | 'submissions'>('statement');
+  const [leftPanePercent, setLeftPanePercent] = useState(55);
+  const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
 
   const { data: submissions = [] } = useQuery({
     queryKey: ['my-contest-submissions', id],
@@ -70,72 +74,134 @@ export function ContestProblem() {
     </AppShell>
   );
 
-  const recentProblemSubmissions = (submissions as any[])
-    .filter((submission) => submission.contestProblemId === cp.id)
-    .slice(0, 8);
+  const problemSubmissions = (submissions as any[])
+    .filter((submission) => submission.contestProblemId === cp.id);
+
+  const selectedSubmission = useMemo(
+    () => problemSubmissions.find((submission) => submission.id === selectedSubmissionId) ?? null,
+    [problemSubmissions, selectedSubmissionId],
+  );
+
+  const handleDividerMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const viewportWidth = window.innerWidth;
+      const nextPercent = (moveEvent.clientX / viewportWidth) * 100;
+      const clamped = Math.max(30, Math.min(70, nextPercent));
+      setLeftPanePercent(clamped);
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
 
   return (
     <AppShell>
-      <div className="max-w-7xl">
-        {id && <ParticipantContestNav contestId={id} />}
-        <Link to={`/contest/${id}/problems`} className="text-sm text-indigo-600 hover:underline mb-4 inline-block">
-          ← Back to problems
-        </Link>
+      <div className="w-full">
+        {id && <ParticipantContestHeader contestId={id} />}
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-6">
-          <div className="flex items-start gap-3 mb-4">
-            <span className="w-10 h-10 bg-indigo-100 text-indigo-700 rounded-lg flex items-center justify-center font-bold">
-              {cp.label}
-            </span>
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">{problem.title}</h1>
-              <p className="text-sm text-slate-500">
-                Time: {problem.timeLimitMs}ms · Memory: {problem.memoryLimitKb}KB
-                {contest?.type === 'score_based' && cp.score != null && ` · ${cp.score} points`}
-              </p>
-            </div>
+        <div className="mb-6 overflow-x-auto">
+          <div className="inline-flex min-w-full gap-2 rounded-xl border border-slate-200 bg-white p-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab('statement')}
+              className={`rounded-lg px-3 py-2 text-sm font-medium ${activeTab === 'statement' ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+            >
+              Statement
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('submissions')}
+              className={`rounded-lg px-3 py-2 text-sm font-medium ${activeTab === 'submissions' ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+            >
+              My Submissions
+            </button>
+            <Link
+              to={`/contest/${id}`}
+              className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            >
+              Back to Dashboard
+            </Link>
           </div>
+        </div>
 
-            <div className="prose prose-sm max-w-none text-slate-700">
-              <pre className="whitespace-pre-wrap font-sans">{problem.statement}</pre>
-            </div>
-
-            {problem.sampleTestCases?.length > 0 && (
-              <div className="mt-6">
-                <h3 className="font-semibold text-slate-700 mb-3 text-sm uppercase tracking-wide">Sample Test Cases</h3>
-                <div className="space-y-3">
-                  {problem.sampleTestCases.map((tc: any, i: number) => (
-                    <div key={i} className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <div>
-                        <p className="text-xs font-medium text-slate-500 mb-1">Input {i + 1}</p>
-                        <pre className="bg-slate-50 rounded-lg p-3 font-mono text-sm text-slate-800 overflow-auto">{tc.input}</pre>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium text-slate-500 mb-1">Output {i + 1}</p>
-                        <pre className="bg-slate-50 rounded-lg p-3 font-mono text-sm text-slate-800 overflow-auto">{tc.output}</pre>
-                      </div>
-                    </div>
-                  ))}
+        {activeTab === 'statement' && (
+          <div className="flex h-[calc(100vh-280px)] min-h-[560px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <section className="h-full overflow-auto" style={{ width: `${leftPanePercent}%` }}>
+              <div className="p-6">
+                <div className="mb-4 flex items-start gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100 font-bold text-indigo-700">
+                    {cp.label}
+                  </span>
+                  <div>
+                    <h1 className="text-xl font-bold text-slate-900">{problem.title}</h1>
+                    <p className="text-sm text-slate-500">
+                      Time: {problem.timeLimitMs}ms · Memory: {problem.memoryLimitKb}KB
+                      {contest?.type === 'score_based' && cp.score != null && ` · ${cp.score} points`}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
 
-          <div className="space-y-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <h2 className="mb-3 text-lg font-semibold text-slate-900">Submit Solution</h2>
-              <div className="mb-3">
-                <label className="mb-1 block text-sm font-medium text-slate-700">Language</label>
-                <select
-                  value={language}
-                  onChange={(event) => setLanguage(event.target.value)}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                >
-                  {LANGUAGES.map((item) => (
-                    <option key={item} value={item}>{item}</option>
-                  ))}
-                </select>
+                <div className="prose prose-sm max-w-none text-slate-700">
+                  <pre className="whitespace-pre-wrap font-sans">{problem.statement}</pre>
+                </div>
+
+                {problem.sampleTestCases?.length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">Sample Test Cases</h3>
+                    <div className="space-y-3">
+                      {problem.sampleTestCases.map((tc: any, i: number) => (
+                        <div key={i} className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                          <div>
+                            <p className="mb-1 text-xs font-medium text-slate-500">Input {i + 1}</p>
+                            <pre className="overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-sm text-slate-800">{tc.input}</pre>
+                          </div>
+                          <div>
+                            <p className="mb-1 text-xs font-medium text-slate-500">Output {i + 1}</p>
+                            <pre className="overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-sm text-slate-800">{tc.output}</pre>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <div
+              role="separator"
+              className="h-full w-2 cursor-col-resize bg-slate-100 hover:bg-indigo-100"
+              onMouseDown={handleDividerMouseDown}
+            />
+
+            <section className="h-full flex-1 border-l border-slate-200 bg-slate-950/95 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-slate-100">Code Editor</h2>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={language}
+                    onChange={(event) => setLanguage(event.target.value)}
+                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-100"
+                  >
+                    {LANGUAGES.map((item) => (
+                      <option key={item} value={item}>{item}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                    disabled={submitMutation.isPending || !code.trim()}
+                    onClick={() => submitMutation.mutate()}
+                  >
+                    {submitMutation.isPending ? 'Submitting…' : `Submit ${cp.label}`}
+                  </button>
+                </div>
               </div>
 
               <AceEditor
@@ -145,42 +211,83 @@ export function ContestProblem() {
                 onChange={setCode}
                 name="integrated-problem-editor"
                 width="100%"
-                height="320px"
-                fontSize={13}
+                height="calc(100% - 46px)"
+                fontSize={14}
                 setOptions={{ useWorker: false, showPrintMargin: false }}
               />
+            </section>
+          </div>
+        )}
 
-              <button
-                type="button"
-                className="mt-3 rounded-lg bg-indigo-600 px-5 py-2.5 font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-                disabled={submitMutation.isPending || !code.trim()}
-                onClick={() => submitMutation.mutate()}
-              >
-                {submitMutation.isPending ? 'Submitting…' : `Submit for ${cp.label}`}
-              </button>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="font-semibold text-slate-800">Recent Submissions</h3>
-                <Link to={`/contest/${id}/submissions`} className="text-xs text-indigo-600 hover:underline">See all</Link>
-              </div>
-              <div className="space-y-2">
-                {recentProblemSubmissions.map((submission: any) => (
-                  <div key={submission.id} className="rounded-lg border border-slate-100 p-3 text-xs">
-                    <p className="font-mono text-slate-500">#{submission.submissionDisplayId}</p>
-                    <p className="font-medium text-slate-700">{submission.manualVerdict ?? submission.submissionStatus}</p>
-                    <p className="text-slate-400">{new Date(submission.submittedAt).toLocaleString()}</p>
-                  </div>
+        {activeTab === 'submissions' && (
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50">
+                <tr>
+                  <th className="px-4 py-3 text-left">Submission ID</th>
+                  <th className="px-4 py-3 text-left">Language</th>
+                  <th className="px-4 py-3 text-left">Verdict</th>
+                  <th className="px-4 py-3 text-left">Submitted</th>
+                </tr>
+              </thead>
+              <tbody>
+                {problemSubmissions.map((submission: any) => (
+                  <tr key={submission.id} className="border-t border-slate-100">
+                    <td className="px-4 py-3 font-mono text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSubmissionId(submission.id)}
+                        className="text-indigo-600 hover:underline"
+                      >
+                        #{submission.submissionDisplayId}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">{submission.language ?? '—'}</td>
+                    <td className="px-4 py-3">{submission.manualVerdict ?? submission.submissionStatus}</td>
+                    <td className="px-4 py-3 text-slate-500">{new Date(submission.submittedAt).toLocaleString()}</td>
+                  </tr>
                 ))}
-                {!recentProblemSubmissions.length && (
-                  <p className="text-xs text-slate-400">No submissions for this problem yet.</p>
+                {!problemSubmissions.length && (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-10 text-center text-slate-400">No submissions for this problem yet.</td>
+                  </tr>
                 )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <Modal
+        open={!!selectedSubmission}
+        title={selectedSubmission ? `Submission #${selectedSubmission.submissionDisplayId}` : 'Submission'}
+        onClose={() => setSelectedSubmissionId(null)}
+      >
+        {selectedSubmission && (
+          <div className="space-y-3 text-sm">
+            <p><span className="font-semibold">Problem:</span> {cp.label}. {problem.title}</p>
+            <p><span className="font-semibold">Language:</span> {selectedSubmission.language ?? '—'}</p>
+            <p><span className="font-semibold">Status:</span> {selectedSubmission.manualVerdict ?? selectedSubmission.submissionStatus}</p>
+            <p><span className="font-semibold">Submitted:</span> {new Date(selectedSubmission.submittedAt).toLocaleString()}</p>
+            {selectedSubmission.code ? (
+              <div>
+                <p className="mb-1 font-semibold">Code</p>
+                <pre className="max-h-[50vh] overflow-auto rounded-lg bg-slate-50 p-3 text-xs">{selectedSubmission.code}</pre>
               </div>
+            ) : (
+              <p className="text-slate-500">No inline code. File upload submission.</p>
+            )}
+            <div>
+              <Link
+                to={`/contest/${id}/submissions/${selectedSubmission.id}`}
+                className="text-indigo-600 hover:underline"
+              >
+                Open in separate page
+              </Link>
             </div>
           </div>
-        </div>
-      </div>
+        )}
+      </Modal>
     </AppShell>
   );
 }

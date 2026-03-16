@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { AppShell } from '../../components/AppShell';
 import { ParticipantContestNav } from '../../components/ParticipantContestNav';
+import { ParticipantContestHeader } from '../../components/ParticipantContestHeader';
 import { Modal } from '../../components/Modal';
 import { api } from '../../lib/api';
 
@@ -30,7 +31,8 @@ export function ContestSubmissions() {
 
   return (
     <AppShell>
-      <div className="max-w-5xl">
+      <div className="w-full">
+        {id && <ParticipantContestHeader contestId={id} />}
         <h1 className="mb-1 text-2xl font-bold text-slate-900">My Submissions</h1>
         <p className="mb-4 text-sm text-slate-500">All submissions in this contest</p>
         {id && <ParticipantContestNav contestId={id} />}

@@ -18,7 +18,7 @@ import { ContestSubmissions } from './pages/participant/ContestSubmissions';
 import { ContestSubmissionDetail } from './pages/participant/ContestSubmissionDetail';
 import { ParticipantStandings } from './pages/participant/ContestStandings';
 import { AskClarification } from './pages/participant/AskClarification';
-import { ParticipantHome } from './pages/participant/ParticipantHome';
+import { ParticipantContestEntry } from './pages/participant/ParticipantContestEntry';
 
 import { useAuthStore } from './store/auth.store';
 
@@ -55,7 +55,7 @@ export default function App() {
 
       {/* Participant */}
       <Route element={<ProtectedRoute allowedRoles={['temp_participant']} />}>
-        <Route path="/contest" element={<ParticipantHome />} />
+        <Route path="/contest" element={<ParticipantContestEntry />} />
         <Route path="/contest/:id" element={<ContestView />} />
         <Route path="/contest/:id/problems" element={<ContestProblems />} />
         <Route path="/contest/:id/problems/:problemId" element={<ContestProblem />} />
