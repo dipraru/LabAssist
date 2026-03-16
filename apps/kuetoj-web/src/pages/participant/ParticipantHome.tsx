@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { AppShell } from '../../components/AppShell';
 import { api } from '../../lib/api';
@@ -31,11 +31,14 @@ export function ParticipantHome() {
 
   return (
     <AppShell>
+      {!isLoading && (assigned as AssignedContest[]).length > 0 && (
+        <Navigate to={`/contest/${(assigned as AssignedContest[])[0].contest.id}`} replace />
+      )}
       <div className="space-y-6">
         <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900">My Assigned Contest</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">Contest Access</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Join your contest, track start time, and monitor live remaining time.
+            You are redirected directly to your assigned contest when available.
           </p>
         </section>
 

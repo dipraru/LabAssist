@@ -41,7 +41,9 @@ export class ContestsController {
   }
 
   @Get(':id')
-  getById(@Param('id') id: string) { return this.svc.getContestById(id); }
+  getById(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.svc.getContestByIdForUser(id, user);
+  }
 
   @Get(':id/standings')
   standings(@Param('id') id: string, @CurrentUser() user: any) {
@@ -211,6 +213,16 @@ export class ContestsController {
   @Get(':id/my-submissions')
   mySubmissions(@Param('id') contestId: string, @CurrentUser() user: any) {
     return this.svc.getMySubmissions(contestId, user.id);
+  }
+
+  @Roles(UserRole.TEMP_PARTICIPANT)
+  @Get(':id/my-submissions/:submissionId')
+  mySubmissionById(
+    @Param('id') contestId: string,
+    @Param('submissionId') submissionId: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.svc.getMySubmissionById(contestId, submissionId, user.id);
   }
 
   @Roles(UserRole.TEMP_PARTICIPANT)

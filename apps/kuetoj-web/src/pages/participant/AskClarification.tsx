@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Send } from 'lucide-react';
+import { ParticipantContestNav } from '../../components/ParticipantContestNav';
 
 const schema = z.object({
   question: z.string().min(5, 'Question too short'),
@@ -47,9 +48,7 @@ export function AskClarification() {
   return (
     <AppShell>
       <div className="max-w-2xl">
-        <Link to={`/contest/${id}`} className="text-sm text-indigo-600 hover:underline mb-4 inline-block">
-          ← Back
-        </Link>
+        {id && <ParticipantContestNav contestId={id} />}
         <h1 className="text-2xl font-bold text-slate-900 mb-6">Clarifications</h1>
 
         <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 mb-6">
