@@ -1,8 +1,10 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { RefreshCw } from 'lucide-react';
+import { ParticipantContestNav } from '../../components/ParticipantContestNav';
+import { ParticipantContestHeader } from '../../components/ParticipantContestHeader';
 
 export function ParticipantStandings() {
   const { id } = useParams<{ id: string }>();
@@ -23,10 +25,9 @@ export function ParticipantStandings() {
 
   return (
     <AppShell>
-      <div className="max-w-4xl">
-        <Link to={`/contest/${id}`} className="text-sm text-indigo-600 hover:underline mb-4 inline-block">
-          ← Back
-        </Link>
+      <div className="w-full">
+        {id && <ParticipantContestHeader contestId={id} />}
+        {id && <ParticipantContestNav contestId={id} />}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Standings</h1>
@@ -67,9 +68,7 @@ export function ParticipantStandings() {
             <tbody className="divide-y divide-slate-100">
               {rows.map((row: any, idx: number) => (
                 <tr key={row.participantId ?? idx} className={`hover:bg-slate-50 ${idx < 3 ? 'font-semibold' : ''}`}>
-                  <td className="px-4 py-3 text-slate-500">
-                    {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
-                  </td>
+                  <td className="px-4 py-3 text-slate-500">{idx + 1}</td>
                   <td className="px-4 py-3">{row.participantName ?? row.participantId}</td>
                   {isIcpc ? (
                     <>

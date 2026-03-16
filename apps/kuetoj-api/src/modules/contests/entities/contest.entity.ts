@@ -45,8 +45,8 @@ export class Contest {
   @Column({ default: false })
   isPublicStanding: boolean;
 
-  @Column({ type: 'varchar' })
-  createdById: string;
+  @Column({ type: 'varchar', nullable: true })
+  createdById: string | null;
 
   @OneToMany(() => ContestProblem, (p) => p.contest, { cascade: true })
   problems: ContestProblem[];

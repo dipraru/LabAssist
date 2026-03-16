@@ -12,10 +12,13 @@ import { ContestParticipants } from './pages/judge/ContestParticipants';
 
 // Participant
 import { ContestView } from './pages/participant/ContestView';
+import { ContestProblems } from './pages/participant/ContestProblems';
 import { ContestProblem } from './pages/participant/ContestProblem';
-import { ContestSubmit } from './pages/participant/ContestSubmit';
+import { ContestSubmissions } from './pages/participant/ContestSubmissions';
+import { ContestSubmissionDetail } from './pages/participant/ContestSubmissionDetail';
 import { ParticipantStandings } from './pages/participant/ContestStandings';
 import { AskClarification } from './pages/participant/AskClarification';
+import { ParticipantContestEntry } from './pages/participant/ParticipantContestEntry';
 
 import { useAuthStore } from './store/auth.store';
 
@@ -27,14 +30,6 @@ function RoleRedirect() {
     temp_participant: '/contest',
   };
   return <Navigate to={map[user.role] ?? '/login'} replace />;
-}
-
-function ParticipantLanding() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white px-4">
-      <p className="text-sm text-center">Open your assigned contest link to start participating.</p>
-    </div>
-  );
 }
 
 export default function App() {
@@ -60,10 +55,13 @@ export default function App() {
 
       {/* Participant */}
       <Route element={<ProtectedRoute allowedRoles={['temp_participant']} />}>
-        <Route path="/contest" element={<ParticipantLanding />} />
-        <Route path="/contest/:id" element={<ContestView />} />
+        <Route path="/contest" element={<ParticipantContestEntry />} />
+        <Route path="/contest/:id" element={<Navigate to="problems" replace />} />
+        <Route path="/contest/:id/status" element={<ContestView />} />
+        <Route path="/contest/:id/problems" element={<ContestProblems />} />
         <Route path="/contest/:id/problems/:problemId" element={<ContestProblem />} />
-        <Route path="/contest/:id/submit" element={<ContestSubmit />} />
+        <Route path="/contest/:id/submissions" element={<ContestSubmissions />} />
+        <Route path="/contest/:id/submissions/:submissionId" element={<ContestSubmissionDetail />} />
         <Route path="/contest/:id/standings" element={<ParticipantStandings />} />
         <Route path="/contest/:id/clarifications" element={<AskClarification />} />
       </Route>
