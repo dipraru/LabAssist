@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { AppShell } from '../../components/AppShell';
 import { ParticipantContestNav } from '../../components/ParticipantContestNav';
+import { ParticipantContestHeader } from '../../components/ParticipantContestHeader';
 import { api } from '../../lib/api';
 import { getContestPhase } from '../../components/ContestCountdownBar';
 
@@ -21,9 +22,8 @@ export function ContestProblems() {
 
   return (
     <AppShell>
-      <div className="max-w-5xl">
-        <h1 className="mb-1 text-2xl font-bold text-slate-900">{contest?.title ?? 'Contest'}</h1>
-        <p className="mb-4 text-sm text-slate-500">Contest problems</p>
+      <div className="w-full">
+        {id && <ParticipantContestHeader contestId={id} />}
         {id && <ParticipantContestNav contestId={id} />}
 
         {isLoading && <p className="py-8 text-center text-slate-400">Loading problems…</p>}
