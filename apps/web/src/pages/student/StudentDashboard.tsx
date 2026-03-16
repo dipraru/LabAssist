@@ -5,6 +5,14 @@ import { AppShell } from '../../components/AppShell';
 import { useAuthStore } from '../../store/auth.store';
 import { BookOpen, ClipboardList, Bell } from 'lucide-react';
 
+function courseCode(course: any): string {
+  return course?.courseCode ?? course?.code ?? 'N/A';
+}
+
+function courseTitle(course: any): string {
+  return course?.title ?? course?.name ?? 'Untitled Course';
+}
+
 export function StudentDashboard() {
   const { user } = useAuthStore();
 
@@ -65,8 +73,8 @@ export function StudentDashboard() {
           <div className="grid grid-cols-2 gap-3">
             {(courses as any[]).map((c: any) => (
               <div key={c.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
-                <p className="font-semibold text-slate-800">{c.name}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{c.code} · {c.semester?.name?.replace('_', ' ')}</p>
+                <p className="font-semibold text-slate-800">{courseTitle(c)}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{courseCode(c)} · {c.semester?.name?.replace('_', ' ')}</p>
               </div>
             ))}
           </div>
