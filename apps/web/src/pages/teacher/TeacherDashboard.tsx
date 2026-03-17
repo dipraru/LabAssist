@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { BookOpen, Bell } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { courseCode, courseTitle, semesterLabel } from '../../lib/display';
 
 export function TeacherDashboard() {
   const { data: courses = [] } = useQuery({
@@ -23,8 +25,10 @@ export function TeacherDashboard() {
         <div className="grid grid-cols-2 gap-4 mb-8">
           <StatCard icon={<BookOpen className="text-indigo-500" size={22} />}
             label="My Courses" value={courses.length} />
-          <StatCard icon={<Bell className="text-amber-500" size={22} />}
-            label="Unread Notifications" value={unread} />
+          <Link to="/teacher/notifications" className="block">
+            <StatCard icon={<Bell className="text-amber-500" size={22} />}
+              label="Unread Notifications" value={unread} />
+          </Link>
         </div>
 
         <h2 className="text-lg font-semibold text-slate-800 mb-3">My Courses</h2>
@@ -38,8 +42,8 @@ export function TeacherDashboard() {
                   <BookOpen className="text-indigo-500" size={18} />
                 </div>
                 <div>
-                  <p className="font-semibold text-slate-800">{c.name}</p>
-                  <p className="text-sm text-slate-500">{c.code} · {c.semester?.name?.replace('_', ' ')}</p>
+                  <p className="font-semibold text-slate-800">{courseTitle(c)}</p>
+                  <p className="text-sm text-slate-500">{courseCode(c)} · {semesterLabel(c)}</p>
                 </div>
               </div>
             ))}

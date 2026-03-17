@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { BookOpen, Users } from 'lucide-react';
+import { courseCode, courseTitle, studentDisplayName } from '../../lib/display';
 
 export function TeacherCourses() {
   const [selectedCourse, setSelectedCourse] = useState<any>(null);
@@ -40,8 +41,8 @@ export function TeacherCourses() {
               <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center mb-2">
                 <BookOpen size={15} className="text-indigo-600" />
               </div>
-              <p className="font-semibold text-slate-800 text-sm">{c.code}</p>
-              <p className="text-xs text-slate-500 mt-0.5 truncate">{c.name}</p>
+              <p className="font-semibold text-slate-800 text-sm">{courseCode(c)}</p>
+              <p className="text-xs text-slate-500 mt-0.5 truncate">{courseTitle(c)}</p>
             </button>
           ))}
           {!courses.length && <p className="col-span-3 text-slate-400">No courses assigned</p>}
@@ -59,8 +60,8 @@ export function TeacherCourses() {
                   <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
                     {(enrollments as any[]).map((e: any) => (
                       <div key={e.id} className="py-2 text-sm">
-                        <p className="font-medium text-slate-800">{e.student?.user?.username}</p>
-                        <p className="text-slate-500 text-xs">{e.student?.studentId}</p>
+                        <p className="font-medium text-slate-800">{studentDisplayName(e)}</p>
+                        <p className="text-slate-500 text-xs">{e.student?.studentId ?? e.studentId ?? 'N/A'}</p>
                       </div>
                     ))}
                   </div>

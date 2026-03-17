@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useFieldArray, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Plus, ChevronDown, ChevronRight } from 'lucide-react';
+import { courseCode, courseTitle, studentDisplayName } from '../../lib/display';
 
 const assignSchema = z.object({
   courseId: z.string().uuid('Select a course'),
@@ -15,6 +16,10 @@ const assignSchema = z.object({
   deadline: z.string().min(1, 'Deadline required'),
   totalMarks: z.number().positive(),
   allowLateSubmission: z.boolean().optional(),
+  links: z.array(z.object({
+    url: z.string().url('Enter a valid URL'),
+    label: z.string().optional(),
+  })).optional(),
 });
 type AssignData = z.infer<typeof assignSchema>;
 
@@ -42,7 +47,14 @@ export function AssignmentManage() {
     enabled: !!selectedAssignment,
   });
 
-  const assignForm = useForm<AssignData>({ resolver: zodResolver(assignSchema) });
+  const assignForm = useForm<AssignData>({
+    resolver: zodResolver(assignSchema),
+    defaultValues: { links: [] },
+  });
+  const { fields: linkFields, append: appendLink, remove: removeLink } = useFieldArray({
+    control: assignForm.control,
+    name: 'links',
+  });
   const gradeForm = useForm<GradeData>({ resolver: zodResolver(gradeSchema) });
 
   const createMutation = useMutation({
@@ -50,6 +62,7 @@ export function AssignmentManage() {
       ...d,
       deadline: new Date(d.deadline).toISOString(),
       allowLateSubmission: d.allowLateSubmission ?? false,
+      links: (d.links ?? []).filter((l) => l.url?.trim()),
     }),
     onSuccess: () => {
       toast.success('Assignment created');
@@ -87,7 +100,7 @@ export function AssignmentManage() {
           <select value={filterCourse} onChange={e => setFilterCourse(e.target.value)}
             className="px-3 py-2 border border-slate-300 rounded-lg text-sm">
             <option value="">— filter by course —</option>
-            {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+            {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{courseCode(c)} - {courseTitle(c)}</option>)}
           </select>
         </div>
 
@@ -99,7 +112,7 @@ export function AssignmentManage() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Course</label>
                 <select {...assignForm.register('courseId')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                   <option value="">— select —</option>
-                  {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.code}</option>)}
+                  {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{courseCode(c)}</option>)}
                 </select>
               </div>
               <div>
@@ -109,6 +122,46 @@ export function AssignmentManage() {
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">Caption</label>
                 <textarea {...assignForm.register('caption')} rows={2} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm resize-none" />
+              </div>
+              <div className="col-span-2">
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="block text-sm font-medium text-slate-700">Links (optional)</label>
+                  <button
+                    type="button"
+                    onClick={() => appendLink({ url: '', label: '' })}
+                    className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50"
+                  >
+                    Add Link
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {linkFields.map((field, index) => (
+                    <div key={field.id} className="grid grid-cols-12 gap-2">
+                      <input
+                        {...assignForm.register(`links.${index}.url`)}
+                        placeholder="https://..."
+                        className="col-span-7 px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                      />
+                      <input
+                        {...assignForm.register(`links.${index}.label`)}
+                        placeholder="Label (optional)"
+                        className="col-span-4 px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeLink(index)}
+                        className="col-span-1 px-2 py-2 border border-slate-300 rounded-lg text-xs hover:bg-slate-50"
+                      >
+                        X
+                      </button>
+                      {assignForm.formState.errors.links?.[index]?.url?.message && (
+                        <p className="col-span-12 text-xs text-red-500">
+                          {assignForm.formState.errors.links[index]?.url?.message}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Deadline</label>
@@ -158,7 +211,7 @@ export function AssignmentManage() {
                         <tbody className="divide-y divide-slate-100">
                           {(submissions as any[]).map((sub: any) => (
                             <tr key={sub.id}>
-                              <td className="py-2">{sub.student?.user?.username ?? sub.studentId}</td>
+                              <td className="py-2">{studentDisplayName(sub)}</td>
                               <td className="py-2"><span className={`px-2 py-0.5 rounded-full text-xs ${sub.status === 'graded' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{sub.status}</span></td>
                               <td className="py-2">{sub.score ?? '—'} / {a.totalMarks}</td>
                               <td className="py-2">

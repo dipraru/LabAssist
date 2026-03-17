@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Plus, Trash2, ExternalLink } from 'lucide-react';
+import { courseCode, courseTitle } from '../../lib/display';
 
 const sheetSchema = z.object({
   courseId: z.string().uuid('Select a course'),
@@ -66,7 +67,7 @@ export function LectureSheets() {
           <select value={filterCourse} onChange={e => setFilterCourse(e.target.value)}
             className="px-3 py-2 border border-slate-300 rounded-lg text-sm">
             <option value="">— select course —</option>
-            {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+            {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{courseCode(c)} - {courseTitle(c)}</option>)}
           </select>
         </div>
 
@@ -78,7 +79,7 @@ export function LectureSheets() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Course</label>
                 <select {...register('courseId')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                   <option value="">— select —</option>
-                  {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.code}</option>)}
+                  {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{courseCode(c)}</option>)}
                 </select>
                 {errors.courseId && <p className="text-red-500 text-xs mt-1">{errors.courseId.message}</p>}
               </div>
