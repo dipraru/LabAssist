@@ -170,9 +170,21 @@ export class ContestsController {
   }
 
   @Roles(UserRole.TEMP_JUDGE)
+  @Get(':id/clarifications/all')
+  allClarifications(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.svc.getAllClarifications(id, user.id);
+  }
+
+  @Roles(UserRole.TEMP_JUDGE)
   @Patch('clarifications/:id/answer')
   answerClar(@Param('id') id: string, @Body() dto: AnswerClarificationDto, @CurrentUser() user: any) {
     return this.svc.answerClarification(id, dto, user.id);
+  }
+
+  @Roles(UserRole.TEMP_JUDGE)
+  @Patch('clarifications/:id/ignore')
+  ignoreClar(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.svc.ignoreClarification(id, user.id);
   }
 
   @Roles(UserRole.TEMP_JUDGE)

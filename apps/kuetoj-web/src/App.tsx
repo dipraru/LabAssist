@@ -6,6 +6,7 @@ import { BridgeLoginPage } from './pages/BridgeLoginPage';
 import { JudgeContests } from './pages/judge/JudgeContests';
 import { JudgeProblems } from './pages/judge/JudgeProblems';
 import { ContestManage } from './pages/judge/ContestManage';
+import { JudgeContestProblem } from './pages/judge/JudgeContestProblem';
 import { ContestStandings as JudgeContestStandings } from './pages/judge/ContestStandings';
 import { ContestParticipants } from './pages/judge/ContestParticipants';
 
@@ -63,6 +64,7 @@ export default function App() {
         <Route path="/judge/contests" element={<JudgeContests />} />
         <Route path="/judge/problems" element={<JudgeProblems />} />
         <Route path="/judge/contests/:id" element={<ContestManage />} />
+        <Route path="/judge/contests/:id/problems/:problemId" element={<JudgeContestProblem />} />
         <Route path="/judge/contests/:id/standings" element={<JudgeContestStandings />} />
         <Route path="/judge/contests/:id/participants" element={<ContestParticipants />} />
       </Route>

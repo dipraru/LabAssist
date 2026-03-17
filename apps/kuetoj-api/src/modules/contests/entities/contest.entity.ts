@@ -48,6 +48,9 @@ export class Contest {
   @Column({ type: 'varchar', nullable: true })
   createdById: string | null;
 
+  @Column({ type: 'int', unique: true, nullable: true })
+  contestNumber: number | null;
+
   @OneToMany(() => ContestProblem, (p) => p.contest, { cascade: true })
   problems: ContestProblem[];
 
