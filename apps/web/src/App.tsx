@@ -16,6 +16,7 @@ import { TeacherCourses } from './pages/teacher/TeacherCourses';
 import { AssignmentManage } from './pages/teacher/AssignmentManage';
 import { LabTestManage } from './pages/teacher/LabTestManage';
 import { LectureSheets } from './pages/teacher/LectureSheets';
+import { TeacherNotifications } from './pages/teacher/TeacherNotifications';
 
 // Student
 import { StudentDashboard } from './pages/student/StudentDashboard';
@@ -81,6 +82,7 @@ export default function App() {
         <Route path="/teacher/assignments" element={<AssignmentManage />} />
         <Route path="/teacher/lab-tests" element={<LabTestManage />} />
         <Route path="/teacher/lecture-sheets" element={<LectureSheets />} />
+        <Route path="/teacher/notifications" element={<TeacherNotifications />} />
       </Route>
 
       {/* Student */}

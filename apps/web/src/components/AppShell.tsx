@@ -18,6 +18,7 @@ const roleNavItems: Record<string, { label: string; href: string; icon: ReactNod
   ],
   teacher: [
     { label: 'Dashboard', href: '/teacher', icon: <LayoutDashboard size={18} /> },
+    { label: 'Notifications', href: '/teacher/notifications', icon: <Bell size={18} /> },
     { label: 'Courses', href: '/teacher/courses', icon: <BookOpen size={18} /> },
     { label: 'Assignments', href: '/teacher/assignments', icon: <BookOpen size={18} /> },
     { label: 'Lab Tests', href: '/teacher/lab-tests', icon: <FlaskConical size={18} /> },
@@ -39,6 +40,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const navItems = user ? (roleNavItems[user.role] ?? []) : [];
+  const notificationsHref = user?.role === 'student'
+    ? '/student/notifications'
+    : user?.role === 'teacher'
+      ? '/teacher/notifications'
+      : '#';
 
   const handleLogout = () => {
     logout();
@@ -108,7 +114,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <ChevronDown size={20} className={`transition-transform ${sidebarOpen ? '-rotate-90' : 'rotate-90'}`} />
           </button>
           <div className="flex items-center gap-3">
-            <Link to={user?.role === 'student' ? '/student/notifications' : '#'}>
+            <Link to={notificationsHref}>
               <Bell size={20} className="text-slate-500 hover:text-slate-800" />
             </Link>
           </div>

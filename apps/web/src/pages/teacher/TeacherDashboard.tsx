@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { BookOpen, Bell } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export function TeacherDashboard() {
   const { data: courses = [] } = useQuery({
@@ -23,8 +24,10 @@ export function TeacherDashboard() {
         <div className="grid grid-cols-2 gap-4 mb-8">
           <StatCard icon={<BookOpen className="text-indigo-500" size={22} />}
             label="My Courses" value={courses.length} />
-          <StatCard icon={<Bell className="text-amber-500" size={22} />}
-            label="Unread Notifications" value={unread} />
+          <Link to="/teacher/notifications" className="block">
+            <StatCard icon={<Bell className="text-amber-500" size={22} />}
+              label="Unread Notifications" value={unread} />
+          </Link>
         </div>
 
         <h2 className="text-lg font-semibold text-slate-800 mb-3">My Courses</h2>
