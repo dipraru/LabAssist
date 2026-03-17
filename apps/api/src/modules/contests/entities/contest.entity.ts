@@ -4,11 +4,8 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
-  ManyToOne,
-  JoinColumn,
   OneToMany,
 } from 'typeorm';
-import { TempJudge } from '../../users/entities/temp-judge.entity';
 import { ContestProblem } from './contest-problem.entity';
 import { ContestSubmission } from './contest-submission.entity';
 import { ContestAnnouncement } from './contest-announcement.entity';
@@ -48,13 +45,11 @@ export class Contest {
   @Column({ default: false })
   isPublicStanding: boolean;
 
-  // Created by judge
-  @ManyToOne(() => TempJudge, { eager: true, nullable: true })
-  @JoinColumn()
-  createdBy: TempJudge | null;
-
   @Column({ type: 'varchar', nullable: true })
   createdById: string | null;
+
+  @Column({ type: 'int', unique: true, nullable: true })
+  contestNumber: number | null;
 
   @OneToMany(() => ContestProblem, (p) => p.contest, { cascade: true })
   problems: ContestProblem[];

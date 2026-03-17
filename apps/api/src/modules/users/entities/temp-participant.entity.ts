@@ -43,6 +43,9 @@ export class TempParticipant {
   @Column()
   userId: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  loginPassword: string | null;
+
   // Created by judge
   @Column({ type: 'varchar', nullable: true })
   createdByJudgeId: string | null;
