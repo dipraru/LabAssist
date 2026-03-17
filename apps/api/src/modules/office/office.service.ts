@@ -447,6 +447,7 @@ export class OfficeService {
         accessFrom,
         accessUntil,
         notes: dto.notes ?? null,
+        latestIssuedPassword: plainPassword,
         userId: savedUser.id,
         createdByOfficeId: officeUserId,
       });
@@ -492,7 +493,20 @@ export class OfficeService {
       expiresAt: judge.accessUntil,
     });
 
+    judge.latestIssuedPassword = plainPassword;
+    await this.judgeRepo.save(judge);
+
     return { judge, plainPassword };
+  }
+
+  async getTempJudgeCredentials(judgeId: string): Promise<{ judge: TempJudge; plainPassword: string }> {
+    const judge = await this.judgeRepo.findOne({ where: { id: judgeId } });
+    if (!judge) throw new NotFoundException('Judge not found');
+    if (!judge.latestIssuedPassword) {
+      throw new NotFoundException('No credential snapshot found. Regenerate credentials first.');
+    }
+
+    return { judge, plainPassword: judge.latestIssuedPassword };
   }
 
   async getAllJudges(): Promise<TempJudge[]> {

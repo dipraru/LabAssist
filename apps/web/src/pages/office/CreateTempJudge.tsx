@@ -58,6 +58,17 @@ export function CreateTempJudge() {
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
   });
 
+  const downloadCredentialsMutation = useMutation({
+    mutationFn: (judgeId: string) => api.get(`/office/judges/${judgeId}/credentials`),
+    onSuccess: (res) => {
+      if (res.data.credentialsPdf) {
+        downloadPdf(res.data.credentialsPdf);
+      }
+      toast.success('Credentials downloaded');
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to download credentials'),
+  });
+
   const resetCredentialsMutation = useMutation({
     mutationFn: (judgeId: string) => api.post(`/office/judges/${judgeId}/credentials/reset`),
     onSuccess: (res) => {
@@ -65,6 +76,7 @@ export function CreateTempJudge() {
       if (res.data.credentialsPdf) {
         downloadPdf(res.data.credentialsPdf);
       }
+      qc.invalidateQueries({ queryKey: ['temp-judges'] });
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to regenerate credentials'),
   });
@@ -156,11 +168,19 @@ export function CreateTempJudge() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => resetCredentialsMutation.mutate(j.id)}
+                          onClick={() => downloadCredentialsMutation.mutate(j.id)}
                           className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-300 text-slate-600 hover:bg-slate-50"
                           title="Download credentials"
                         >
                           <Download size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => resetCredentialsMutation.mutate(j.id)}
+                          className="px-2 py-1 border border-amber-300 text-amber-700 rounded text-xs hover:bg-amber-50"
+                          title="Regenerate password and download"
+                        >
+                          Regenerate
                         </button>
                       </div>
                     )}

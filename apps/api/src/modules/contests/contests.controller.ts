@@ -34,7 +34,7 @@ export class ContestsController {
   @Get(':id/standings')
   standings(@Param('id') id: string, @CurrentUser() user: any) {
     const isJudge = user.role === UserRole.TEMP_JUDGE;
-    return this.svc.getStandings(id, isJudge ? user.userId : undefined);
+    return this.svc.getStandings(id, isJudge ? user.id : undefined);
   }
 
   @Get(':id/announcements')
@@ -45,13 +45,13 @@ export class ContestsController {
   @Roles(UserRole.TEMP_JUDGE)
   @Post('problems')
   createProblem(@Body() dto: CreateProblemDto, @CurrentUser() user: any) {
-    return this.svc.createProblem(dto, user.userId);
+    return this.svc.createProblem(dto, user.id);
   }
 
   @Roles(UserRole.TEMP_JUDGE)
   @Get('problems/mine')
   myProblems(@CurrentUser() user: any) {
-    return this.svc.listMyProblems(user.userId);
+    return this.svc.listMyProblems(user.id);
   }
 
   @Roles(UserRole.TEMP_JUDGE)
@@ -63,7 +63,7 @@ export class ContestsController {
   @Roles(UserRole.TEMP_JUDGE)
   @Patch('problems/:id')
   updateProblem(@Param('id') id: string, @Body() dto: Partial<CreateProblemDto>, @CurrentUser() user: any) {
-    return this.svc.updateProblem(id, dto, user.userId);
+    return this.svc.updateProblem(id, dto, user.id);
   }
 
   @Roles(UserRole.TEMP_JUDGE)
@@ -78,7 +78,7 @@ export class ContestsController {
     @CurrentUser() user: any,
   ) {
     return this.svc.uploadProblemFile(
-      id, user.userId,
+      id, user.id,
       files.inputFile?.[0], files.outputFile?.[0],
     );
   }
@@ -88,7 +88,7 @@ export class ContestsController {
   @Roles(UserRole.TEMP_JUDGE)
   @Post()
   createContest(@Body() dto: CreateContestDto, @CurrentUser() user: any) {
-    return this.svc.createContest(dto, user.userId);
+    return this.svc.createContest(dto, user.id);
   }
 
   @Roles(UserRole.TEMP_JUDGE)
@@ -98,7 +98,7 @@ export class ContestsController {
     @Body('status') status: ContestStatus,
     @CurrentUser() user: any,
   ) {
-    return this.svc.updateContestStatus(id, status, user.userId);
+    return this.svc.updateContestStatus(id, status, user.id);
   }
 
   @Roles(UserRole.TEMP_JUDGE)
@@ -108,7 +108,7 @@ export class ContestsController {
     @Body() dto: AddContestProblemDto,
     @CurrentUser() user: any,
   ) {
-    return this.svc.addProblemToContest(id, dto, user.userId);
+    return this.svc.addProblemToContest(id, dto, user.id);
   }
 
   @Roles(UserRole.TEMP_JUDGE)
@@ -118,19 +118,19 @@ export class ContestsController {
     @Body('frozen') frozen: boolean,
     @CurrentUser() user: any,
   ) {
-    return this.svc.freezeStandings(id, frozen, user.userId);
+    return this.svc.freezeStandings(id, frozen, user.id);
   }
 
   @Roles(UserRole.TEMP_JUDGE)
   @Get(':id/submissions/all')
   allSubmissions(@Param('id') id: string, @CurrentUser() user: any) {
-    return this.svc.getAllSubmissions(id, user.userId);
+    return this.svc.getAllSubmissions(id, user.id);
   }
 
   @Roles(UserRole.TEMP_JUDGE)
   @Patch('submissions/:id/grade')
   grade(@Param('id') id: string, @Body() dto: GradeContestSubmissionDto, @CurrentUser() user: any) {
-    return this.svc.gradeSubmission(id, dto, user.userId);
+    return this.svc.gradeSubmission(id, dto, user.id);
   }
 
   @Roles(UserRole.TEMP_JUDGE)
@@ -140,25 +140,25 @@ export class ContestsController {
     @Body() dto: CreateAnnouncementDto,
     @CurrentUser() user: any,
   ) {
-    return this.svc.createAnnouncement(id, dto, user.userId);
+    return this.svc.createAnnouncement(id, dto, user.id);
   }
 
   @Roles(UserRole.TEMP_JUDGE)
   @Get(':id/clarifications/pending')
   pendingClarifications(@Param('id') id: string, @CurrentUser() user: any) {
-    return this.svc.getPendingClarifications(id, user.userId);
+    return this.svc.getPendingClarifications(id, user.id);
   }
 
   @Roles(UserRole.TEMP_JUDGE)
   @Patch('clarifications/:id/answer')
   answerClar(@Param('id') id: string, @Body() dto: AnswerClarificationDto, @CurrentUser() user: any) {
-    return this.svc.answerClarification(id, dto, user.userId);
+    return this.svc.answerClarification(id, dto, user.id);
   }
 
   @Roles(UserRole.TEMP_JUDGE)
   @Post('participants/bulk')
   createParticipants(@Body() dto: CreateTempParticipantsDto, @CurrentUser() user: any) {
-    return this.svc.createTempParticipants(dto, user.userId);
+    return this.svc.createTempParticipants(dto, user.id);
   }
 
   // ─── PARTICIPANT / STUDENT: SUBMIT ───────────────────────────────────────────
@@ -173,14 +173,14 @@ export class ContestsController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     return this.svc.submitSolution(
-      contestId, dto, user.userId, user.username, file,
+      contestId, dto, user.id, user.username, file,
     );
   }
 
   @Roles(UserRole.TEMP_PARTICIPANT, UserRole.STUDENT)
   @Get(':id/my-submissions')
   mySubmissions(@Param('id') contestId: string, @CurrentUser() user: any) {
-    return this.svc.getMySubmissions(contestId, user.userId);
+    return this.svc.getMySubmissions(contestId, user.id);
   }
 
   @Roles(UserRole.TEMP_PARTICIPANT, UserRole.STUDENT)
@@ -190,13 +190,13 @@ export class ContestsController {
     @Body() dto: AskClarificationDto,
     @CurrentUser() user: any,
   ) {
-    return this.svc.askClarification(contestId, dto, user.userId);
+    return this.svc.askClarification(contestId, dto, user.id);
   }
 
   @Roles(UserRole.TEMP_PARTICIPANT, UserRole.STUDENT)
   @Get(':id/clarifications/mine')
   myClarifications(@Param('id') contestId: string, @CurrentUser() user: any) {
-    return this.svc.getMyClarifications(contestId, user.userId);
+    return this.svc.getMyClarifications(contestId, user.id);
   }
 
   // ─── FUTURE JUDGE WEBHOOK ─────────────────────────────────────────────────────
