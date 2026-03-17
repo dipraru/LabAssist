@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
-import { BookOpen, ClipboardList, FlaskConical, Bell } from 'lucide-react';
+import { BookOpen, Bell } from 'lucide-react';
 
 export function TeacherDashboard() {
   const { data: courses = [] } = useQuery({

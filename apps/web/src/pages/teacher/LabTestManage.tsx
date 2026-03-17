@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
-import { Plus, Trash2, PlayCircle, StopCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, PlayCircle, StopCircle, ChevronDown, ChevronRight } from 'lucide-react';
 
 const testSchema = z.object({
   courseId: z.string().uuid('Select a course'),
@@ -14,21 +14,21 @@ const testSchema = z.object({
   type: z.enum(['verdict_based', 'non_verdict']),
   startTime: z.string().min(1),
   endTime: z.string().min(1),
-  totalMarks: z.coerce.number().positive(),
+  totalMarks: z.number().positive(),
 });
 type TestData = z.infer<typeof testSchema>;
 
 const problemSchema = z.object({
   title: z.string().min(1),
   statement: z.string().min(1),
-  marks: z.coerce.number().positive(),
-  timeLimitMs: z.coerce.number().optional(),
-  memoryLimitKb: z.coerce.number().optional(),
+  marks: z.number().positive(),
+  timeLimitMs: z.number().positive().optional(),
+  memoryLimitKb: z.number().positive().optional(),
 });
 type ProblemData = z.infer<typeof problemSchema>;
 
 const gradeSchema = z.object({
-  score: z.coerce.number().min(0),
+  score: z.number().min(0),
   manualVerdict: z.string().optional(),
   instructorNote: z.string().optional(),
 });
@@ -141,7 +141,7 @@ export function LabTestManage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Total Marks</label>
-                <input type="number" {...testForm.register('totalMarks')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                <input type="number" {...testForm.register('totalMarks', { valueAsNumber: true })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Start Time</label>
@@ -209,8 +209,8 @@ export function LabTestManage() {
                           <textarea {...problemForm.register('statement')} placeholder="Problem statement" rows={3}
                             className="w-full px-3 py-2 border border-slate-300 rounded text-sm resize-none" />
                         </div>
-                        <input type="number" {...problemForm.register('marks')} placeholder="Marks" className="px-3 py-2 border border-slate-300 rounded text-sm" />
-                        <input type="number" {...problemForm.register('timeLimitMs')} placeholder="Time limit (ms)" className="px-3 py-2 border border-slate-300 rounded text-sm" />
+                        <input type="number" {...problemForm.register('marks', { valueAsNumber: true })} placeholder="Marks" className="px-3 py-2 border border-slate-300 rounded text-sm" />
+                        <input type="number" {...problemForm.register('timeLimitMs', { setValueAs: (value) => value === '' ? undefined : Number(value) })} placeholder="Time limit (ms)" className="px-3 py-2 border border-slate-300 rounded text-sm" />
                         <div className="col-span-2 flex gap-2">
                           <button type="submit" className="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs">Add</button>
                           <button type="button" onClick={() => setShowProblemForm(false)} className="px-3 py-1.5 border border-slate-300 rounded text-xs">Cancel</button>
@@ -248,7 +248,7 @@ export function LabTestManage() {
                                 {gradingSubId === sub.id ? (
                                   <form onSubmit={gradeForm.handleSubmit(d => gradeMutation.mutate({ id: sub.id, d }))}
                                     className="flex gap-1 items-center">
-                                    <input type="number" {...gradeForm.register('score')} placeholder="Score"
+                                    <input type="number" {...gradeForm.register('score', { valueAsNumber: true })} placeholder="Score"
                                       className="w-14 px-2 py-0.5 border border-slate-300 rounded text-xs" />
                                     <select {...gradeForm.register('manualVerdict')} className="px-1 py-0.5 border border-slate-300 rounded text-xs">
                                       <option value="">—</option>

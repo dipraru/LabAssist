@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
-import { Users, BookOpen, FlaskConical, Trophy } from 'lucide-react';
+import { Users, BookOpen, FlaskConical } from 'lucide-react';
 
 function StatCard({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color: string }) {
   return (
