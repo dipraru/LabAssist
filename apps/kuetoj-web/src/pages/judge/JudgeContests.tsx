@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -23,6 +23,7 @@ type SelectedProblem = {
 
 type ContestItem = {
   id: string;
+  contestNumber?: number | null;
   title: string;
   type: string;
   startTime?: string;
@@ -38,6 +39,12 @@ const PHASE_COLOR: Record<string, string> = {
 export function JudgeContests() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [nowMs, setNowMs] = useState<number>(Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const [showCreateContestModal, setShowCreateContestModal] = useState(false);
   const [showParticipantsModal, setShowParticipantsModal] = useState(false);
@@ -133,12 +140,11 @@ export function JudgeContests() {
         problems,
       });
     },
-    onSuccess: (res) => {
+    onSuccess: () => {
       toast.success('Contest created');
       qc.invalidateQueries({ queryKey: ['judge-contests'] });
       setShowCreateContestModal(false);
       resetCreateContestForm();
-      navigate(`/judge/contests/${res.data.id}`);
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message ?? err.message ?? 'Failed to create contest');
@@ -264,38 +270,83 @@ export function JudgeContests() {
     return 'Ended';
   };
 
-  const renderContestTable = (title: string, rows: ContestItem[]) => (
+  const formatHms = (totalSeconds: number) => {
+    const clamped = Math.max(0, totalSeconds);
+    const hrs = Math.floor(clamped / 3600).toString().padStart(2, '0');
+    const mins = Math.floor((clamped % 3600) / 60).toString().padStart(2, '0');
+    const secs = Math.floor(clamped % 60).toString().padStart(2, '0');
+    return `${hrs}:${mins}:${secs}`;
+  };
+
+  const phaseTime = (contest: ContestItem) => {
+    if (!contest.startTime || !contest.endTime) return '—';
+    const startMs = new Date(contest.startTime).getTime();
+    const endMs = new Date(contest.endTime).getTime();
+    const phase = getContestPhase(contest.startTime, contest.endTime);
+
+    if (phase === 'upcoming') {
+      const seconds = Math.floor((startMs - nowMs) / 1000);
+      return formatHms(seconds);
+    }
+
+    if (phase === 'running') {
+      const seconds = Math.floor((endMs - nowMs) / 1000);
+      return formatHms(seconds);
+    }
+
+    return '—';
+  };
+
+  const renderContestTable = (title: string, rows: ContestItem[], timerHeader: string) => (
     <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-900 mb-4">{title}</h2>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full table-fixed text-sm">
+          <colgroup>
+            <col className="w-[32%]" />
+            <col className="w-[12%]" />
+            <col className="w-[20%]" />
+            <col className="w-[20%]" />
+            <col className="w-[8%]" />
+            <col className="w-[28%]" />
+          </colgroup>
           <thead className="bg-slate-50 border-y border-slate-200">
             <tr>
               <th className="px-3 py-2 text-left font-medium text-slate-600">Title</th>
-              <th className="px-3 py-2 text-left font-medium text-slate-600">Type</th>
               <th className="px-3 py-2 text-left font-medium text-slate-600">Start Time</th>
               <th className="px-3 py-2 text-left font-medium text-slate-600">End Time</th>
+              <th className="px-3 py-2 text-left font-medium text-slate-600">{timerHeader}</th>
               <th className="px-3 py-2 text-left font-medium text-slate-600">Status</th>
-              <th className="px-3 py-2 text-left font-medium text-slate-600">Actions</th>
+              <th className="px-3 py-2 text-right font-medium text-slate-600" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map((contest) => {
               const phase = getContestPhase(contest.startTime ?? '', contest.endTime ?? '');
+              const contestRouteId = String(contest.contestNumber ?? contest.id);
               return (
                 <tr key={contest.id} className="hover:bg-slate-50">
-                  <td className="px-3 py-3 font-medium text-slate-900">{contest.title}</td>
-                  <td className="px-3 py-3 text-slate-700">{contest.type}</td>
-                  <td className="px-3 py-3 text-slate-700">{contest.startTime ? new Date(contest.startTime).toLocaleString() : '—'}</td>
-                  <td className="px-3 py-3 text-slate-700">{contest.endTime ? new Date(contest.endTime).toLocaleString() : '—'}</td>
+                  <td className="px-3 py-3 font-medium text-slate-900 truncate">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/judge/contests/${contestRouteId}`)}
+                      className="text-left text-indigo-700 hover:underline truncate max-w-full"
+                    >
+                      {contest.title}
+                    </button>
+                  </td>
+                  <td className="px-3 py-3 text-slate-700 truncate">{contest.startTime ? new Date(contest.startTime).toLocaleString() : '—'}</td>
+                  <td className="px-3 py-3 text-slate-700 truncate">{contest.endTime ? new Date(contest.endTime).toLocaleString() : '—'}</td>
+                  <td className="px-3 py-3 text-slate-700 font-mono text-xs">
+                    {phaseTime(contest)}
+                  </td>
                   <td className="px-3 py-3">
                     <span className={`text-xs px-2 py-1 rounded-full ${PHASE_COLOR[phase] ?? 'bg-slate-100 text-slate-700'}`}>
                       {phaseLabel(phase)}
                     </span>
                   </td>
                   <td className="px-3 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      <button onClick={() => navigate(`/judge/contests/${contest.id}`)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Manage</button>
+                    <div className="flex justify-end gap-2">
                       <button onClick={() => openParticipantsModal(contest)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Create Participants</button>
                       <button
                         onClick={() => downloadAllCredentialsMutation.mutate(contest.id)}
@@ -304,7 +355,6 @@ export function JudgeContests() {
                       >
                         Download All Credentials
                       </button>
-                      <button onClick={() => navigate(`/judge/contests/${contest.id}/standings`)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Standings</button>
                     </div>
                   </td>
                 </tr>
@@ -339,9 +389,9 @@ export function JudgeContests() {
           </div>
         </section>
 
-        {renderContestTable('Running Contests', runningContests)}
-        {renderContestTable('Upcoming Contests', upcomingContests)}
-        {renderContestTable('Past Contests', pastContests)}
+        {renderContestTable('Running Contests', runningContests, 'Remaining')}
+        {renderContestTable('Upcoming Contests', upcomingContests, 'Starts In')}
+        {renderContestTable('Past Contests', pastContests, '—')}
 
         <Modal
           open={showCreateContestModal}

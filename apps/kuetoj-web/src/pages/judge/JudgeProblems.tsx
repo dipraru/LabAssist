@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, useFieldArray } from 'react-hook-form';
+import { useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
@@ -21,9 +22,11 @@ type ProblemInput = z.input<typeof problemSchema>;
 type ProblemData = z.output<typeof problemSchema>;
 
 export function JudgeProblems() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const qc = useQueryClient();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingProblemId, setEditingProblemId] = useState<string | null>(null);
+  const [isViewOnly, setIsViewOnly] = useState(false);
 
   const { data: problems = [] } = useQuery({
     queryKey: ['judge-problems'],
@@ -81,6 +84,7 @@ export function JudgeProblems() {
   });
 
   const openCreate = () => {
+    setIsViewOnly(false);
     setEditingProblemId(null);
     form.reset({
       title: '',
@@ -93,6 +97,7 @@ export function JudgeProblems() {
   };
 
   const openEdit = (problem: any) => {
+    setIsViewOnly(false);
     setEditingProblemId(problem.id);
     form.reset({
       title: problem.title ?? '',
@@ -103,6 +108,37 @@ export function JudgeProblems() {
     });
     setShowCreateModal(true);
   };
+
+  const openView = (problem: any) => {
+    setIsViewOnly(true);
+    setEditingProblemId(problem.id);
+    form.reset({
+      title: problem.title ?? '',
+      statement: problem.statement ?? '',
+      timeLimitMs: problem.timeLimitMs ?? 2000,
+      memoryLimitKb: problem.memoryLimitKb ?? 262144,
+      sampleTestCases: problem.sampleTestCases?.length ? problem.sampleTestCases : [{ input: '', output: '' }],
+    });
+    setShowCreateModal(true);
+  };
+
+  useEffect(() => {
+    const editProblemId = searchParams.get('editProblemId');
+    const viewProblemId = searchParams.get('viewProblemId');
+    if (!editProblemId && !viewProblemId) return;
+
+    const targetId = editProblemId ?? viewProblemId;
+    const target = (problems as any[]).find((problem: any) => problem.id === targetId);
+    if (!target) return;
+
+    if (editProblemId) openEdit(target);
+    if (viewProblemId) openView(target);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('editProblemId');
+    next.delete('viewProblemId');
+    setSearchParams(next, { replace: true });
+  }, [problems, searchParams, setSearchParams]);
 
   const handleDelete = (problem: any) => {
     const confirmed = window.confirm(`Delete problem ${problem.problemCode ?? problem.id}?`);
@@ -175,10 +211,11 @@ export function JudgeProblems() {
 
       <Modal
         open={showCreateModal}
-        title={editingProblemId ? 'Edit Problem' : 'Create New Problem'}
+        title={isViewOnly ? 'Problem Statement' : editingProblemId ? 'Edit Problem' : 'Create New Problem'}
         onClose={() => {
           setShowCreateModal(false);
           setEditingProblemId(null);
+          setIsViewOnly(false);
         }}
         maxWidthClass="max-w-3xl"
       >
@@ -187,6 +224,7 @@ export function JudgeProblems() {
             <label className="text-xs font-medium text-slate-600">Title</label>
             <input
               {...form.register('title')}
+              readOnly={isViewOnly}
               className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
             />
           </div>
@@ -195,6 +233,7 @@ export function JudgeProblems() {
             <label className="text-xs font-medium text-slate-600">Statement</label>
             <textarea
               {...form.register('statement')}
+              readOnly={isViewOnly}
               rows={6}
               className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm resize-none"
             />
@@ -206,6 +245,7 @@ export function JudgeProblems() {
               <input
                 type="number"
                 {...form.register('timeLimitMs')}
+                readOnly={isViewOnly}
                 className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
               />
             </div>
@@ -214,6 +254,7 @@ export function JudgeProblems() {
               <input
                 type="number"
                 {...form.register('memoryLimitKb')}
+                readOnly={isViewOnly}
                 className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
               />
             </div>
@@ -225,6 +266,7 @@ export function JudgeProblems() {
               <button
                 type="button"
                 onClick={() => append({ input: '', output: '' })}
+                disabled={isViewOnly}
                 className="text-xs inline-flex items-center gap-1 text-indigo-600"
               >
                 <Plus size={12} /> Add
@@ -237,6 +279,7 @@ export function JudgeProblems() {
                     rows={2}
                     placeholder="Input"
                     {...form.register(`sampleTestCases.${index}.input`)}
+                    readOnly={isViewOnly}
                     className="border border-slate-300 rounded-md px-2 py-1 text-xs font-mono resize-none"
                   />
                   <div className="relative">
@@ -244,9 +287,10 @@ export function JudgeProblems() {
                       rows={2}
                       placeholder="Output"
                       {...form.register(`sampleTestCases.${index}.output`)}
+                      readOnly={isViewOnly}
                       className="w-full border border-slate-300 rounded-md px-2 py-1 text-xs font-mono resize-none"
                     />
-                    {fields.length > 1 && (
+                    {fields.length > 1 && !isViewOnly && (
                       <button
                         type="button"
                         onClick={() => remove(index)}
@@ -267,18 +311,21 @@ export function JudgeProblems() {
               onClick={() => {
                 setShowCreateModal(false);
                 setEditingProblemId(null);
+                setIsViewOnly(false);
               }}
               className="px-4 py-2 border border-slate-300 rounded-md text-sm"
             >
-              Cancel
+              Close
             </button>
-            <button
-              type="submit"
-              disabled={saveMutation.isPending}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-md text-sm font-medium"
-            >
-              {saveMutation.isPending ? 'Saving…' : editingProblemId ? 'Save Changes' : 'Create Problem'}
-            </button>
+            {!isViewOnly && (
+              <button
+                type="submit"
+                disabled={saveMutation.isPending}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-md text-sm font-medium"
+              >
+                {saveMutation.isPending ? 'Saving…' : editingProblemId ? 'Save Changes' : 'Create Problem'}
+              </button>
+            )}
           </div>
         </form>
       </Modal>

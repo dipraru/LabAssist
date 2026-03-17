@@ -109,6 +109,36 @@ export class ContestsService {
     return legacyContestIds.includes(contestId);
   }
 
+  private isNumericContestIdentifier(identifier: string): boolean {
+    return /^\d{4,}$/.test(identifier);
+  }
+
+  private async resolveContestByIdentifier(
+    identifier: string,
+    relations?: string[],
+  ): Promise<Contest | null> {
+    if (this.isNumericContestIdentifier(identifier)) {
+      return this.contestRepo.findOne({
+        where: { contestNumber: Number(identifier) },
+        relations,
+      });
+    }
+
+    return this.contestRepo.findOne({
+      where: { id: identifier },
+      relations,
+    });
+  }
+
+  private async resolveContestOrThrow(
+    identifier: string,
+    relations?: string[],
+  ): Promise<Contest> {
+    const contest = await this.resolveContestByIdentifier(identifier, relations);
+    if (!contest) throw new NotFoundException('Contest not found');
+    return contest;
+  }
+
   private async getNextProblemCode(): Promise<string> {
     const last = await this.problemRepo.createQueryBuilder('p')
       .where('p.problemCode IS NOT NULL')
@@ -164,7 +194,10 @@ export class ContestsService {
 
   async getProblemById(id: string): Promise<Problem> {
     await this.ensureProblemCodes();
-    const p = await this.problemRepo.findOneBy({ id });
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+    const p = isUuid
+      ? await this.problemRepo.findOne({ where: [{ id }, { problemCode: id }] })
+      : await this.problemRepo.findOneBy({ problemCode: id });
     if (!p) throw new NotFoundException('Problem not found');
     return p;
   }
@@ -242,6 +275,12 @@ export class ContestsService {
     await qr.connect();
     await qr.startTransaction();
     try {
+      const maxContestRow = await qr.manager
+        .createQueryBuilder(Contest, 'contest')
+        .select('MAX(contest.contestNumber)', 'max')
+        .getRawOne<{ max: string | null }>();
+      const currentMax = maxContestRow?.max ? Number(maxContestRow.max) : 1000;
+
       const contest = qr.manager.create(Contest, {
         title: dto.title,
         description: dto.description ?? '',
@@ -250,6 +289,7 @@ export class ContestsService {
         endTime,
         freezeTime,
         createdById: judgeProfileId,
+        contestNumber: Number.isFinite(currentMax) ? currentMax + 1 : 1001,
         status: ContestStatus.SCHEDULED,
         isStandingFrozen: false,
       });
@@ -283,11 +323,7 @@ export class ContestsService {
   }
 
   async getContestById(id: string): Promise<Contest> {
-    const c = await this.contestRepo.findOne({
-      where: { id },
-      relations: ['problems', 'problems.problem'],
-    });
-    if (!c) throw new NotFoundException('Contest not found');
+    const c = await this.resolveContestOrThrow(id, ['problems', 'problems.problem']);
     const phase = this.contestPhase(c.startTime, c.endTime);
     c.status = phase === 'upcoming'
       ? ContestStatus.SCHEDULED
@@ -362,8 +398,7 @@ export class ContestsService {
 
   async updateContestStatus(contestId: string, status: ContestStatus, judgeUserId: string) {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
-    const c = await this.contestRepo.findOneBy({ id: contestId });
-    if (!c) throw new NotFoundException();
+    const c = await this.resolveContestOrThrow(contestId);
     if (!(await this.canJudgeManageContest(c.id, c.createdById, judgeUserId, judgeProfileId))) {
       throw new ForbiddenException();
     }
@@ -373,15 +408,14 @@ export class ContestsService {
 
   async addProblemToContest(contestId: string, dto: AddContestProblemDto, judgeUserId: string) {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
-    const c = await this.contestRepo.findOneBy({ id: contestId });
-    if (!c) throw new NotFoundException();
+    const c = await this.resolveContestOrThrow(contestId);
     if (!(await this.canJudgeManageContest(c.id, c.createdById, judgeUserId, judgeProfileId))) {
       throw new ForbiddenException();
     }
     if (c.status !== ContestStatus.DRAFT) throw new BadRequestException('Contest already started');
 
     const cp = this.cpRepo.create({
-      contestId,
+      contestId: c.id,
       problemId: dto.problemId,
       label: dto.label,
       orderIndex: dto.orderIndex,
@@ -399,13 +433,13 @@ export class ContestsService {
     const showFrozen = contest.isStandingFrozen && !judgeUserId;
 
     const problems = await this.cpRepo.find({
-      where: { contestId },
+      where: { contestId: contest.id },
       order: { orderIndex: 'ASC' },
     });
 
     // All accepted/graded submissions
     const subs = await this.subRepo.find({
-      where: { contestId },
+      where: { contestId: contest.id },
       order: { submittedAt: 'ASC' },
     });
 
@@ -485,15 +519,14 @@ export class ContestsService {
 
   async freezeStandings(contestId: string, frozen: boolean, judgeUserId: string) {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
-    const c = await this.contestRepo.findOneBy({ id: contestId });
-    if (!c) throw new NotFoundException();
+    const c = await this.resolveContestOrThrow(contestId);
     if (!(await this.canJudgeManageContest(c.id, c.createdById, judgeUserId, judgeProfileId))) {
       throw new ForbiddenException();
     }
     c.isStandingFrozen = frozen;
     const saved = await this.contestRepo.save(c);
     // Broadcast to all participants
-    this.gateway.sendToContest(contestId, 'standings:freeze', { frozen });
+    this.gateway.sendToContest(c.id, 'standings:freeze', { frozen });
     return saved;
   }
 
@@ -506,8 +539,7 @@ export class ContestsService {
     participantName: string,
     file?: Express.Multer.File,
   ) {
-    const contest = await this.contestRepo.findOneBy({ id: contestId });
-    if (!contest) throw new NotFoundException();
+    const contest = await this.resolveContestOrThrow(contestId);
     const now = new Date();
     const phase = this.contestPhase(contest.startTime, contest.endTime);
     if (phase !== 'running')
@@ -515,7 +547,7 @@ export class ContestsService {
     if (now < contest.startTime || now > contest.endTime)
       throw new ForbiddenException('Contest window closed');
 
-    const cp = await this.cpRepo.findOneBy({ id: dto.contestProblemId, contestId });
+    const cp = await this.cpRepo.findOneBy({ id: dto.contestProblemId, contestId: contest.id });
     if (!cp) throw new NotFoundException('Problem not in this contest');
 
     let fileUrl: string | null = null;
@@ -531,7 +563,7 @@ export class ContestsService {
     if (!dto.code && !fileUrl) throw new BadRequestException('Code or file required');
 
     const sub = this.subRepo.create({
-      contestId,
+      contestId: contest.id,
       contestProblemId: dto.contestProblemId,
       participantId: participantUserId,
       participantName,
@@ -547,16 +579,18 @@ export class ContestsService {
   }
 
   async getMySubmissions(contestId: string, participantUserId: string) {
+    const contest = await this.resolveContestOrThrow(contestId);
     const submissions = await this.subRepo.find({
-      where: { contestId, participantId: participantUserId },
+      where: { contestId: contest.id, participantId: participantUserId },
       order: { submittedAt: 'DESC' },
     });
     return submissions.map((submission) => this.serializeSubmission(submission));
   }
 
   async getMySubmissionById(contestId: string, submissionId: string, participantUserId: string) {
+    const contest = await this.resolveContestOrThrow(contestId);
     const submission = await this.subRepo.findOne({
-      where: { id: submissionId, contestId, participantId: participantUserId },
+      where: { id: submissionId, contestId: contest.id, participantId: participantUserId },
     });
     if (!submission) {
       throw new NotFoundException('Submission not found');
@@ -566,13 +600,12 @@ export class ContestsService {
 
   async getAllSubmissions(contestId: string, judgeUserId: string) {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
-    const c = await this.contestRepo.findOneBy({ id: contestId });
-    if (!c) throw new NotFoundException();
+    const c = await this.resolveContestOrThrow(contestId);
     if (!(await this.canJudgeManageContest(c.id, c.createdById, judgeUserId, judgeProfileId))) {
       throw new ForbiddenException();
     }
     const submissions = await this.subRepo.find({
-      where: { contestId },
+      where: { contestId: c.id },
       order: { submittedAt: 'DESC' },
     });
     return submissions.map((submission) => this.serializeSubmission(submission));
@@ -621,14 +654,13 @@ export class ContestsService {
     authorId: string,
   ) {
     const judgeProfileId = await this.getJudgeProfileId(authorId);
-    const c = await this.contestRepo.findOneBy({ id: contestId });
-    if (!c) throw new NotFoundException();
+    const c = await this.resolveContestOrThrow(contestId);
     if (!(await this.canJudgeManageContest(c.id, c.createdById, authorId, judgeProfileId))) {
       throw new ForbiddenException();
     }
 
     const ann = this.announcementRepo.create({
-      contestId,
+      contestId: c.id,
       authorId,
       title: dto.title,
       body: dto.body,
@@ -637,7 +669,7 @@ export class ContestsService {
     const saved = await this.announcementRepo.save(ann);
 
     // Real-time push to all in contest room
-    this.gateway.sendToContest(contestId, 'announcement', {
+    this.gateway.sendToContest(c.id, 'announcement', {
       id: saved.id,
       title: saved.title,
       body: saved.body,
@@ -646,7 +678,7 @@ export class ContestsService {
     });
 
     // Also notify enrolled participants via notification system
-    const participants = await this.tpRepo.find({ where: { contestId } });
+    const participants = await this.tpRepo.find({ where: { contestId: c.id } });
     if (participants.length) {
       const recipientUserIds = await Promise.all(
         participants.map(async tp => {
@@ -660,7 +692,7 @@ export class ContestsService {
           type: NotificationType.CONTEST_ANNOUNCEMENT,
           title: `[${c.title}] ${dto.title}`,
           body: dto.body,
-          referenceId: contestId,
+          referenceId: c.id,
         });
       }
     }
@@ -669,8 +701,9 @@ export class ContestsService {
   }
 
   async getAnnouncements(contestId: string) {
+    const contest = await this.resolveContestOrThrow(contestId);
     return this.announcementRepo.find({
-      where: { contestId },
+      where: { contestId: contest.id },
       order: { createdAt: 'DESC' },
     });
   }
@@ -678,11 +711,10 @@ export class ContestsService {
   // ─── CLARIFICATIONS ───────────────────────────────────────────────────────────
 
   async askClarification(contestId: string, dto: AskClarificationDto, participantUserId: string) {
-    const c = await this.contestRepo.findOneBy({ id: contestId });
-    if (!c) throw new NotFoundException();
+    const c = await this.resolveContestOrThrow(contestId);
 
     const clar = this.clarRepo.create({
-      contestId,
+      contestId: c.id,
       participantId: participantUserId,
       question: dto.question,
       contestProblemId: dto.contestProblemId ?? null,
@@ -693,14 +725,25 @@ export class ContestsService {
 
   async getPendingClarifications(contestId: string, judgeUserId: string) {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
-    const c = await this.contestRepo.findOneBy({ id: contestId });
-    if (!c) throw new NotFoundException();
+    const c = await this.resolveContestOrThrow(contestId);
     if (!(await this.canJudgeManageContest(c.id, c.createdById, judgeUserId, judgeProfileId))) {
       throw new ForbiddenException();
     }
     return this.clarRepo.find({
-      where: { contestId, status: ClarificationStatus.OPEN },
+      where: { contestId: c.id, status: ClarificationStatus.OPEN },
       order: { createdAt: 'ASC' },
+    });
+  }
+
+  async getAllClarifications(contestId: string, judgeUserId: string) {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
+    const c = await this.resolveContestOrThrow(contestId);
+    if (!(await this.canJudgeManageContest(c.id, c.createdById, judgeUserId, judgeProfileId))) {
+      throw new ForbiddenException();
+    }
+    return this.clarRepo.find({
+      where: { contestId: c.id },
+      order: { createdAt: 'DESC' },
     });
   }
 
@@ -743,9 +786,26 @@ export class ContestsService {
     return saved;
   }
 
+  async ignoreClarification(clarId: string, judgeUserId: string) {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
+    const clar = await this.clarRepo.findOne({
+      where: { id: clarId },
+      relations: ['contest'],
+    });
+    if (!clar) throw new NotFoundException();
+    if (!(await this.canJudgeManageContest(clar.contest.id, clar.contest.createdById, judgeUserId, judgeProfileId))) {
+      throw new ForbiddenException();
+    }
+
+    clar.status = ClarificationStatus.CLOSED;
+    const saved = await this.clarRepo.save(clar);
+    return saved;
+  }
+
   async getMyClarifications(contestId: string, participantUserId: string) {
+    const contest = await this.resolveContestOrThrow(contestId);
     return this.clarRepo.find({
-      where: { contestId, participantId: participantUserId },
+      where: { contestId: contest.id, participantId: participantUserId },
       order: { createdAt: 'DESC' },
     });
   }
@@ -754,8 +814,7 @@ export class ContestsService {
 
   async createTempParticipants(dto: CreateTempParticipantsDto, judgeUserId: string) {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
-    const contest = await this.contestRepo.findOneBy({ id: dto.contestId });
-    if (!contest) throw new NotFoundException('Contest not found');
+    const contest = await this.resolveContestOrThrow(dto.contestId);
     if (!(await this.canJudgeManageContest(contest.id, contest.createdById, judgeUserId, judgeProfileId))) {
       throw new ForbiddenException();
     }
@@ -782,7 +841,7 @@ export class ContestsService {
       const results: { username: string; password: string; participantId: string; name: string }[] = [];
 
       // Find the highest existing TP serial for this contest
-      const existing = await qr.manager.find(TempParticipant, { where: { contestId: dto.contestId } });
+      const existing = await qr.manager.find(TempParticipant, { where: { contestId: contest.id } });
       const existingSerials = existing
         .map((participant) => {
           const match = participant.participantId?.match(/(\d+)$/);
@@ -791,12 +850,12 @@ export class ContestsService {
         .filter((value) => Number.isFinite(value));
       let counter = existingSerials.length ? Math.max(...existingSerials) : 0;
 
-      const contestCode = dto.contestId.replace(/-/g, '').slice(0, 6).toUpperCase();
+      const contestCode = String(contest.contestNumber ?? contest.id.replace(/-/g, '').slice(0, 6)).toUpperCase();
 
       for (let i = 0; i < dto.count; i++) {
         counter++;
         const participantId = `TP-${contestCode}-${String(counter).padStart(3, '0')}`;
-        const username = `tp_${dto.contestId.slice(0, 8)}_${String(counter).padStart(3, '0')}`;
+        const username = `tp_${String(contest.contestNumber ?? contest.id).slice(0, 8)}_${String(counter).padStart(3, '0')}`;
         const plainPassword = Math.random().toString(36).slice(-8).toUpperCase();
         const fullName = `Participant ${counter}`;
 
@@ -813,7 +872,7 @@ export class ContestsService {
         const tp = qr.manager.create(TempParticipant, {
           participantId,
           fullName,
-          contestId: dto.contestId,
+          contestId: contest.id,
           accessFrom,
           accessUntil,
           createdByJudgeId: judgeProfileId,
@@ -841,14 +900,13 @@ export class ContestsService {
 
   async getContestParticipants(contestId: string, judgeUserId: string) {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
-    const contest = await this.contestRepo.findOneBy({ id: contestId });
-    if (!contest) throw new NotFoundException('Contest not found');
+    const contest = await this.resolveContestOrThrow(contestId);
     if (!(await this.canJudgeManageContest(contest.id, contest.createdById, judgeUserId, judgeProfileId))) {
       throw new ForbiddenException();
     }
 
     const participants = await this.tpRepo.find({
-      where: { contestId },
+      where: { contestId: contest.id },
       order: { createdAt: 'ASC' },
     });
 
