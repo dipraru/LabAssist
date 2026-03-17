@@ -3,6 +3,7 @@ import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { BookOpen, Bell } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { courseCode, courseTitle, semesterLabel } from '../../lib/display';
 
 export function TeacherDashboard() {
   const { data: courses = [] } = useQuery({
@@ -41,8 +42,8 @@ export function TeacherDashboard() {
                   <BookOpen className="text-indigo-500" size={18} />
                 </div>
                 <div>
-                  <p className="font-semibold text-slate-800">{c.name}</p>
-                  <p className="text-sm text-slate-500">{c.code} · {c.semester?.name?.replace('_', ' ')}</p>
+                  <p className="font-semibold text-slate-800">{courseTitle(c)}</p>
+                  <p className="text-sm text-slate-500">{courseCode(c)} · {semesterLabel(c)}</p>
                 </div>
               </div>
             ))}

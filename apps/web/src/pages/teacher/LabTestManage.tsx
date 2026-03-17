@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Plus, PlayCircle, StopCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { courseCode, courseTitle, studentDisplayName } from '../../lib/display';
 
 const testSchema = z.object({
   courseId: z.string().uuid('Select a course'),
@@ -113,7 +114,7 @@ export function LabTestManage() {
           <select value={filterCourse} onChange={e => setFilterCourse(e.target.value)}
             className="px-3 py-2 border border-slate-300 rounded-lg text-sm">
             <option value="">— filter by course —</option>
-            {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+            {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{courseCode(c)} - {courseTitle(c)}</option>)}
           </select>
         </div>
 
@@ -125,7 +126,7 @@ export function LabTestManage() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Course</label>
                 <select {...testForm.register('courseId')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                   <option value="">— select —</option>
-                  {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.code}</option>)}
+                  {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{courseCode(c)}</option>)}
                 </select>
               </div>
               <div>
@@ -240,7 +241,7 @@ export function LabTestManage() {
                         <tbody className="divide-y divide-slate-100">
                           {(submissions as any[]).map((sub: any) => (
                             <tr key={sub.id}>
-                              <td className="py-2">{sub.student?.user?.username ?? sub.studentId}</td>
+                              <td className="py-2">{studentDisplayName(sub)}</td>
                               <td className="py-2">{sub.problem?.title ?? '—'}</td>
                               <td className="py-2">{sub.manualVerdict ?? sub.submissionStatus}</td>
                               <td className="py-2">{sub.score ?? '—'}</td>
