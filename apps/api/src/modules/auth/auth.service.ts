@@ -27,7 +27,7 @@ export class AuthService {
 
   private async validateLocalUser(username: string, password: string): Promise<User> {
     const user = await this.usersService.findUserByUsername(username);
-    if (!user) throw new UnauthorizedException('Invalid credentials');
+    if (!user) throw new UnauthorizedException('Username does not exist');
     if (!user.isActive) throw new UnauthorizedException('Account is inactive');
 
     const shouldEnforceExpiry = user.role !== UserRole.TEMP_PARTICIPANT;
@@ -36,7 +36,7 @@ export class AuthService {
     }
 
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid) throw new UnauthorizedException('Invalid credentials');
+    if (!valid) throw new UnauthorizedException('Incorrect password');
 
     return user;
   }
@@ -58,7 +58,14 @@ export class AuthService {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password }),
           });
-          if (!response.ok) continue;
+          if (!response.ok) {
+            if (response.status === 401) {
+              const payload = await response.json().catch(() => null) as { message?: string } | null;
+              const reason = payload?.message ?? 'Authentication failed';
+              throw new UnauthorizedException(reason);
+            }
+            continue;
+          }
 
           const bridgeUser = await response.json() as BridgeUser;
           if (
@@ -75,7 +82,7 @@ export class AuthService {
         }
       }
 
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Username does not exist');
     }
 
     return this.validateLocalUser(username, password);
@@ -84,7 +91,7 @@ export class AuthService {
   async validateTempUserForBridge(username: string, password: string) {
     const user = await this.validateLocalUser(username, password);
     if (![UserRole.TEMP_JUDGE, UserRole.TEMP_PARTICIPANT].includes(user.role)) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('This account is not a temporary judge/participant account');
     }
 
     return {

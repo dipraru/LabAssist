@@ -29,6 +29,9 @@ export class TempJudge {
   @Column({ type: 'varchar', nullable: true })
   notes: string | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  latestIssuedPassword: string | null;
+
   @OneToOne(() => User, { eager: true, onDelete: 'CASCADE' })
   @JoinColumn()
   user: User;

@@ -16,7 +16,10 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    const requestUrl = String(err?.config?.url ?? '');
+    const isAuthLoginRequest = /\/auth\/login\/?$/.test(requestUrl);
+
+    if (err.response?.status === 401 && !isAuthLoginRequest) {
       localStorage.removeItem('labassist_token');
       localStorage.removeItem('labassist_user');
       window.location.href = '/login';
