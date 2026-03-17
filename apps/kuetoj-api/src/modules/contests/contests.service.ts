@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, ForbiddenException, BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Repository } from 'typeorm';
 import { Contest } from './entities/contest.entity';
 import { Problem } from './entities/problem.entity';
 import { ContestProblem } from './entities/contest-problem.entity';
@@ -83,6 +83,30 @@ export class ContestsService {
       throw new ForbiddenException('Temporary judge profile not found');
     }
     return judgeProfile.id;
+  }
+
+  private async getLegacyContestIdsByProblemAuthor(judgeUserId: string): Promise<string[]> {
+    const rows = await this.cpRepo
+      .createQueryBuilder('cp')
+      .innerJoin(Problem, 'p', 'p.id = cp.problemId')
+      .select('DISTINCT cp.contestId', 'contestId')
+      .where('p.authorId = :judgeUserId', { judgeUserId })
+      .getRawMany<{ contestId: string }>();
+
+    return rows.map((row) => row.contestId).filter(Boolean);
+  }
+
+  private async canJudgeManageContest(
+    contestId: string,
+    createdById: string | null | undefined,
+    judgeUserId: string,
+    judgeProfileId: string,
+  ): Promise<boolean> {
+    if (createdById === judgeProfileId || createdById === judgeUserId) return true;
+    if (createdById) return false;
+
+    const legacyContestIds = await this.getLegacyContestIdsByProblemAuthor(judgeUserId);
+    return legacyContestIds.includes(contestId);
   }
 
   private async getNextProblemCode(): Promise<string> {
@@ -304,13 +328,28 @@ export class ContestsService {
 
   async listMyContests(judgeUserId: string): Promise<Contest[]> {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
-    const mine = await this.contestRepo.find({
-      where: { createdById: judgeProfileId },
+    const contestsByOwner = await this.contestRepo.find({
+      where: [{ createdById: judgeProfileId }, { createdById: judgeUserId }],
       order: { startTime: 'DESC' },
     });
-    const contests = mine.length
-      ? mine
-      : await this.contestRepo.find({ order: { startTime: 'DESC' } });
+
+    const legacyContestIds = await this.getLegacyContestIdsByProblemAuthor(judgeUserId);
+    const legacyContests = legacyContestIds.length
+      ? await this.contestRepo.find({
+        where: { id: In(legacyContestIds) },
+        order: { startTime: 'DESC' },
+      })
+      : [];
+
+    const uniqueContests = new Map<string, Contest>();
+    for (const contest of [...contestsByOwner, ...legacyContests]) {
+      uniqueContests.set(contest.id, contest);
+    }
+
+    const contests = Array.from(uniqueContests.values()).sort(
+      (a, b) => b.startTime.getTime() - a.startTime.getTime(),
+    );
+
     return contests.map((contest) => ({
       ...contest,
       status: this.contestPhase(contest.startTime, contest.endTime) === 'upcoming'
@@ -325,7 +364,9 @@ export class ContestsService {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const c = await this.contestRepo.findOneBy({ id: contestId });
     if (!c) throw new NotFoundException();
-    if (c.createdById !== judgeProfileId) throw new ForbiddenException();
+    if (!(await this.canJudgeManageContest(c.id, c.createdById, judgeUserId, judgeProfileId))) {
+      throw new ForbiddenException();
+    }
     c.status = status;
     return this.contestRepo.save(c);
   }
@@ -334,7 +375,9 @@ export class ContestsService {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const c = await this.contestRepo.findOneBy({ id: contestId });
     if (!c) throw new NotFoundException();
-    if (c.createdById !== judgeProfileId) throw new ForbiddenException();
+    if (!(await this.canJudgeManageContest(c.id, c.createdById, judgeUserId, judgeProfileId))) {
+      throw new ForbiddenException();
+    }
     if (c.status !== ContestStatus.DRAFT) throw new BadRequestException('Contest already started');
 
     const cp = this.cpRepo.create({
@@ -444,7 +487,9 @@ export class ContestsService {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const c = await this.contestRepo.findOneBy({ id: contestId });
     if (!c) throw new NotFoundException();
-    if (c.createdById !== judgeProfileId) throw new ForbiddenException();
+    if (!(await this.canJudgeManageContest(c.id, c.createdById, judgeUserId, judgeProfileId))) {
+      throw new ForbiddenException();
+    }
     c.isStandingFrozen = frozen;
     const saved = await this.contestRepo.save(c);
     // Broadcast to all participants
@@ -523,7 +568,9 @@ export class ContestsService {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const c = await this.contestRepo.findOneBy({ id: contestId });
     if (!c) throw new NotFoundException();
-    if (c.createdById !== judgeProfileId) throw new ForbiddenException();
+    if (!(await this.canJudgeManageContest(c.id, c.createdById, judgeUserId, judgeProfileId))) {
+      throw new ForbiddenException();
+    }
     const submissions = await this.subRepo.find({
       where: { contestId },
       order: { submittedAt: 'DESC' },
@@ -538,7 +585,9 @@ export class ContestsService {
       relations: ['contest'],
     });
     if (!sub) throw new NotFoundException();
-    if (sub.contest.createdById !== judgeProfileId) throw new ForbiddenException();
+    if (!(await this.canJudgeManageContest(sub.contest.id, sub.contest.createdById, judgeUserId, judgeProfileId))) {
+      throw new ForbiddenException();
+    }
 
     const verdictUpper = (dto.verdict.toUpperCase().replace(/-/g, '_')) as ManualVerdict;
     sub.manualVerdict = verdictUpper;
@@ -574,7 +623,9 @@ export class ContestsService {
     const judgeProfileId = await this.getJudgeProfileId(authorId);
     const c = await this.contestRepo.findOneBy({ id: contestId });
     if (!c) throw new NotFoundException();
-    if (c.createdById !== judgeProfileId) throw new ForbiddenException();
+    if (!(await this.canJudgeManageContest(c.id, c.createdById, authorId, judgeProfileId))) {
+      throw new ForbiddenException();
+    }
 
     const ann = this.announcementRepo.create({
       contestId,
@@ -644,7 +695,9 @@ export class ContestsService {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const c = await this.contestRepo.findOneBy({ id: contestId });
     if (!c) throw new NotFoundException();
-    if (c.createdById !== judgeProfileId) throw new ForbiddenException();
+    if (!(await this.canJudgeManageContest(c.id, c.createdById, judgeUserId, judgeProfileId))) {
+      throw new ForbiddenException();
+    }
     return this.clarRepo.find({
       where: { contestId, status: ClarificationStatus.OPEN },
       order: { createdAt: 'ASC' },
@@ -662,7 +715,9 @@ export class ContestsService {
       relations: ['contest'],
     });
     if (!clar) throw new NotFoundException();
-    if (clar.contest.createdById !== judgeProfileId) throw new ForbiddenException();
+    if (!(await this.canJudgeManageContest(clar.contest.id, clar.contest.createdById, judgeUserId, judgeProfileId))) {
+      throw new ForbiddenException();
+    }
 
     clar.answer = dto.answer;
     clar.status = ClarificationStatus.ANSWERED;
@@ -701,7 +756,9 @@ export class ContestsService {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const contest = await this.contestRepo.findOneBy({ id: dto.contestId });
     if (!contest) throw new NotFoundException('Contest not found');
-    if (contest.createdById !== judgeProfileId) throw new ForbiddenException();
+    if (!(await this.canJudgeManageContest(contest.id, contest.createdById, judgeUserId, judgeProfileId))) {
+      throw new ForbiddenException();
+    }
     if (dto.count < 1 || dto.count > 200)
       throw new BadRequestException('Count must be between 1 and 200');
 
@@ -786,7 +843,9 @@ export class ContestsService {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const contest = await this.contestRepo.findOneBy({ id: contestId });
     if (!contest) throw new NotFoundException('Contest not found');
-    if (contest.createdById !== judgeProfileId) throw new ForbiddenException();
+    if (!(await this.canJudgeManageContest(contest.id, contest.createdById, judgeUserId, judgeProfileId))) {
+      throw new ForbiddenException();
+    }
 
     const participants = await this.tpRepo.find({
       where: { contestId },

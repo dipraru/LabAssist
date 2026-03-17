@@ -6,7 +6,7 @@ import { Plus, GripVertical, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
-import { ContestCountdownBar, getContestPhase } from '../../components/ContestCountdownBar';
+import { getContestPhase } from '../../components/ContestCountdownBar';
 
 type ProblemItem = {
   id: string;
@@ -25,17 +25,8 @@ type ContestItem = {
   id: string;
   title: string;
   type: string;
-  status: string;
   startTime?: string;
   endTime?: string;
-};
-
-const STATUS_COLOR: Record<string, string> = {
-  draft: 'bg-slate-100 text-slate-700',
-  scheduled: 'bg-blue-100 text-blue-700',
-  running: 'bg-green-100 text-green-700',
-  frozen: 'bg-indigo-100 text-indigo-700',
-  ended: 'bg-slate-100 text-slate-500',
 };
 
 const PHASE_COLOR: Record<string, string> = {
@@ -252,6 +243,84 @@ export function JudgeContests() {
     });
   }, [contests]);
 
+  const runningContests = useMemo(
+    () => sortedContests.filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'running'),
+    [sortedContests],
+  );
+
+  const upcomingContests = useMemo(
+    () => sortedContests.filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'upcoming'),
+    [sortedContests],
+  );
+
+  const pastContests = useMemo(
+    () => sortedContests.filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'old'),
+    [sortedContests],
+  );
+
+  const phaseLabel = (phase: string) => {
+    if (phase === 'running') return 'Running';
+    if (phase === 'upcoming') return 'Upcoming';
+    return 'Ended';
+  };
+
+  const renderContestTable = (title: string, rows: ContestItem[]) => (
+    <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+      <h2 className="text-lg font-semibold text-slate-900 mb-4">{title}</h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 border-y border-slate-200">
+            <tr>
+              <th className="px-3 py-2 text-left font-medium text-slate-600">Title</th>
+              <th className="px-3 py-2 text-left font-medium text-slate-600">Type</th>
+              <th className="px-3 py-2 text-left font-medium text-slate-600">Start Time</th>
+              <th className="px-3 py-2 text-left font-medium text-slate-600">End Time</th>
+              <th className="px-3 py-2 text-left font-medium text-slate-600">Status</th>
+              <th className="px-3 py-2 text-left font-medium text-slate-600">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {rows.map((contest) => {
+              const phase = getContestPhase(contest.startTime ?? '', contest.endTime ?? '');
+              return (
+                <tr key={contest.id} className="hover:bg-slate-50">
+                  <td className="px-3 py-3 font-medium text-slate-900">{contest.title}</td>
+                  <td className="px-3 py-3 text-slate-700">{contest.type}</td>
+                  <td className="px-3 py-3 text-slate-700">{contest.startTime ? new Date(contest.startTime).toLocaleString() : '—'}</td>
+                  <td className="px-3 py-3 text-slate-700">{contest.endTime ? new Date(contest.endTime).toLocaleString() : '—'}</td>
+                  <td className="px-3 py-3">
+                    <span className={`text-xs px-2 py-1 rounded-full ${PHASE_COLOR[phase] ?? 'bg-slate-100 text-slate-700'}`}>
+                      {phaseLabel(phase)}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => navigate(`/judge/contests/${contest.id}`)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Manage</button>
+                      <button onClick={() => openParticipantsModal(contest)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Create Participants</button>
+                      <button
+                        onClick={() => downloadAllCredentialsMutation.mutate(contest.id)}
+                        disabled={downloadAllCredentialsMutation.isPending}
+                        className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-60"
+                      >
+                        Download All Credentials
+                      </button>
+                      <button onClick={() => navigate(`/judge/contests/${contest.id}/standings`)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Standings</button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {!rows.length && (
+              <tr>
+                <td colSpan={6} className="px-3 py-8 text-center text-slate-500">No contests in this section.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+
   return (
     <AppShell>
       <div className="space-y-6">
@@ -262,12 +331,6 @@ export function JudgeContests() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => navigate('/judge/problems')}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium"
-            >
-              <Plus size={16} /> Create New Problem
-            </button>
-            <button
               onClick={() => setShowCreateContestModal(true)}
               className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium"
             >
@@ -276,53 +339,9 @@ export function JudgeContests() {
           </div>
         </section>
 
-        <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="space-y-3">
-            {sortedContests.map((contest) => {
-              const phase = getContestPhase(contest.startTime ?? '', contest.endTime ?? '');
-              return (
-              <article key={contest.id} className="border border-slate-200 rounded-lg p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <h3 className="font-semibold text-slate-900">{contest.title}</h3>
-                    <p className="text-xs text-slate-500 mt-1">
-                      {contest.type} · {new Date(contest.startTime ?? '').toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs px-2 py-1 rounded-full ${PHASE_COLOR[phase] ?? 'bg-slate-100 text-slate-700'}`}>
-                      {phase}
-                    </span>
-                    <span className={`text-xs px-2 py-1 rounded-full ${STATUS_COLOR[contest.status] ?? 'bg-slate-100 text-slate-700'}`}>
-                      {contest.status}
-                    </span>
-                  </div>
-                </div>
-                {contest.startTime && contest.endTime && (
-                  <div className="mt-3">
-                    <ContestCountdownBar startTime={contest.startTime} endTime={contest.endTime} compact />
-                  </div>
-                )}
-                <div className="mt-3 flex gap-2">
-                  <button onClick={() => navigate(`/judge/contests/${contest.id}`)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Manage</button>
-                  <button onClick={() => openParticipantsModal(contest)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Create Participants</button>
-                  <button
-                    onClick={() => downloadAllCredentialsMutation.mutate(contest.id)}
-                    disabled={downloadAllCredentialsMutation.isPending}
-                    className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-60"
-                  >
-                    Download All Credentials
-                  </button>
-                  <button onClick={() => navigate(`/judge/contests/${contest.id}/standings`)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Standings</button>
-                </div>
-              </article>
-              );
-            })}
-            {!(contests as ContestItem[]).length && (
-              <p className="text-sm text-slate-500 text-center py-8">No contests yet. Create your first contest.</p>
-            )}
-          </div>
-        </section>
+        {renderContestTable('Running Contests', runningContests)}
+        {renderContestTable('Upcoming Contests', upcomingContests)}
+        {renderContestTable('Past Contests', pastContests)}
 
         <Modal
           open={showCreateContestModal}
