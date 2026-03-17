@@ -10,6 +10,7 @@ import { ContestSubmission } from './entities/contest-submission.entity';
 import { ContestAnnouncement } from './entities/contest-announcement.entity';
 import { ContestClarification, ClarificationStatus } from './entities/contest-clarification.entity';
 import { User } from '../users/entities/user.entity';
+import { TempJudge } from '../users/entities/temp-judge.entity';
 import { TempParticipant } from '../users/entities/temp-participant.entity';
 import {
   AddContestProblemDto,
@@ -48,6 +49,7 @@ export class ContestsService {
     @InjectRepository(ContestAnnouncement) private announcementRepo: Repository<ContestAnnouncement>,
     @InjectRepository(ContestClarification) private clarRepo: Repository<ContestClarification>,
     @InjectRepository(User) private userRepo: Repository<User>,
+    @InjectRepository(TempJudge) private tjRepo: Repository<TempJudge>,
     @InjectRepository(TempParticipant) private tpRepo: Repository<TempParticipant>,
     private dataSource: DataSource,
     private storage: StorageService,
@@ -73,6 +75,14 @@ export class ContestsService {
       ...submission,
       submissionDisplayId: this.formatSubmissionDisplayId(submission.submissionNumber),
     };
+  }
+
+  private async getJudgeProfileId(judgeUserId: string): Promise<string> {
+    const judgeProfile = await this.tjRepo.findOne({ where: { userId: judgeUserId } });
+    if (!judgeProfile) {
+      throw new ForbiddenException('Temporary judge profile not found');
+    }
+    return judgeProfile.id;
   }
 
   private async getNextProblemCode(): Promise<string> {
@@ -177,6 +187,7 @@ export class ContestsService {
   // ─── CONTEST CRUD ────────────────────────────────────────────────────────────
 
   async createContest(dto: CreateContestDto, judgeUserId: string): Promise<Contest> {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const startTime = new Date(dto.startTime);
     const durationHours = dto.durationHours ?? 0;
     const durationMinutes = dto.durationMinutes ?? 0;
@@ -214,7 +225,7 @@ export class ContestsService {
         startTime,
         endTime,
         freezeTime,
-        createdById: judgeUserId,
+        createdById: judgeProfileId,
         status: ContestStatus.SCHEDULED,
         isStandingFrozen: false,
       });
@@ -292,8 +303,9 @@ export class ContestsService {
   }
 
   async listMyContests(judgeUserId: string): Promise<Contest[]> {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const mine = await this.contestRepo.find({
-      where: { createdById: judgeUserId },
+      where: { createdById: judgeProfileId },
       order: { startTime: 'DESC' },
     });
     const contests = mine.length
@@ -310,17 +322,19 @@ export class ContestsService {
   }
 
   async updateContestStatus(contestId: string, status: ContestStatus, judgeUserId: string) {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const c = await this.contestRepo.findOneBy({ id: contestId });
     if (!c) throw new NotFoundException();
-    if (c.createdById !== judgeUserId) throw new ForbiddenException();
+    if (c.createdById !== judgeProfileId) throw new ForbiddenException();
     c.status = status;
     return this.contestRepo.save(c);
   }
 
   async addProblemToContest(contestId: string, dto: AddContestProblemDto, judgeUserId: string) {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const c = await this.contestRepo.findOneBy({ id: contestId });
     if (!c) throw new NotFoundException();
-    if (c.createdById !== judgeUserId) throw new ForbiddenException();
+    if (c.createdById !== judgeProfileId) throw new ForbiddenException();
     if (c.status !== ContestStatus.DRAFT) throw new BadRequestException('Contest already started');
 
     const cp = this.cpRepo.create({
@@ -427,9 +441,10 @@ export class ContestsService {
   }
 
   async freezeStandings(contestId: string, frozen: boolean, judgeUserId: string) {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const c = await this.contestRepo.findOneBy({ id: contestId });
     if (!c) throw new NotFoundException();
-    if (c.createdById !== judgeUserId) throw new ForbiddenException();
+    if (c.createdById !== judgeProfileId) throw new ForbiddenException();
     c.isStandingFrozen = frozen;
     const saved = await this.contestRepo.save(c);
     // Broadcast to all participants
@@ -505,9 +520,10 @@ export class ContestsService {
   }
 
   async getAllSubmissions(contestId: string, judgeUserId: string) {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const c = await this.contestRepo.findOneBy({ id: contestId });
     if (!c) throw new NotFoundException();
-    if (c.createdById !== judgeUserId) throw new ForbiddenException();
+    if (c.createdById !== judgeProfileId) throw new ForbiddenException();
     const submissions = await this.subRepo.find({
       where: { contestId },
       order: { submittedAt: 'DESC' },
@@ -516,12 +532,13 @@ export class ContestsService {
   }
 
   async gradeSubmission(subId: string, dto: GradeContestSubmissionDto, judgeUserId: string) {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const sub = await this.subRepo.findOne({
       where: { id: subId },
       relations: ['contest'],
     });
     if (!sub) throw new NotFoundException();
-    if (sub.contest.createdById !== judgeUserId) throw new ForbiddenException();
+    if (sub.contest.createdById !== judgeProfileId) throw new ForbiddenException();
 
     const verdictUpper = (dto.verdict.toUpperCase().replace(/-/g, '_')) as ManualVerdict;
     sub.manualVerdict = verdictUpper;
@@ -554,9 +571,10 @@ export class ContestsService {
     dto: CreateAnnouncementDto,
     authorId: string,
   ) {
+    const judgeProfileId = await this.getJudgeProfileId(authorId);
     const c = await this.contestRepo.findOneBy({ id: contestId });
     if (!c) throw new NotFoundException();
-    if (c.createdById !== authorId) throw new ForbiddenException();
+    if (c.createdById !== judgeProfileId) throw new ForbiddenException();
 
     const ann = this.announcementRepo.create({
       contestId,
@@ -623,9 +641,10 @@ export class ContestsService {
   }
 
   async getPendingClarifications(contestId: string, judgeUserId: string) {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const c = await this.contestRepo.findOneBy({ id: contestId });
     if (!c) throw new NotFoundException();
-    if (c.createdById !== judgeUserId) throw new ForbiddenException();
+    if (c.createdById !== judgeProfileId) throw new ForbiddenException();
     return this.clarRepo.find({
       where: { contestId, status: ClarificationStatus.OPEN },
       order: { createdAt: 'ASC' },
@@ -637,12 +656,13 @@ export class ContestsService {
     dto: AnswerClarificationDto,
     judgeUserId: string,
   ) {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const clar = await this.clarRepo.findOne({
       where: { id: clarId },
       relations: ['contest'],
     });
     if (!clar) throw new NotFoundException();
-    if (clar.contest.createdById !== judgeUserId) throw new ForbiddenException();
+    if (clar.contest.createdById !== judgeProfileId) throw new ForbiddenException();
 
     clar.answer = dto.answer;
     clar.status = ClarificationStatus.ANSWERED;
@@ -678,9 +698,10 @@ export class ContestsService {
   // ─── TEMP PARTICIPANTS ────────────────────────────────────────────────────────
 
   async createTempParticipants(dto: CreateTempParticipantsDto, judgeUserId: string) {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const contest = await this.contestRepo.findOneBy({ id: dto.contestId });
     if (!contest) throw new NotFoundException('Contest not found');
-    if (contest.createdById !== judgeUserId) throw new ForbiddenException();
+    if (contest.createdById !== judgeProfileId) throw new ForbiddenException();
     if (dto.count < 1 || dto.count > 200)
       throw new BadRequestException('Count must be between 1 and 200');
 
@@ -738,7 +759,7 @@ export class ContestsService {
           contestId: dto.contestId,
           accessFrom,
           accessUntil,
-          createdByJudgeId: judgeUserId,
+          createdByJudgeId: judgeProfileId,
           userId: user.id,
           loginPassword: plainPassword,
         });
@@ -762,9 +783,10 @@ export class ContestsService {
   }
 
   async getContestParticipants(contestId: string, judgeUserId: string) {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const contest = await this.contestRepo.findOneBy({ id: contestId });
     if (!contest) throw new NotFoundException('Contest not found');
-    if (contest.createdById !== judgeUserId) throw new ForbiddenException();
+    if (contest.createdById !== judgeProfileId) throw new ForbiddenException();
 
     const participants = await this.tpRepo.find({
       where: { contestId },

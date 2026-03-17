@@ -212,8 +212,8 @@ export function ManageStudents() {
   };
 
   const toggleSelectAllVisible = () => {
-    const visibleIds = filtered.map((student: any) => student.id);
-    const isAllSelected = visibleIds.every((id) => selectedStudentIds.includes(id));
+    const visibleIds = filtered.map((student: any) => student.id as string);
+    const isAllSelected = visibleIds.every((id: string) => selectedStudentIds.includes(id));
     setSelectedStudentIds((prev) => {
       if (isAllSelected) {
         return prev.filter((id) => !visibleIds.includes(id));

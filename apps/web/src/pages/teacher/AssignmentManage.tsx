@@ -13,12 +13,12 @@ const assignSchema = z.object({
   title: z.string().min(2),
   caption: z.string().optional(),
   deadline: z.string().min(1, 'Deadline required'),
-  totalMarks: z.coerce.number().positive(),
+  totalMarks: z.number().positive(),
   allowLateSubmission: z.boolean().optional(),
 });
 type AssignData = z.infer<typeof assignSchema>;
 
-const gradeSchema = z.object({ score: z.coerce.number().min(0), feedback: z.string().optional() });
+const gradeSchema = z.object({ score: z.number().min(0), feedback: z.string().optional() });
 type GradeData = z.infer<typeof gradeSchema>;
 
 export function AssignmentManage() {
@@ -116,7 +116,7 @@ export function AssignmentManage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Total Marks</label>
-                <input type="number" {...assignForm.register('totalMarks')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                <input type="number" {...assignForm.register('totalMarks', { valueAsNumber: true })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
               </div>
               <div className="col-span-2 flex items-center gap-2">
                 <input type="checkbox" id="late" {...assignForm.register('allowLateSubmission')} />
@@ -165,7 +165,7 @@ export function AssignmentManage() {
                                 {gradingId === sub.id ? (
                                   <form onSubmit={gradeForm.handleSubmit(d => gradeMutation.mutate({ id: sub.id, data: d }))}
                                     className="flex gap-2 items-center">
-                                    <input type="number" {...gradeForm.register('score')} placeholder="Score"
+                                    <input type="number" {...gradeForm.register('score', { valueAsNumber: true })} placeholder="Score"
                                       className="w-16 px-2 py-1 border border-slate-300 rounded text-xs" />
                                     <input {...gradeForm.register('feedback')} placeholder="Feedback"
                                       className="w-24 px-2 py-1 border border-slate-300 rounded text-xs" />
