@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useFieldArray, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
@@ -16,6 +16,10 @@ const assignSchema = z.object({
   deadline: z.string().min(1, 'Deadline required'),
   totalMarks: z.number().positive(),
   allowLateSubmission: z.boolean().optional(),
+  links: z.array(z.object({
+    url: z.string().url('Enter a valid URL'),
+    label: z.string().optional(),
+  })).optional(),
 });
 type AssignData = z.infer<typeof assignSchema>;
 
@@ -43,7 +47,14 @@ export function AssignmentManage() {
     enabled: !!selectedAssignment,
   });
 
-  const assignForm = useForm<AssignData>({ resolver: zodResolver(assignSchema) });
+  const assignForm = useForm<AssignData>({
+    resolver: zodResolver(assignSchema),
+    defaultValues: { links: [] },
+  });
+  const { fields: linkFields, append: appendLink, remove: removeLink } = useFieldArray({
+    control: assignForm.control,
+    name: 'links',
+  });
   const gradeForm = useForm<GradeData>({ resolver: zodResolver(gradeSchema) });
 
   const createMutation = useMutation({
@@ -51,6 +62,7 @@ export function AssignmentManage() {
       ...d,
       deadline: new Date(d.deadline).toISOString(),
       allowLateSubmission: d.allowLateSubmission ?? false,
+      links: (d.links ?? []).filter((l) => l.url?.trim()),
     }),
     onSuccess: () => {
       toast.success('Assignment created');
@@ -110,6 +122,46 @@ export function AssignmentManage() {
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">Caption</label>
                 <textarea {...assignForm.register('caption')} rows={2} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm resize-none" />
+              </div>
+              <div className="col-span-2">
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="block text-sm font-medium text-slate-700">Links (optional)</label>
+                  <button
+                    type="button"
+                    onClick={() => appendLink({ url: '', label: '' })}
+                    className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50"
+                  >
+                    Add Link
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {linkFields.map((field, index) => (
+                    <div key={field.id} className="grid grid-cols-12 gap-2">
+                      <input
+                        {...assignForm.register(`links.${index}.url`)}
+                        placeholder="https://..."
+                        className="col-span-7 px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                      />
+                      <input
+                        {...assignForm.register(`links.${index}.label`)}
+                        placeholder="Label (optional)"
+                        className="col-span-4 px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeLink(index)}
+                        className="col-span-1 px-2 py-2 border border-slate-300 rounded-lg text-xs hover:bg-slate-50"
+                      >
+                        X
+                      </button>
+                      {assignForm.formState.errors.links?.[index]?.url?.message && (
+                        <p className="col-span-12 text-xs text-red-500">
+                          {assignForm.formState.errors.links[index]?.url?.message}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Deadline</label>
