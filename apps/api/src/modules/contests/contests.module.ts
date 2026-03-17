@@ -7,6 +7,7 @@ import { ContestSubmission } from './entities/contest-submission.entity';
 import { ContestAnnouncement } from './entities/contest-announcement.entity';
 import { ContestClarification } from './entities/contest-clarification.entity';
 import { User } from '../users/entities/user.entity';
+import { TempJudge } from '../users/entities/temp-judge.entity';
 import { TempParticipant } from '../users/entities/temp-participant.entity';
 import { ContestsService } from './contests.service';
 import { ContestsController } from './contests.controller';
@@ -15,7 +16,7 @@ import { ContestsController } from './contests.controller';
   imports: [
     TypeOrmModule.forFeature([
       Contest, Problem, ContestProblem, ContestSubmission,
-      ContestAnnouncement, ContestClarification, User, TempParticipant,
+      ContestAnnouncement, ContestClarification, User, TempJudge, TempParticipant,
     ]),
   ],
   providers: [ContestsService],
