@@ -30,7 +30,8 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('Invalid credentials');
     if (!user.isActive) throw new UnauthorizedException('Account is inactive');
 
-    if (user.expiresAt && new Date() > user.expiresAt) {
+    const shouldEnforceExpiry = user.role !== UserRole.TEMP_PARTICIPANT;
+    if (shouldEnforceExpiry && user.expiresAt && new Date() > user.expiresAt) {
       throw new UnauthorizedException('Account access has expired');
     }
 

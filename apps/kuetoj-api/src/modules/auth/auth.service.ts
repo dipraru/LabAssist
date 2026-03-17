@@ -63,8 +63,9 @@ export class AuthService {
     }
     if (!user.isActive) throw new UnauthorizedException('Account is inactive');
 
-    // Check expiry for temp accounts
-    if (user.expiresAt && new Date() > user.expiresAt) {
+    // Temp participants can always log in; submission access is time-gated by contest window.
+    const shouldEnforceExpiry = user.role !== UserRole.TEMP_PARTICIPANT;
+    if (shouldEnforceExpiry && user.expiresAt && new Date() > user.expiresAt) {
       throw new UnauthorizedException('Account access has expired');
     }
 

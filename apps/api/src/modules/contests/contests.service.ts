@@ -543,7 +543,7 @@ export class ContestsService {
           role: UserRole.TEMP_PARTICIPANT,
           isFirstLogin: false,
           isActive: true,
-          expiresAt: new Date(dto.accessUntil),
+          expiresAt: null,
         });
         await qr.manager.save(user);
 

@@ -161,6 +161,19 @@ export class OfficeController {
     return this.officeService.extendTempJudge(id, dto);
   }
 
+  @Get('judges/:id/credentials')
+  async downloadJudgeCredentials(@Param('id') id: string) {
+    const { judge, plainPassword } = await this.officeService.getTempJudgeCredentials(id);
+    const pdf = await this.pdfService.generateCredentialsPdf([
+      { username: judge.judgeId, password: plainPassword, name: judge.fullName ?? judge.judgeId },
+    ]);
+    return {
+      judge,
+      credentials: { username: judge.judgeId, password: plainPassword },
+      credentialsPdf: pdf,
+    };
+  }
+
   @Post('judges/:id/credentials/reset')
   async resetJudgeCredentials(@Param('id') id: string) {
     const { judge, plainPassword } = await this.officeService.resetTempJudgeCredentials(id);
