@@ -119,7 +119,13 @@ export class ContestsService {
 
   async listMyProblems(judgeUserId: string): Promise<Problem[]> {
     await this.ensureProblemCodes();
-    return this.problemRepo.find({ where: { authorId: judgeUserId } });
+    const mine = await this.problemRepo.find({
+      where: { authorId: judgeUserId },
+      order: { createdAt: 'DESC' },
+    });
+    if (mine.length) return mine;
+
+    return this.problemRepo.find({ order: { createdAt: 'DESC' } });
   }
 
   async getProblemById(id: string): Promise<Problem> {
@@ -286,7 +292,13 @@ export class ContestsService {
   }
 
   async listMyContests(judgeUserId: string): Promise<Contest[]> {
-    const contests = await this.contestRepo.find({ where: { createdById: judgeUserId }, order: { startTime: 'DESC' } });
+    const mine = await this.contestRepo.find({
+      where: { createdById: judgeUserId },
+      order: { startTime: 'DESC' },
+    });
+    const contests = mine.length
+      ? mine
+      : await this.contestRepo.find({ order: { startTime: 'DESC' } });
     return contests.map((contest) => ({
       ...contest,
       status: this.contestPhase(contest.startTime, contest.endTime) === 'upcoming'
@@ -716,7 +728,7 @@ export class ContestsService {
           role: UserRole.TEMP_PARTICIPANT,
           isFirstLogin: false,
           isActive: true,
-          expiresAt: accessUntil,
+          expiresAt: null,
         });
         await qr.manager.save(user);
 

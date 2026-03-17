@@ -1,6 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ProtectedRoute } from './components/ProtectedRoute';
-import { LoginPage } from './pages/LoginPage';
 import { BridgeLoginPage } from './pages/BridgeLoginPage';
 
 // Judge
@@ -22,9 +21,24 @@ import { ParticipantContestEntry } from './pages/participant/ParticipantContestE
 
 import { useAuthStore } from './store/auth.store';
 
+const LABASSIST_WEB_URL = import.meta.env.VITE_LABASSIST_WEB_URL ?? 'http://localhost:5173';
+
+function redirectToLabassistLogin() {
+  const base = LABASSIST_WEB_URL.replace(/\/$/, '');
+  window.location.replace(`${base}/login`);
+}
+
+function LoginRedirect() {
+  redirectToLabassistLogin();
+  return null;
+}
+
 function RoleRedirect() {
   const { user } = useAuthStore();
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    redirectToLabassistLogin();
+    return null;
+  }
   const map: Record<string, string> = {
     temp_judge: '/judge/contests',
     temp_participant: '/contest',
@@ -35,7 +49,7 @@ function RoleRedirect() {
 export default function App() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
+      <Route path="/login" element={<LoginRedirect />} />
       <Route path="/bridge-login" element={<BridgeLoginPage />} />
       <Route path="/unauthorized" element={
         <div className="flex items-center justify-center min-h-screen">

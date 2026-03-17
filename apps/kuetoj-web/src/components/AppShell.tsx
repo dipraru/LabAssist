@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth.store';
 import {
   FlaskConical,
   LogOut,
 } from 'lucide-react';
+
+const LABASSIST_WEB_URL = import.meta.env.VITE_LABASSIST_WEB_URL ?? 'http://localhost:5173';
 
 const roleNavItems: Record<string, { label: string; href: string }[]> = {
   temp_judge: [
@@ -16,14 +18,16 @@ const roleNavItems: Record<string, { label: string; href: string }[]> = {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuthStore();
-  const navigate = useNavigate();
   const location = useLocation();
 
   const navItems = user ? (roleNavItems[user.role] ?? []) : [];
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    localStorage.removeItem('labassist_token');
+    localStorage.removeItem('labassist_user');
+    const base = LABASSIST_WEB_URL.replace(/\/$/, '');
+    window.location.replace(`${base}/login`);
   };
 
   return (

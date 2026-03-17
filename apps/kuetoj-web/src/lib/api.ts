@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+const LABASSIST_WEB_URL = import.meta.env.VITE_LABASSIST_WEB_URL ?? 'http://localhost:5173';
+
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api',
   withCredentials: false,
@@ -19,7 +21,10 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       localStorage.removeItem('kuetoj_token');
       localStorage.removeItem('kuetoj_user');
-      window.location.href = '/login';
+      localStorage.removeItem('labassist_token');
+      localStorage.removeItem('labassist_user');
+      const base = LABASSIST_WEB_URL.replace(/\/$/, '');
+      window.location.href = `${base}/login`;
     }
     return Promise.reject(err);
   },
