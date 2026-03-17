@@ -42,7 +42,14 @@ export class AuthService {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password }),
           });
-          if (!response.ok) continue;
+          if (!response.ok) {
+            if (response.status === 401) {
+              const payload = await response.json().catch(() => null) as { message?: string } | null;
+              const reason = payload?.message ?? 'Authentication failed';
+              throw new UnauthorizedException(reason);
+            }
+            continue;
+          }
 
           const bridgeUser = await response.json() as BridgeUser;
           if (
@@ -59,7 +66,7 @@ export class AuthService {
         }
       }
 
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Username does not exist');
     }
     if (!user.isActive) throw new UnauthorizedException('Account is inactive');
 
@@ -70,7 +77,7 @@ export class AuthService {
     }
 
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid) throw new UnauthorizedException('Invalid credentials');
+    if (!valid) throw new UnauthorizedException('Incorrect password');
 
     return user;
   }
