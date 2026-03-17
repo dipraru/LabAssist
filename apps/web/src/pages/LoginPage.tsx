@@ -92,17 +92,15 @@ export function LoginPage() {
       const res = await api.post('/auth/login', data);
       const { accessToken, user } = res.data;
 
-      if (user.role !== 'temp_judge' && user.role !== 'temp_participant') {
-        toast.error('Only temporary judges/participants can access KUETOJ');
-        return;
-      }
-
       await maybeStoreCredential(data.username, data.password);
 
       login(accessToken, user);
 
       // Role-based redirect
       const roleMap: Record<string, string> = {
+        office: '/office',
+        teacher: '/teacher',
+        student: user.isFirstLogin ? '/student/profile' : '/student',
         temp_judge: '/judge',
         temp_participant: '/contest',
       };
