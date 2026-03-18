@@ -26,19 +26,21 @@ export function ParticipantStandings() {
   return (
     <AppShell>
       <div className="w-full">
-        {id && <ParticipantContestHeader contestId={id} />}
+        {id && <ParticipantContestHeader contestId={id} hideFrozenBadge />}
         {id && <ParticipantContestNav contestId={id} />}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Standings</h1>
-            {contest?.isStandingFrozen && (
-              <span className="text-blue-600 text-sm font-medium">❄ Standings are frozen</span>
-            )}
           </div>
-          <button onClick={() => refetch()} disabled={isFetching}
-            className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg text-sm hover:bg-slate-50 disabled:opacity-50">
-            <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} /> Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            {standings?.isFrozen && (
+              <div className="px-3 py-2 rounded-lg bg-blue-100 text-blue-700 text-sm font-semibold">Frozen</div>
+            )}
+            <button onClick={() => refetch()} disabled={isFetching}
+              className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg text-sm hover:bg-slate-50 disabled:opacity-50">
+              <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} /> Refresh
+            </button>
+          </div>
         </div>
 
         <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-x-auto">

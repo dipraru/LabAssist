@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
@@ -32,6 +32,16 @@ function formatRemainingTime(endTime?: string) {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+function contestTimeLabel(startTime?: string, endTime?: string) {
+  if (!startTime || !endTime) return 'Ended';
+  const now = Date.now();
+  const startMs = new Date(startTime).getTime();
+  const endMs = new Date(endTime).getTime();
+  if (now > endMs) return 'Ended';
+  if (now < startMs) return `Starts In: ${formatRemainingTime(startTime)}`;
+  return `Remaining: ${formatRemainingTime(endTime)}`;
+}
+
 export function ContestProblem() {
   const { id, problemId } = useParams<{ id: string; problemId: string }>();
   const queryClient = useQueryClient();
@@ -40,7 +50,6 @@ export function ContestProblem() {
   const [activeTab, setActiveTab] = useState<'statement' | 'submissions'>('statement');
   const [leftPanePercent, setLeftPanePercent] = useState(55);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
-  const [remainingTime, setRemainingTime] = useState('00:00:00');
 
   const { data: submissions = [] } = useQuery({
     queryKey: ['my-contest-submissions', id],
@@ -56,15 +65,6 @@ export function ContestProblem() {
   const contestProblems: any[] = contest?.problems ?? contest?.contestProblems ?? [];
   const cp = contestProblems.find((p: any) => p.problem?.id === problemId);
   const problem = cp?.problem;
-
-  useEffect(() => {
-    if (!contest?.endTime) return;
-    setRemainingTime(formatRemainingTime(contest.endTime));
-    const timer = window.setInterval(() => {
-      setRemainingTime(formatRemainingTime(contest.endTime));
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [contest?.endTime]);
 
   const submitMutation = useMutation({
     mutationFn: () => {
@@ -147,7 +147,7 @@ export function ContestProblem() {
             </Link>
             </div>
             <div className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
-              Remaining: {remainingTime}
+              {contestTimeLabel(contest?.startTime, contest?.endTime)}
             </div>
           </div>
         </div>

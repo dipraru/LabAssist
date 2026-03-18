@@ -63,9 +63,11 @@ export function JudgeContestProblem() {
   }, [contest?.startTime, contest?.endTime]);
 
   const remainingLabel = useMemo(() => {
-    if (!contest?.startTime || !contest?.endTime) return 'Remaining: 00:00:00';
+    if (!contest?.startTime || !contest?.endTime) return 'Ended';
     const now = Date.now();
     const startMs = new Date(contest.startTime).getTime();
+    const endMs = new Date(contest.endTime).getTime();
+    if (now > endMs) return 'Ended';
     const prefix = now < startMs ? 'Starts In' : 'Remaining';
     return `${prefix}: ${remainingTime}`;
   }, [contest?.startTime, contest?.endTime, remainingTime]);
@@ -119,11 +121,11 @@ export function JudgeContestProblem() {
         <div className="mb-6 overflow-x-auto">
           <div className="flex min-w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-2">
             <div className="flex flex-wrap gap-2">
-              <Link to={`/judge/contests/${id}?tab=problems`} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white">Problems</Link>
-              <Link to={`/judge/contests/${id}?tab=status`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Status</Link>
-              <Link to={`/judge/contests/${id}?tab=standing`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Standing</Link>
-              <Link to={`/judge/contests/${id}?tab=clarifications`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Clarifications</Link>
-              <Link to={`/judge/contests/${id}?tab=announcements`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Announcements</Link>
+              <Link to={`/judge/contests/${id}/problems`} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white">Problems</Link>
+              <Link to={`/judge/contests/${id}/status`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Status</Link>
+              <Link to={`/judge/contests/${id}/standings`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Standings</Link>
+              <Link to={`/judge/contests/${id}/clarifications`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Clarifications</Link>
+              <Link to={`/judge/contests/${id}/announcements`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Announcements</Link>
             </div>
             <div className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700">
               {remainingLabel}
