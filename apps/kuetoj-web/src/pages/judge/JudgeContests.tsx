@@ -69,8 +69,9 @@ export function JudgeContests() {
   const [startAtText, setStartAtText] = useState('');
   const [contestLengthText, setContestLengthText] = useState('05:00');
   const [freezeEnabled, setFreezeEnabled] = useState(true);
-  const [freezeBeforeMinutes, setFreezeBeforeMinutes] = useState(60);
-  const [freezeAfterMinutes, setFreezeAfterMinutes] = useState(0);
+  const [manualUnfreeze, setManualUnfreeze] = useState(false);
+  const [freezeBeforeMinutesText, setFreezeBeforeMinutesText] = useState('60');
+  const [freezeAfterMinutesText, setFreezeAfterMinutesText] = useState('0');
   const [problemSearchText, setProblemSearchText] = useState('');
   const [checkedProblemIds, setCheckedProblemIds] = useState<string[]>([]);
   const [selected, setSelected] = useState<SelectedProblem[]>([]);
@@ -84,8 +85,9 @@ export function JudgeContests() {
   const [editStartAtText, setEditStartAtText] = useState('');
   const [editContestLengthText, setEditContestLengthText] = useState('05:00');
   const [editFreezeEnabled, setEditFreezeEnabled] = useState(true);
-  const [editFreezeBeforeMinutes, setEditFreezeBeforeMinutes] = useState(60);
-  const [editFreezeAfterMinutes, setEditFreezeAfterMinutes] = useState(0);
+  const [editManualUnfreeze, setEditManualUnfreeze] = useState(false);
+  const [editFreezeBeforeMinutesText, setEditFreezeBeforeMinutesText] = useState('60');
+  const [editFreezeAfterMinutesText, setEditFreezeAfterMinutesText] = useState('0');
   const [editProblemSearchText, setEditProblemSearchText] = useState('');
   const [editCheckedProblemIds, setEditCheckedProblemIds] = useState<string[]>([]);
   const [editSelected, setEditSelected] = useState<EditSelectedProblem[]>([]);
@@ -181,6 +183,14 @@ export function JudgeContests() {
     return { hours, minutes, totalMinutes };
   };
 
+  const parseMinutesText = (text: string, label: string): number => {
+    const value = text.trim();
+    if (!/^\d+$/.test(value)) {
+      throw new Error(`${label} must be a non-negative number`);
+    }
+    return Number(value);
+  };
+
   const durationTextFromStartEnd = (startIso?: string, endIso?: string) => {
     if (!startIso || !endIso) return '05:00';
     const startMs = new Date(startIso).getTime();
@@ -218,8 +228,9 @@ export function JudgeContests() {
     setStartAtText(toPlainDateTimeText(oneHourLater));
     setContestLengthText('05:00');
     setFreezeEnabled(true);
-    setFreezeBeforeMinutes(60);
-    setFreezeAfterMinutes(0);
+    setManualUnfreeze(false);
+    setFreezeBeforeMinutesText('60');
+    setFreezeAfterMinutesText('0');
     setProblemSearchText('');
     setCheckedProblemIds([]);
     setSelected([]);
@@ -246,6 +257,12 @@ export function JudgeContests() {
       if (!parsedDuration || parsedDuration.totalMinutes <= 0) {
         throw new Error('Contest length must be valid (e.g. 05:00) and greater than zero');
       }
+      const freezeBeforeMinutes = freezeEnabled
+        ? parseMinutesText(freezeBeforeMinutesText, 'Freeze before end minutes')
+        : 0;
+      const freezeAfterMinutes = freezeEnabled && !manualUnfreeze
+        ? parseMinutesText(freezeAfterMinutesText, 'Auto unfreeze minutes')
+        : 0;
 
       const problems = selected.map((p, idx) => ({
         problemId: p.problemId,
@@ -263,8 +280,9 @@ export function JudgeContests() {
         durationMinutes: parsedDuration.minutes,
         standingVisibility,
         freezeEnabled,
-        freezeBeforeMinutes: freezeEnabled ? freezeBeforeMinutes : 0,
-        freezeAfterMinutes: freezeEnabled ? freezeAfterMinutes : 0,
+        manualUnfreeze: freezeEnabled ? manualUnfreeze : false,
+        freezeBeforeMinutes,
+        freezeAfterMinutes,
         problems,
       });
     },
@@ -311,8 +329,9 @@ export function JudgeContests() {
     setEditStartAtText('');
     setEditContestLengthText('05:00');
     setEditFreezeEnabled(true);
-    setEditFreezeBeforeMinutes(60);
-    setEditFreezeAfterMinutes(0);
+    setEditManualUnfreeze(false);
+    setEditFreezeBeforeMinutesText('60');
+    setEditFreezeAfterMinutesText('0');
     setEditProblemSearchText('');
     setEditCheckedProblemIds([]);
     setEditSelected([]);
@@ -335,8 +354,10 @@ export function JudgeContests() {
       setEditStartAtText(details.startTime ? toPlainDateTimeText(new Date(details.startTime)) : '');
       setEditContestLengthText(durationTextFromStartEnd(details.startTime, details.endTime));
       setEditFreezeEnabled(Boolean(details.isStandingFrozen));
-      setEditFreezeBeforeMinutes(Number(details.freezeBeforeMinutes ?? 60));
-      setEditFreezeAfterMinutes(Number(details.freezeAfterMinutes ?? 0));
+      const manual = Boolean(details.isStandingFrozen) && !details.standingUnfreezeTime;
+      setEditManualUnfreeze(manual);
+      setEditFreezeBeforeMinutesText(String(details.freezeBeforeMinutes ?? 60));
+      setEditFreezeAfterMinutesText(String(details.freezeAfterMinutes ?? 0));
       const contestProblems = (details.problems ?? []) as Array<any>;
       const sortedProblems = [...contestProblems].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
       setEditSelected(
@@ -424,6 +445,12 @@ export function JudgeContests() {
       if (!parsedDuration || parsedDuration.totalMinutes <= 0) {
         throw new Error('Contest length must be valid (e.g. 05:00) and greater than zero');
       }
+      const freezeBeforeMinutes = editFreezeEnabled
+        ? parseMinutesText(editFreezeBeforeMinutesText, 'Freeze before end minutes')
+        : 0;
+      const freezeAfterMinutes = editFreezeEnabled && !editManualUnfreeze
+        ? parseMinutesText(editFreezeAfterMinutesText, 'Auto unfreeze minutes')
+        : 0;
 
       if (!editSelected.length) {
         throw new Error('Select at least one problem');
@@ -445,8 +472,9 @@ export function JudgeContests() {
         durationMinutes: parsedDuration.minutes,
         standingVisibility: editStandingVisibility,
         freezeEnabled: editFreezeEnabled,
-        freezeBeforeMinutes: editFreezeEnabled ? editFreezeBeforeMinutes : 0,
-        freezeAfterMinutes: editFreezeEnabled ? editFreezeAfterMinutes : 0,
+        manualUnfreeze: editFreezeEnabled ? editManualUnfreeze : false,
+        freezeBeforeMinutes,
+        freezeAfterMinutes,
         problems,
       });
     },
@@ -554,15 +582,25 @@ export function JudgeContests() {
     return new Date(parsedStartAt.getTime() + parsedLength.totalMinutes * 60 * 1000);
   }, [parsedStartAt, parsedLength]);
 
+  const freezeBeforeMinutesPreview = useMemo(() => {
+    if (!/^\d+$/.test(freezeBeforeMinutesText.trim())) return 0;
+    return Number(freezeBeforeMinutesText.trim());
+  }, [freezeBeforeMinutesText]);
+
+  const freezeAfterMinutesPreview = useMemo(() => {
+    if (!/^\d+$/.test(freezeAfterMinutesText.trim())) return 0;
+    return Number(freezeAfterMinutesText.trim());
+  }, [freezeAfterMinutesText]);
+
   const computedFreezeStart = useMemo(() => {
     if (!freezeEnabled || !computedEndTime) return null;
-    return new Date(computedEndTime.getTime() - Math.max(0, freezeBeforeMinutes) * 60 * 1000);
-  }, [freezeEnabled, computedEndTime, freezeBeforeMinutes]);
+    return new Date(computedEndTime.getTime() - Math.max(0, freezeBeforeMinutesPreview) * 60 * 1000);
+  }, [freezeEnabled, computedEndTime, freezeBeforeMinutesPreview]);
 
   const computedFreezeEnd = useMemo(() => {
     if (!freezeEnabled || !computedEndTime) return null;
-    return new Date(computedEndTime.getTime() + Math.max(0, freezeAfterMinutes) * 60 * 1000);
-  }, [freezeEnabled, computedEndTime, freezeAfterMinutes]);
+    return new Date(computedEndTime.getTime() + Math.max(0, freezeAfterMinutesPreview) * 60 * 1000);
+  }, [freezeEnabled, computedEndTime, freezeAfterMinutesPreview]);
 
   const sortedContests = useMemo(() => {
     const order: Record<string, number> = { running: 0, upcoming: 1, old: 2 };
@@ -801,24 +839,37 @@ export function JudgeContests() {
                     <div>
                       <label className="text-xs font-medium text-slate-600">Freeze Before End (minutes)</label>
                       <input
-                        type="number"
-                        min={0}
-                        value={freezeBeforeMinutes}
-                        onChange={(e) => setFreezeBeforeMinutes(Number(e.target.value || 0))}
+                        type="text"
+                        inputMode="numeric"
+                        value={freezeBeforeMinutesText}
+                        onChange={(e) => setFreezeBeforeMinutesText(e.target.value)}
                         className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
                       />
                     </div>
-                    <div>
-                      <label className="text-xs font-medium text-slate-600">Unfreeze After End (minutes)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={freezeAfterMinutes}
-                        onChange={(e) => setFreezeAfterMinutes(Number(e.target.value || 0))}
-                        className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
-                      />
+                    <div className="flex items-end">
+                      <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={manualUnfreeze}
+                          onChange={(e) => setManualUnfreeze(e.target.checked)}
+                        />
+                        Manual unfreeze
+                      </label>
                     </div>
                   </div>
+
+                  {!manualUnfreeze && (
+                    <div className="mt-3">
+                      <label className="text-xs font-medium text-slate-600">Auto Unfreeze After End (minutes)</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={freezeAfterMinutesText}
+                        onChange={(e) => setFreezeAfterMinutesText(e.target.value)}
+                        className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+                      />
+                    </div>
+                  )}
 
                   <div className="mt-3 text-xs text-slate-500 space-y-1">
                     <p>Computed End: {computedEndTime ? computedEndTime.toLocaleString() : '—'}</p>
@@ -997,28 +1048,43 @@ export function JudgeContests() {
                 </label>
 
                 {editFreezeEnabled && (
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-medium text-slate-600">Freeze Before End (minutes)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={editFreezeBeforeMinutes}
-                        onChange={(e) => setEditFreezeBeforeMinutes(Number(e.target.value || 0))}
-                        className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
-                      />
+                  <>
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-medium text-slate-600">Freeze Before End (minutes)</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={editFreezeBeforeMinutesText}
+                          onChange={(e) => setEditFreezeBeforeMinutesText(e.target.value)}
+                          className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div className="flex items-end">
+                        <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={editManualUnfreeze}
+                            onChange={(e) => setEditManualUnfreeze(e.target.checked)}
+                          />
+                          Manual unfreeze
+                        </label>
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-xs font-medium text-slate-600">Unfreeze After End (minutes)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={editFreezeAfterMinutes}
-                        onChange={(e) => setEditFreezeAfterMinutes(Number(e.target.value || 0))}
-                        className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
-                      />
-                    </div>
-                  </div>
+
+                    {!editManualUnfreeze && (
+                      <div className="mt-3">
+                        <label className="text-xs font-medium text-slate-600">Auto Unfreeze After End (minutes)</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={editFreezeAfterMinutesText}
+                          onChange={(e) => setEditFreezeAfterMinutesText(e.target.value)}
+                          className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 

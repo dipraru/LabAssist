@@ -53,6 +53,7 @@ export class CreateContestDto {
   @IsOptional() @IsDateString() freezeTime?: string;
   @IsOptional() @IsIn(['private', 'public']) standingVisibility?: 'private' | 'public';
   @IsOptional() @IsBoolean() freezeEnabled?: boolean;
+  @IsOptional() @IsBoolean() manualUnfreeze?: boolean;
   @IsOptional() @IsInt() freezeBeforeMinutes?: number;
   @IsOptional() @IsInt() freezeAfterMinutes?: number;
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => AddContestProblemDto)
@@ -69,6 +70,7 @@ export class UpdateContestDto {
   @IsOptional() @IsInt() durationMinutes?: number;
   @IsOptional() @IsIn(['private', 'public']) standingVisibility?: 'private' | 'public';
   @IsOptional() @IsBoolean() freezeEnabled?: boolean;
+  @IsOptional() @IsBoolean() manualUnfreeze?: boolean;
   @IsOptional() @IsInt() freezeBeforeMinutes?: number;
   @IsOptional() @IsInt() freezeAfterMinutes?: number;
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => AddContestProblemDto)

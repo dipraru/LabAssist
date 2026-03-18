@@ -4,9 +4,10 @@ import { ContestCountdownBar, getContestPhase } from './ContestCountdownBar';
 
 type ParticipantContestHeaderProps = {
   contestId: string;
+  hideFrozenBadge?: boolean;
 };
 
-export function ParticipantContestHeader({ contestId }: ParticipantContestHeaderProps) {
+export function ParticipantContestHeader({ contestId, hideFrozenBadge = false }: ParticipantContestHeaderProps) {
   const { data: contest, isLoading } = useQuery({
     queryKey: ['contest', contestId],
     queryFn: () => api.get(`/contests/${contestId}`).then((response) => response.data),
@@ -49,7 +50,7 @@ export function ParticipantContestHeader({ contestId }: ParticipantContestHeader
           <ContestCountdownBar startTime={contest.startTime} endTime={contest.endTime} />
         </div>
       )}
-      {standings?.isFrozen && (
+      {!hideFrozenBadge && standings?.isFrozen && (
         <span className="mt-3 inline-block rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700">❄ Standings Frozen</span>
       )}
     </div>

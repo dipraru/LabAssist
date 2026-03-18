@@ -224,11 +224,6 @@ export function ContestManage() {
             <div className="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-semibold">
               {remainingLabel}
             </div>
-            {isFreezeActive && (
-              <div className="px-3 py-2 rounded-lg bg-blue-100 text-blue-700 text-sm font-semibold">
-                Frozen
-              </div>
-            )}
           </div>
         </div>
 
@@ -360,26 +355,33 @@ export function ContestManage() {
 
         {activeTab === 'standings' && (
           <div className="space-y-4">
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => refetchStandings()}
-                disabled={standingsFetching}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm hover:bg-slate-50"
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  <RefreshCw size={14} className={standingsFetching ? 'animate-spin' : ''} />
-                  Refresh
-                </span>
-              </button>
-              {isFreezeActive && (
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => freezeMutation.mutate(false)}
-                  className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"
+                  onClick={() => refetchStandings()}
+                  disabled={standingsFetching}
+                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm hover:bg-slate-50"
                 >
-                  Unfreeze Standings
+                  <span className="inline-flex items-center gap-1.5">
+                    <RefreshCw size={14} className={standingsFetching ? 'animate-spin' : ''} />
+                    Refresh
+                  </span>
                 </button>
+                {isFreezeActive && (
+                  <button
+                    type="button"
+                    onClick={() => freezeMutation.mutate(false)}
+                    className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"
+                  >
+                    Unfreeze Standings
+                  </button>
+                )}
+              </div>
+              {isFreezeActive && (
+                <div className="px-3 py-2 rounded-lg bg-blue-100 text-blue-700 text-sm font-semibold">
+                  Frozen
+                </div>
               )}
             </div>
             <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-x-auto">

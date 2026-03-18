@@ -260,13 +260,14 @@ export class ContestsService {
       ? new Date(dto.endTime)
       : new Date(startTime.getTime() + durationTotalMinutes * 60 * 1000);
     const freezeEnabled = dto.freezeEnabled ?? false;
+    const manualUnfreeze = dto.manualUnfreeze ?? false;
     const freezeBeforeMinutes = Math.max(0, dto.freezeBeforeMinutes ?? 0);
     const freezeAfterMinutes = Math.max(0, dto.freezeAfterMinutes ?? 0);
     const freezeTime = freezeEnabled
       ? new Date(endTime.getTime() - freezeBeforeMinutes * 60 * 1000)
       : (dto.freezeTime ? new Date(dto.freezeTime) : null);
     const standingUnfreezeTime = freezeEnabled
-      ? new Date(endTime.getTime() + freezeAfterMinutes * 60 * 1000)
+      ? (manualUnfreeze ? null : new Date(endTime.getTime() + freezeAfterMinutes * 60 * 1000))
       : null;
     const isPublicStanding = dto.standingVisibility === 'public';
 
@@ -314,7 +315,7 @@ export class ContestsService {
         isPublicStanding,
         publicStandingsKey: isPublicStanding ? this.generatePublicStandingsKey() : null,
         freezeBeforeMinutes,
-        freezeAfterMinutes,
+        freezeAfterMinutes: manualUnfreeze ? 0 : freezeAfterMinutes,
       });
       await qr.manager.save(contest);
 
@@ -397,13 +398,15 @@ export class ContestsService {
     }
 
     const freezeEnabled = dto.freezeEnabled ?? contest.isStandingFrozen;
+    const currentManualUnfreeze = contest.isStandingFrozen && !contest.standingUnfreezeTime;
+    const manualUnfreeze = dto.manualUnfreeze ?? currentManualUnfreeze;
     const freezeBeforeMinutes = Math.max(0, dto.freezeBeforeMinutes ?? contest.freezeBeforeMinutes ?? 0);
     const freezeAfterMinutes = Math.max(0, dto.freezeAfterMinutes ?? contest.freezeAfterMinutes ?? 0);
     const nextFreezeTime = freezeEnabled
       ? new Date(nextEndTime.getTime() - freezeBeforeMinutes * 60 * 1000)
       : null;
     const nextStandingUnfreezeTime = freezeEnabled
-      ? new Date(nextEndTime.getTime() + freezeAfterMinutes * 60 * 1000)
+      ? (manualUnfreeze ? null : new Date(nextEndTime.getTime() + freezeAfterMinutes * 60 * 1000))
       : null;
 
     if (nextFreezeTime && (nextFreezeTime < nextStartTime || nextFreezeTime > nextEndTime)) {
@@ -421,7 +424,7 @@ export class ContestsService {
     contest.endTime = nextEndTime;
     contest.isStandingFrozen = freezeEnabled;
     contest.freezeBeforeMinutes = freezeBeforeMinutes;
-    contest.freezeAfterMinutes = freezeAfterMinutes;
+    contest.freezeAfterMinutes = manualUnfreeze ? 0 : freezeAfterMinutes;
     contest.freezeTime = nextFreezeTime;
     contest.standingUnfreezeTime = nextStandingUnfreezeTime;
     contest.isPublicStanding = isPublicStanding;
@@ -623,8 +626,9 @@ export class ContestsService {
   async getStandings(contestId: string, judgeUserId?: string) {
     const contest = await this.getContestById(contestId);
     const now = new Date();
-    const freezeStillActive = contest.isStandingFrozen
-      && (!contest.standingUnfreezeTime || now < new Date(contest.standingUnfreezeTime));
+    const freezeStartReached = !contest.freezeTime || now >= new Date(contest.freezeTime);
+    const freezeNotEnded = !contest.standingUnfreezeTime || now < new Date(contest.standingUnfreezeTime);
+    const freezeStillActive = contest.isStandingFrozen && freezeStartReached && freezeNotEnded;
 
     // If standings are frozen, only judge sees live standings
     const showFrozen = freezeStillActive && !judgeUserId;
