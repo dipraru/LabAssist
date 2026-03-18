@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
@@ -26,6 +26,8 @@ export function StudentAssignments() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [uploadFile, setUploadFile] = useState<{ [key: string]: File }>({});
   const [notes, setNotes] = useState<{ [key: string]: string }>({});
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'submitted' | 'overdue'>('all');
+  const [sortBy, setSortBy] = useState<'due_asc' | 'due_desc' | 'marks_desc'>('due_asc');
 
   const { data: courses = [], isLoading: coursesLoading } = useQuery({
     queryKey: ['student-courses'],
@@ -62,6 +64,32 @@ export function StudentAssignments() {
 
   const isExpired = (deadline: string) => new Date(deadline) < new Date();
 
+  const visibleAssignments = useMemo(() => {
+    const nowMs = Date.now();
+    const list = [...((assignments as any[]) ?? [])];
+
+    const filtered = list.filter((a: any) => {
+      const hasSubmission = Boolean(a?.mySubmission);
+      const deadlineMs = a?.deadline ? new Date(a.deadline).getTime() : null;
+      const overdue = deadlineMs != null && Number.isFinite(deadlineMs) && deadlineMs < nowMs;
+
+      if (statusFilter === 'pending') return !hasSubmission && !(overdue && !a?.allowLateSubmission);
+      if (statusFilter === 'submitted') return hasSubmission;
+      if (statusFilter === 'overdue') return overdue && !hasSubmission;
+      return true;
+    });
+
+    filtered.sort((a: any, b: any) => {
+      const aDeadline = a?.deadline ? new Date(a.deadline).getTime() : Number.POSITIVE_INFINITY;
+      const bDeadline = b?.deadline ? new Date(b.deadline).getTime() : Number.POSITIVE_INFINITY;
+      if (sortBy === 'due_desc') return bDeadline - aDeadline;
+      if (sortBy === 'marks_desc') return (b?.totalMarks ?? 0) - (a?.totalMarks ?? 0);
+      return aDeadline - bDeadline;
+    });
+
+    return filtered;
+  }, [assignments, statusFilter, sortBy]);
+
   return (
     <AppShell>
       <div className="max-w-3xl">
@@ -80,6 +108,42 @@ export function StudentAssignments() {
         </div>
 
         <div className="space-y-3">
+          {!!filterCourse && !assignmentsLoading && (
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-100 rounded-xl p-3">
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { key: 'all', label: 'All' },
+                  { key: 'pending', label: 'Pending' },
+                  { key: 'submitted', label: 'Submitted' },
+                  { key: 'overdue', label: 'Overdue' },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setStatusFilter(item.key as 'all' | 'pending' | 'submitted' | 'overdue')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium ${
+                      statusFilter === item.key
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as 'due_asc' | 'due_desc' | 'marks_desc')}
+                className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs"
+              >
+                <option value="due_asc">Sort: Due Soon</option>
+                <option value="due_desc">Sort: Latest Due</option>
+                <option value="marks_desc">Sort: Highest Marks</option>
+              </select>
+            </div>
+          )}
+
           {assignmentsLoading && !!filterCourse && (
             <>
               {[1, 2].map((k) => (
@@ -90,7 +154,7 @@ export function StudentAssignments() {
               ))}
             </>
           )}
-          {(assignments as any[]).map((a: any) => {
+          {visibleAssignments.map((a: any) => {
             const sub = a.mySubmission;
             const expired = isExpired(a.deadline);
             return (
@@ -161,7 +225,7 @@ export function StudentAssignments() {
               </div>
             );
           })}
-          {filterCourse && !(assignments as any[]).length && <p className="text-center text-slate-400 py-6">No assignments</p>}
+          {filterCourse && !assignmentsLoading && !visibleAssignments.length && <p className="text-center text-slate-400 py-6">No assignments for current filters</p>}
           {!filterCourse && <p className="text-center text-slate-400 py-6">Select a course to see assignments</p>}
         </div>
       </div>
