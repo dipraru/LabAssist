@@ -13,6 +13,13 @@ export function ParticipantContestHeader({ contestId }: ParticipantContestHeader
     enabled: !!contestId,
   });
 
+  const { data: standings } = useQuery({
+    queryKey: ['contest-standings', contestId],
+    queryFn: () => api.get(`/contests/${contestId}/standings`).then((response) => response.data),
+    enabled: !!contestId,
+    refetchInterval: 30000,
+  });
+
   if (isLoading) {
     return (
       <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -42,7 +49,7 @@ export function ParticipantContestHeader({ contestId }: ParticipantContestHeader
           <ContestCountdownBar startTime={contest.startTime} endTime={contest.endTime} />
         </div>
       )}
-      {contest.isStandingFrozen && (
+      {standings?.isFrozen && (
         <span className="mt-3 inline-block rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700">❄ Standings Frozen</span>
       )}
     </div>

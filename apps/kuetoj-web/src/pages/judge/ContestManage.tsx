@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
+import { RefreshCw } from 'lucide-react';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 
@@ -23,7 +24,7 @@ const announcementSchema = z.object({
 });
 type AnnouncementData = z.infer<typeof announcementSchema>;
 
-type ContestTab = 'problems' | 'status' | 'standing' | 'clarifications' | 'announcements';
+type ContestTab = 'problems' | 'status' | 'standings' | 'clarifications' | 'announcements';
 
 const VERDICTS = ['accepted', 'wrong_answer', 'time_limit_exceeded', 'memory_limit_exceeded', 'runtime_error', 'presentation_error', 'partial'];
 
@@ -36,10 +37,10 @@ const VERDICT_COLOR: Record<string, string> = {
 
 export function ContestManage() {
   const { id } = useParams<{ id: string }>();
-  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [gradingId, setGradingId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<ContestTab>('problems');
   const [answerText, setAnswerText] = useState<{ [key: string]: string }>({});
   const [nowMs, setNowMs] = useState<number>(Date.now());
 
@@ -48,13 +49,14 @@ export function ContestManage() {
     return () => window.clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    const tab = searchParams.get('tab');
-    if (!tab) return;
-    if (tab === 'problems' || tab === 'status' || tab === 'standing' || tab === 'clarifications' || tab === 'announcements') {
-      setActiveTab(tab);
-    }
-  }, [searchParams]);
+  const activeTab = useMemo<ContestTab>(() => {
+    const path = location.pathname;
+    if (path.endsWith('/status')) return 'status';
+    if (path.endsWith('/standings')) return 'standings';
+    if (path.endsWith('/clarifications')) return 'clarifications';
+    if (path.endsWith('/announcements')) return 'announcements';
+    return 'problems';
+  }, [location.pathname]);
 
   const { data: contest } = useQuery({
     queryKey: ['contest', id],
@@ -76,7 +78,7 @@ export function ContestManage() {
     queryFn: () => api.get(`/contests/${id}/announcements`).then(r => r.data),
   });
 
-  const { data: standings, refetch: refetchStandings } = useQuery({
+  const { data: standings, refetch: refetchStandings, isFetching: standingsFetching } = useQuery({
     queryKey: ['contest-standings', id],
     queryFn: () => api.get(`/contests/${id}/standings`).then(r => r.data),
     refetchInterval: 30000,
@@ -127,7 +129,7 @@ export function ContestManage() {
   const freezeMutation = useMutation({
     mutationFn: (frozen: boolean) => api.patch(`/contests/${id}/freeze`, { frozen }),
     onSuccess: () => {
-      toast.success('Standing freeze updated');
+      toast.success('Standings freeze updated');
       qc.invalidateQueries({ queryKey: ['contest', id] });
       qc.invalidateQueries({ queryKey: ['contest-standings', id] });
     },
@@ -137,6 +139,7 @@ export function ContestManage() {
   const problems: any[] = contest?.problems ?? [];
   const standingRows: any[] = standings?.rows ?? [];
   const standingProblems: any[] = standings?.problems ?? [];
+  const isFreezeActive = Boolean(standings?.isFrozen);
 
   const pendingClarifications = useMemo(
     () => (clarifications as any[]).filter((item: any) => item.status === 'open'),
@@ -154,10 +157,12 @@ export function ContestManage() {
   const tabs: Array<{ key: ContestTab; label: string; badge?: number }> = [
     { key: 'problems', label: 'Problems' },
     { key: 'status', label: 'Status' },
-    { key: 'standing', label: 'Standing' },
+    { key: 'standings', label: 'Standings' },
     { key: 'clarifications', label: 'Clarifications', badge: pendingClarifications.length },
     { key: 'announcements', label: 'Announcements' },
   ];
+
+  const tabHref = (tab: ContestTab) => `/judge/contests/${id}/${tab}`;
 
   const formatHms = (totalSeconds: number) => {
     const clamped = Math.max(0, totalSeconds);
@@ -177,11 +182,11 @@ export function ContestManage() {
   }, [contest?.startTime, contest?.endTime, nowMs]);
 
   const remainingLabel = useMemo(() => {
-    if (!contest?.startTime || !contest?.endTime) return 'Remaining: 00:00:00';
+    if (!contest?.startTime || !contest?.endTime) return 'Ended';
     const start = new Date(contest.startTime).getTime();
     const end = new Date(contest.endTime).getTime();
     if (nowMs < start) return `Starts In: ${formatHms(remainingSeconds)}`;
-    if (nowMs > end) return 'Remaining: 00:00:00';
+    if (nowMs > end) return 'Ended';
     return `Remaining: ${formatHms(remainingSeconds)}`;
   }, [contest?.startTime, contest?.endTime, nowMs, remainingSeconds]);
 
@@ -200,7 +205,7 @@ export function ContestManage() {
                 <button
                   key={tab.key}
                   type="button"
-                  onClick={() => setActiveTab(tab.key)}
+                  onClick={() => navigate(tabHref(tab.key))}
                   className={`px-4 py-2 rounded-lg text-sm font-medium ${
                     activeTab === tab.key
                       ? 'bg-indigo-600 text-white'
@@ -219,6 +224,11 @@ export function ContestManage() {
             <div className="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-semibold">
               {remainingLabel}
             </div>
+            {isFreezeActive && (
+              <div className="px-3 py-2 rounded-lg bg-blue-100 text-blue-700 text-sm font-semibold">
+                Frozen
+              </div>
+            )}
           </div>
         </div>
 
@@ -274,7 +284,7 @@ export function ContestManage() {
 
             <div className="col-span-12 lg:col-span-3">
               <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
-                <h3 className="text-sm font-semibold text-slate-800 mb-3">Short Standing</h3>
+                <h3 className="text-sm font-semibold text-slate-800 mb-3">Short Standings</h3>
                 <div className="space-y-2">
                   {standingRows.slice(0, 5).map((row: any, idx: number) => (
                     <div key={row.participantId ?? idx} className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs">
@@ -288,10 +298,10 @@ export function ContestManage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('standing')}
+                  onClick={() => navigate(tabHref('standings'))}
                   className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  Go to Full Standing
+                  Go to Full Standings
                 </button>
               </div>
             </div>
@@ -348,23 +358,29 @@ export function ContestManage() {
           </div>
         )}
 
-        {activeTab === 'standing' && (
+        {activeTab === 'standings' && (
           <div className="space-y-4">
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => refetchStandings()}
+                disabled={standingsFetching}
                 className="px-3 py-2 border border-slate-300 rounded-lg text-sm hover:bg-slate-50"
               >
-                Refresh
+                <span className="inline-flex items-center gap-1.5">
+                  <RefreshCw size={14} className={standingsFetching ? 'animate-spin' : ''} />
+                  Refresh
+                </span>
               </button>
-              <button
-                type="button"
-                onClick={() => freezeMutation.mutate(!contest?.isStandingFrozen)}
-                className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"
-              >
-                {contest?.isStandingFrozen ? 'Unfreeze Standing' : 'Freeze Standing'}
-              </button>
+              {isFreezeActive && (
+                <button
+                  type="button"
+                  onClick={() => freezeMutation.mutate(false)}
+                  className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"
+                >
+                  Unfreeze Standings
+                </button>
+              )}
             </div>
             <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-x-auto">
               <table className="w-full text-sm">

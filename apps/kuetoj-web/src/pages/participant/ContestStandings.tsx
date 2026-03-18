@@ -31,7 +31,7 @@ export function ParticipantStandings() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Standings</h1>
-            {contest?.isStandingFrozen && (
+            {standings?.isFrozen && (
               <span className="text-blue-600 text-sm font-medium">❄ Standings are frozen</span>
             )}
           </div>

@@ -45,6 +45,18 @@ export class Contest {
   @Column({ default: false })
   isPublicStanding: boolean;
 
+  @Column({ type: 'varchar', nullable: true, unique: true })
+  publicStandingsKey: string | null;
+
+  @Column({ type: 'int', default: 0 })
+  freezeBeforeMinutes: number;
+
+  @Column({ type: 'int', default: 0 })
+  freezeAfterMinutes: number;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  standingUnfreezeTime: Date | null;
+
   @Column({ type: 'varchar', nullable: true })
   createdById: string | null;
 

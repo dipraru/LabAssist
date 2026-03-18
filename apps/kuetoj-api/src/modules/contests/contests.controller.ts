@@ -14,7 +14,7 @@ import {
   AddContestProblemDto, AnswerClarificationDto, AskClarificationDto,
   ContestJudgeResultDto, ContestSubmitDto, CreateAnnouncementDto,
   CreateContestDto, CreateProblemDto, CreateTempParticipantsDto, UpdateProblemDto,
-  GradeContestSubmissionDto,
+  GradeContestSubmissionDto, UpdateContestDto,
 } from './dto/contests.dto';
 import { ContestStatus } from '../../common/enums';
 
@@ -109,6 +109,12 @@ export class ContestsController {
   @Post()
   createContest(@Body() dto: CreateContestDto, @CurrentUser() user: any) {
     return this.svc.createContest(dto, user.id);
+  }
+
+  @Roles(UserRole.TEMP_JUDGE)
+  @Patch(':id')
+  updateContest(@Param('id') id: string, @Body() dto: UpdateContestDto, @CurrentUser() user: any) {
+    return this.svc.updateContest(id, dto, user.id);
   }
 
   @Roles(UserRole.TEMP_JUDGE)
@@ -258,5 +264,20 @@ export class ContestsController {
   @Patch('submissions/:id/result')
   judgeResult(@Param('id') id: string, @Body() dto: ContestJudgeResultDto) {
     return this.svc.receiveJudgeResult(id, dto);
+  }
+}
+
+@Controller('contests/public')
+export class ContestsPublicController {
+  constructor(private svc: ContestsService) {}
+
+  @Get('standings/:key')
+  publicStandings(@Param('key') key: string) {
+    return this.svc.getPublicStandingsByKey(key);
+  }
+
+  @Get(':id/standings')
+  publicStandingsByContest(@Param('id') id: string) {
+    return this.svc.getPublicStandingsByContest(id);
   }
 }

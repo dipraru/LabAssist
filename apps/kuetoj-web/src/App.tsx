@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { BridgeLoginPage } from './pages/BridgeLoginPage';
 
@@ -7,7 +7,7 @@ import { JudgeContests } from './pages/judge/JudgeContests';
 import { JudgeProblems } from './pages/judge/JudgeProblems';
 import { ContestManage } from './pages/judge/ContestManage';
 import { JudgeContestProblem } from './pages/judge/JudgeContestProblem';
-import { ContestStandings as JudgeContestStandings } from './pages/judge/ContestStandings';
+import { JudgeStandingsEntry, PublicContestStandings } from './pages/judge/PublicContestStandings';
 import { ContestParticipants } from './pages/judge/ContestParticipants';
 
 // Participant
@@ -47,6 +47,11 @@ function RoleRedirect() {
   return <Navigate to={map[user.role] ?? '/login'} replace />;
 }
 
+function JudgeContestDefaultRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/judge/contests/${id}/problems`} replace />;
+}
+
 export default function App() {
   return (
     <Routes>
@@ -58,14 +63,20 @@ export default function App() {
         </div>
       } />
 
+      <Route path="/judge/contests/:id/standings" element={<JudgeStandingsEntry />} />
+      <Route path="/judge/contests/:id/standings/public" element={<PublicContestStandings />} />
+
       {/* Judge */}
       <Route element={<ProtectedRoute allowedRoles={['temp_judge']} />}>
         <Route path="/judge" element={<Navigate to="/judge/contests" replace />} />
         <Route path="/judge/contests" element={<JudgeContests />} />
         <Route path="/judge/problems" element={<JudgeProblems />} />
-        <Route path="/judge/contests/:id" element={<ContestManage />} />
+        <Route path="/judge/contests/:id" element={<JudgeContestDefaultRedirect />} />
+        <Route path="/judge/contests/:id/problems" element={<ContestManage />} />
+        <Route path="/judge/contests/:id/status" element={<ContestManage />} />
+        <Route path="/judge/contests/:id/clarifications" element={<ContestManage />} />
+        <Route path="/judge/contests/:id/announcements" element={<ContestManage />} />
         <Route path="/judge/contests/:id/problems/:problemId" element={<JudgeContestProblem />} />
-        <Route path="/judge/contests/:id/standings" element={<JudgeContestStandings />} />
         <Route path="/judge/contests/:id/participants" element={<ContestParticipants />} />
       </Route>
 

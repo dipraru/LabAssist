@@ -10,6 +10,7 @@ import { getContestPhase } from '../../components/ContestCountdownBar';
 
 type ProblemItem = {
   id: string;
+  problemCode?: string;
   title: string;
   timeLimitMs?: number;
   memoryLimitKb?: number;
@@ -17,8 +18,13 @@ type ProblemItem = {
 
 type SelectedProblem = {
   problemId: string;
+  problemCode?: string;
   title: string;
   score?: number;
+};
+
+type EditSelectedProblem = SelectedProblem & {
+  existing: boolean;
 };
 
 type ContestItem = {
@@ -26,6 +32,8 @@ type ContestItem = {
   contestNumber?: number | null;
   title: string;
   type: string;
+  description?: string;
+  isPublicStanding?: boolean;
   startTime?: string;
   endTime?: string;
 };
@@ -47,17 +55,41 @@ export function JudgeContests() {
   }, []);
 
   const [showCreateContestModal, setShowCreateContestModal] = useState(false);
+  const [showEditContestModal, setShowEditContestModal] = useState(false);
+  const [showProblemPickerModal, setShowProblemPickerModal] = useState(false);
+  const [showEditProblemPickerModal, setShowEditProblemPickerModal] = useState(false);
   const [showParticipantsModal, setShowParticipantsModal] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [editDragIndex, setEditDragIndex] = useState<number | null>(null);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<'icpc' | 'score_based'>('icpc');
-  const [startTime, setStartTime] = useState('');
-  const [durationHours, setDurationHours] = useState(2);
-  const [durationMinutes, setDurationMinutes] = useState(0);
-  const [freezeTime, setFreezeTime] = useState('');
+  const [standingVisibility, setStandingVisibility] = useState<'private' | 'public'>('private');
+  const [startAtText, setStartAtText] = useState('');
+  const [contestLengthText, setContestLengthText] = useState('05:00');
+  const [freezeEnabled, setFreezeEnabled] = useState(true);
+  const [freezeBeforeMinutes, setFreezeBeforeMinutes] = useState(60);
+  const [freezeAfterMinutes, setFreezeAfterMinutes] = useState(0);
+  const [problemSearchText, setProblemSearchText] = useState('');
+  const [checkedProblemIds, setCheckedProblemIds] = useState<string[]>([]);
   const [selected, setSelected] = useState<SelectedProblem[]>([]);
+
+  const [editingContestId, setEditingContestId] = useState<string | null>(null);
+  const [editingContestPhase, setEditingContestPhase] = useState<'upcoming' | 'running' | 'old'>('upcoming');
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editType, setEditType] = useState<'icpc' | 'score_based'>('icpc');
+  const [editStandingVisibility, setEditStandingVisibility] = useState<'private' | 'public'>('private');
+  const [editStartAtText, setEditStartAtText] = useState('');
+  const [editContestLengthText, setEditContestLengthText] = useState('05:00');
+  const [editFreezeEnabled, setEditFreezeEnabled] = useState(true);
+  const [editFreezeBeforeMinutes, setEditFreezeBeforeMinutes] = useState(60);
+  const [editFreezeAfterMinutes, setEditFreezeAfterMinutes] = useState(0);
+  const [editProblemSearchText, setEditProblemSearchText] = useState('');
+  const [editCheckedProblemIds, setEditCheckedProblemIds] = useState<string[]>([]);
+  const [editSelected, setEditSelected] = useState<EditSelectedProblem[]>([]);
+  const [isEditLoading, setIsEditLoading] = useState(false);
 
   const [participantsContest, setParticipantsContest] = useState<ContestItem | null>(null);
   const [participantCount, setParticipantCount] = useState(10);
@@ -75,15 +107,89 @@ export function JudgeContests() {
     queryFn: () => api.get('/contests/problems/mine').then((r) => r.data),
   });
 
-  const availableProblems = useMemo(
-    () => (myProblems as ProblemItem[]).filter((p) => !selected.some((s) => s.problemId === p.id)),
-    [myProblems, selected],
-  );
+  const allProblems = myProblems as ProblemItem[];
+
+  const filteredProblems = useMemo(() => {
+    const q = problemSearchText.trim().toLowerCase();
+    if (!q) return allProblems;
+    return allProblems.filter((problem) => {
+      const titleText = problem.title?.toLowerCase() ?? '';
+      const idText = problem.id?.toLowerCase() ?? '';
+      const codeText = problem.problemCode?.toLowerCase() ?? '';
+      return titleText.includes(q) || idText.includes(q) || codeText.includes(q);
+    });
+  }, [allProblems, problemSearchText]);
+
+  const filteredEditProblems = useMemo(() => {
+    const q = editProblemSearchText.trim().toLowerCase();
+    if (!q) return allProblems;
+    return allProblems.filter((problem) => {
+      const titleText = problem.title?.toLowerCase() ?? '';
+      const idText = problem.id?.toLowerCase() ?? '';
+      const codeText = problem.problemCode?.toLowerCase() ?? '';
+      return titleText.includes(q) || idText.includes(q) || codeText.includes(q);
+    });
+  }, [allProblems, editProblemSearchText]);
 
   const toLocalInput = (iso: string) => {
     const date = new Date(iso);
     const tzOffset = date.getTimezoneOffset() * 60000;
     return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
+  };
+
+  const toPlainDateTimeText = (value: Date) => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    const hour = String(value.getHours()).padStart(2, '0');
+    const minute = String(value.getMinutes()).padStart(2, '0');
+    const second = String(value.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+  };
+
+  const parseDateTimeText = (text: string): Date | null => {
+    const value = text.trim();
+    if (!value) return null;
+
+    const matched = value.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+    if (matched) {
+      const [, year, month, day, hour, minute, second] = matched;
+      const parsed = new Date(
+        Number(year),
+        Number(month) - 1,
+        Number(day),
+        Number(hour),
+        Number(minute),
+        Number(second ?? '0'),
+      );
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    const isoParsed = new Date(value);
+    return Number.isNaN(isoParsed.getTime()) ? null : isoParsed;
+  };
+
+  const parseDurationText = (text: string): { hours: number; minutes: number; totalMinutes: number } | null => {
+    const value = text.trim();
+    const matched = value.match(/^(\d{1,3}):(\d{2})$/);
+    if (!matched) return null;
+    const hours = Number(matched[1]);
+    const minutes = Number(matched[2]);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+    if (minutes < 0 || minutes > 59 || hours < 0) return null;
+    const totalMinutes = hours * 60 + minutes;
+    return { hours, minutes, totalMinutes };
+  };
+
+  const durationTextFromStartEnd = (startIso?: string, endIso?: string) => {
+    if (!startIso || !endIso) return '05:00';
+    const startMs = new Date(startIso).getTime();
+    const endMs = new Date(endIso).getTime();
+    if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs) return '05:00';
+    const totalMinutes = Math.max(1, Math.round((endMs - startMs) / 60000));
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   };
 
   const downloadPdfBase64 = (base64: string, fileName: string) => {
@@ -103,23 +209,42 @@ export function JudgeContests() {
   };
 
   const resetCreateContestForm = () => {
+    const oneHourLater = new Date(Date.now() + 60 * 60 * 1000);
+    oneHourLater.setSeconds(0, 0);
     setTitle('');
     setDescription('');
     setType('icpc');
-    setStartTime('');
-    setDurationHours(2);
-    setDurationMinutes(0);
-    setFreezeTime('');
+    setStandingVisibility('private');
+    setStartAtText(toPlainDateTimeText(oneHourLater));
+    setContestLengthText('05:00');
+    setFreezeEnabled(true);
+    setFreezeBeforeMinutes(60);
+    setFreezeAfterMinutes(0);
+    setProblemSearchText('');
+    setCheckedProblemIds([]);
     setSelected([]);
   };
 
+  useEffect(() => {
+    if (showCreateContestModal && !startAtText) {
+      const oneHourLater = new Date(Date.now() + 60 * 60 * 1000);
+      oneHourLater.setSeconds(0, 0);
+      setStartAtText(toPlainDateTimeText(oneHourLater));
+    }
+  }, [showCreateContestModal, startAtText]);
+
   const createMutation = useMutation({
     mutationFn: async () => {
-      if (!title.trim() || !startTime || selected.length === 0) {
-        throw new Error('Please fill title, start time, and select at least one problem');
+      const parsedStart = parseDateTimeText(startAtText);
+      if (!title.trim() || !parsedStart || selected.length === 0) {
+        throw new Error('Please fill title, start date-time, and select at least one problem');
       }
-      if (durationHours * 60 + durationMinutes <= 0) {
-        throw new Error('Contest duration must be greater than zero');
+      if (parsedStart.getTime() < Date.now()) {
+        throw new Error('Start time cannot be before current time');
+      }
+      const parsedDuration = parseDurationText(contestLengthText);
+      if (!parsedDuration || parsedDuration.totalMinutes <= 0) {
+        throw new Error('Contest length must be valid (e.g. 05:00) and greater than zero');
       }
 
       const problems = selected.map((p, idx) => ({
@@ -133,10 +258,13 @@ export function JudgeContests() {
         title,
         description: description || undefined,
         type,
-        startTime: new Date(startTime).toISOString(),
-        durationHours,
-        durationMinutes,
-        freezeTime: freezeTime ? new Date(freezeTime).toISOString() : undefined,
+        startTime: parsedStart.toISOString(),
+        durationHours: parsedDuration.hours,
+        durationMinutes: parsedDuration.minutes,
+        standingVisibility,
+        freezeEnabled,
+        freezeBeforeMinutes: freezeEnabled ? freezeBeforeMinutes : 0,
+        freezeAfterMinutes: freezeEnabled ? freezeAfterMinutes : 0,
         problems,
       });
     },
@@ -151,12 +279,204 @@ export function JudgeContests() {
     },
   });
 
-  const addProblem = (problem: ProblemItem) => {
-    setSelected((prev) => [...prev, { problemId: problem.id, title: problem.title, score: 100 }]);
+  const addCheckedProblems = () => {
+    const checked = new Set(checkedProblemIds);
+    const selectedSet = new Set(selected.map((item) => item.problemId));
+    const toAppend = allProblems
+      .filter((problem) => checked.has(problem.id) && !selectedSet.has(problem.id))
+      .map((problem) => ({
+        problemId: problem.id,
+        problemCode: problem.problemCode,
+        title: problem.title,
+        score: 100,
+      }));
+    if (!toAppend.length) return;
+    setSelected((prev) => [...prev, ...toAppend]);
+    setShowProblemPickerModal(false);
   };
 
   const removeProblem = (problemId: string) => {
     setSelected((prev) => prev.filter((p) => p.problemId !== problemId));
+    setCheckedProblemIds((prev) => prev.filter((id) => id !== problemId));
+  };
+
+  const resetEditContestForm = () => {
+    setShowEditProblemPickerModal(false);
+    setEditingContestId(null);
+    setEditingContestPhase('upcoming');
+    setEditTitle('');
+    setEditDescription('');
+    setEditType('icpc');
+    setEditStandingVisibility('private');
+    setEditStartAtText('');
+    setEditContestLengthText('05:00');
+    setEditFreezeEnabled(true);
+    setEditFreezeBeforeMinutes(60);
+    setEditFreezeAfterMinutes(0);
+    setEditProblemSearchText('');
+    setEditCheckedProblemIds([]);
+    setEditSelected([]);
+    setIsEditLoading(false);
+  };
+
+  const openEditContestModal = async (contest: ContestItem) => {
+    setIsEditLoading(true);
+    setShowEditContestModal(true);
+    try {
+      const response = await api.get(`/contests/${contest.contestNumber ?? contest.id}`);
+      const details = response.data;
+      const phase = getContestPhase(details.startTime ?? '', details.endTime ?? '');
+      setEditingContestId(details.id);
+      setEditingContestPhase(phase);
+      setEditTitle(details.title ?? '');
+      setEditDescription(details.description ?? '');
+      setEditType(details.type ?? 'icpc');
+      setEditStandingVisibility(details.isPublicStanding ? 'public' : 'private');
+      setEditStartAtText(details.startTime ? toPlainDateTimeText(new Date(details.startTime)) : '');
+      setEditContestLengthText(durationTextFromStartEnd(details.startTime, details.endTime));
+      setEditFreezeEnabled(Boolean(details.isStandingFrozen));
+      setEditFreezeBeforeMinutes(Number(details.freezeBeforeMinutes ?? 60));
+      setEditFreezeAfterMinutes(Number(details.freezeAfterMinutes ?? 0));
+      const contestProblems = (details.problems ?? []) as Array<any>;
+      const sortedProblems = [...contestProblems].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+      setEditSelected(
+        sortedProblems.map((item) => ({
+          problemId: item.problemId,
+          problemCode: item.problem?.problemCode,
+          title: item.problem?.title ?? 'Untitled Problem',
+          score: item.score ?? 100,
+          existing: true,
+        })),
+      );
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message ?? 'Failed to load contest details');
+      setShowEditContestModal(false);
+      resetEditContestForm();
+    } finally {
+      setIsEditLoading(false);
+    }
+  };
+
+  const toggleEditCheckedProblem = (problemId: string) => {
+    setEditCheckedProblemIds((prev) => {
+      if (prev.includes(problemId)) return prev.filter((id) => id !== problemId);
+      return [...prev, problemId];
+    });
+  };
+
+  const addCheckedProblemsForEdit = () => {
+    const checked = new Set(editCheckedProblemIds);
+    const selectedSet = new Set(editSelected.map((item) => item.problemId));
+    const toAppend = allProblems
+      .filter((problem) => checked.has(problem.id) && !selectedSet.has(problem.id))
+      .map((problem) => ({
+        problemId: problem.id,
+        problemCode: problem.problemCode,
+        title: problem.title,
+        score: 100,
+        existing: false,
+      }));
+    if (!toAppend.length) return;
+    setEditSelected((prev) => [...prev, ...toAppend]);
+    setShowEditProblemPickerModal(false);
+  };
+
+  const removeEditProblem = (problemId: string) => {
+    setEditSelected((prev) => prev.filter((p) => p.problemId !== problemId));
+    setEditCheckedProblemIds((prev) => prev.filter((id) => id !== problemId));
+  };
+
+  const randomizeEditSelected = () => {
+    if (editingContestPhase !== 'upcoming') return;
+    setEditSelected((prev) => {
+      const next = [...prev];
+      for (let i = next.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [next[i], next[j]] = [next[j], next[i]];
+      }
+      return next;
+    });
+  };
+
+  const onEditDropAt = (dropIndex: number) => {
+    if (editingContestPhase !== 'upcoming') return;
+    if (editDragIndex == null || editDragIndex === dropIndex) return;
+    setEditSelected((prev) => {
+      const next = [...prev];
+      const [item] = next.splice(editDragIndex, 1);
+      next.splice(dropIndex, 0, item);
+      return next;
+    });
+    setEditDragIndex(null);
+  };
+
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingContestId) throw new Error('Contest not selected');
+      const parsedStart = parseDateTimeText(editStartAtText);
+      if (!editTitle.trim() || !parsedStart) {
+        throw new Error('Please fill title and valid start date-time');
+      }
+      if (editingContestPhase === 'upcoming' && parsedStart.getTime() < Date.now()) {
+        throw new Error('Start time cannot be before current time');
+      }
+      const parsedDuration = parseDurationText(editContestLengthText);
+      if (!parsedDuration || parsedDuration.totalMinutes <= 0) {
+        throw new Error('Contest length must be valid (e.g. 05:00) and greater than zero');
+      }
+
+      if (!editSelected.length) {
+        throw new Error('Select at least one problem');
+      }
+
+      const problems = editSelected.map((problem, index) => ({
+        problemId: problem.problemId,
+        label: String.fromCharCode(65 + index),
+        orderIndex: index,
+        score: editType === 'score_based' ? (problem.score ?? 100) : undefined,
+      }));
+
+      return api.patch(`/contests/${editingContestId}`, {
+        title: editTitle,
+        description: editDescription || undefined,
+        type: editType,
+        startTime: editingContestPhase === 'upcoming' ? parsedStart.toISOString() : undefined,
+        durationHours: parsedDuration.hours,
+        durationMinutes: parsedDuration.minutes,
+        standingVisibility: editStandingVisibility,
+        freezeEnabled: editFreezeEnabled,
+        freezeBeforeMinutes: editFreezeEnabled ? editFreezeBeforeMinutes : 0,
+        freezeAfterMinutes: editFreezeEnabled ? editFreezeAfterMinutes : 0,
+        problems,
+      });
+    },
+    onSuccess: () => {
+      toast.success('Contest updated');
+      qc.invalidateQueries({ queryKey: ['judge-contests'] });
+      setShowEditContestModal(false);
+      resetEditContestForm();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message ?? err.message ?? 'Failed to update contest');
+    },
+  });
+
+  const toggleCheckedProblem = (problemId: string) => {
+    setCheckedProblemIds((prev) => {
+      if (prev.includes(problemId)) return prev.filter((id) => id !== problemId);
+      return [...prev, problemId];
+    });
+  };
+
+  const randomizeSelected = () => {
+    setSelected((prev) => {
+      const next = [...prev];
+      for (let i = next.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [next[i], next[j]] = [next[j], next[i]];
+      }
+      return next;
+    });
   };
 
   const onDropAt = (dropIndex: number) => {
@@ -220,22 +540,29 @@ export function JudgeContests() {
     },
   });
 
+  const parsedStartAt = useMemo(() => parseDateTimeText(startAtText), [startAtText]);
+
+  const parsedLength = useMemo(() => parseDurationText(contestLengthText), [contestLengthText]);
+
   const contestDurationText = useMemo(() => {
-    const minutes = durationHours * 60 + durationMinutes;
-    if (minutes <= 0) return 'Contest duration must be greater than zero';
-    const hours = Math.floor(minutes / 60);
-    const restMinutes = minutes % 60;
-    return `Duration: ${hours}h ${restMinutes}m`;
-  }, [durationHours, durationMinutes]);
+    if (!parsedLength || parsedLength.totalMinutes <= 0) return 'Contest length is invalid';
+    return `Duration: ${parsedLength.hours}h ${parsedLength.minutes}m`;
+  }, [parsedLength]);
 
   const computedEndTime = useMemo(() => {
-    if (!startTime) return null;
-    const minutes = durationHours * 60 + durationMinutes;
-    if (minutes <= 0) return null;
-    const start = new Date(startTime);
-    if (Number.isNaN(start.getTime())) return null;
-    return new Date(start.getTime() + minutes * 60 * 1000);
-  }, [startTime, durationHours, durationMinutes]);
+    if (!parsedStartAt || !parsedLength || parsedLength.totalMinutes <= 0) return null;
+    return new Date(parsedStartAt.getTime() + parsedLength.totalMinutes * 60 * 1000);
+  }, [parsedStartAt, parsedLength]);
+
+  const computedFreezeStart = useMemo(() => {
+    if (!freezeEnabled || !computedEndTime) return null;
+    return new Date(computedEndTime.getTime() - Math.max(0, freezeBeforeMinutes) * 60 * 1000);
+  }, [freezeEnabled, computedEndTime, freezeBeforeMinutes]);
+
+  const computedFreezeEnd = useMemo(() => {
+    if (!freezeEnabled || !computedEndTime) return null;
+    return new Date(computedEndTime.getTime() + Math.max(0, freezeAfterMinutes) * 60 * 1000);
+  }, [freezeEnabled, computedEndTime, freezeAfterMinutes]);
 
   const sortedContests = useMemo(() => {
     const order: Record<string, number> = { running: 0, upcoming: 1, old: 2 };
@@ -347,6 +674,9 @@ export function JudgeContests() {
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex justify-end gap-2">
+                      {phase !== 'old' && (
+                        <button onClick={() => openEditContestModal(contest)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Edit</button>
+                      )}
                       <button onClick={() => openParticipantsModal(contest)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Create Participants</button>
                       <button
                         onClick={() => downloadAllCredentialsMutation.mutate(contest.id)}
@@ -400,115 +730,170 @@ export function JudgeContests() {
             setShowCreateContestModal(false);
             resetCreateContestForm();
           }}
-          maxWidthClass="max-w-5xl"
+          maxWidthClass="max-w-3xl"
         >
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-3">
-              <div>
-                <label className="text-xs font-medium text-slate-600">Title</label>
-                <input value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600">Description (optional)</label>
-                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm resize-none" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-slate-600">Type</label>
-                  <select value={type} onChange={(e) => setType(e.target.value as 'icpc' | 'score_based')} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm">
-                    <option value="icpc">ICPC</option>
-                    <option value="score_based">Score Based</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-slate-600">Freeze Time (optional)</label>
-                  <input
-                    type="datetime-local"
-                    min={startTime || undefined}
-                    max={computedEndTime ? toLocalInput(computedEndTime.toISOString()) : undefined}
-                    value={freezeTime}
-                    onChange={(e) => setFreezeTime(e.target.value)}
-                    className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-slate-600">Start</label>
-                  <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-slate-600">Duration Hours</label>
-                  <input type="number" min={0} value={durationHours} onChange={(e) => setDurationHours(Number(e.target.value || 0))} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-slate-600">Duration Minutes</label>
-                  <input type="number" min={0} max={59} value={durationMinutes} onChange={(e) => setDurationMinutes(Number(e.target.value || 0))} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
-                </div>
-              </div>
-              {contestDurationText && <p className="text-xs text-slate-500">{contestDurationText}</p>}
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-medium text-slate-600">Contest Title</label>
+              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Enter your contest title" className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
             </div>
 
-            <div className="space-y-2">
-              <h3 className="text-sm font-semibold text-slate-800">Available My Problems</h3>
-              <div className="border border-slate-200 rounded-md max-h-60 overflow-auto">
-                {availableProblems.map((problem) => (
-                  <button
-                    key={problem.id}
-                    type="button"
-                    onClick={() => addProblem(problem)}
-                    className="w-full text-left px-3 py-2 border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
-                  >
-                    <p className="text-sm font-medium text-slate-800">{problem.title}</p>
-                    <p className="text-xs text-slate-500">TL {problem.timeLimitMs ?? '—'} · ML {problem.memoryLimitKb ?? '—'}</p>
-                  </button>
-                ))}
-                {!availableProblems.length && <p className="text-xs text-slate-500 p-3">No more problems to add.</p>}
-              </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">Contest Description (Optional)</label>
+              <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm resize-none" />
             </div>
-          </div>
 
-          <div className="mt-5">
-            <h3 className="text-sm font-semibold text-slate-800 mb-2">Selected Problems (Drag to reorder)</h3>
-            <div className="border border-slate-200 rounded-md overflow-hidden">
-              {selected.map((item, index) => (
-                <div
-                  key={item.problemId}
-                  draggable
-                  onDragStart={() => setDragIndex(index)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => onDropAt(index)}
-                  className="grid grid-cols-12 items-center gap-2 px-3 py-2 border-b border-slate-100 last:border-b-0 bg-white"
-                >
-                  <div className="col-span-1 text-slate-400 cursor-grab">
-                    <GripVertical size={16} />
-                  </div>
-                  <div className="col-span-1 text-xs font-semibold text-indigo-700">
-                    {String.fromCharCode(65 + index)}
-                  </div>
-                  <div className="col-span-7 text-sm text-slate-800">{item.title}</div>
-                  {type === 'score_based' && (
-                    <div className="col-span-2">
+            <div>
+              <label className="text-xs font-medium text-slate-600">Contest Type</label>
+              <select value={type} onChange={(e) => setType(e.target.value as 'icpc' | 'score_based')} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-700 bg-white">
+                <option value="icpc">ICPC</option>
+                <option value="score_based">Score Based</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-slate-600">Standing Visibility</label>
+              <select
+                value={standingVisibility}
+                onChange={(e) => setStandingVisibility(e.target.value as 'private' | 'public')}
+                className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-700 bg-white"
+              >
+                <option value="private">Private</option>
+                <option value="public">Public</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-slate-600">Start Date &amp; Time (text)</label>
+              <input
+                value={startAtText}
+                onChange={(e) => setStartAtText(e.target.value)}
+                placeholder="YYYY-MM-DD HH:mm:ss"
+                className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+              />
+              <p className="mt-1 text-xs text-slate-500">Example: 2026-03-20 10:00:00</p>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-slate-600">Contest Length (HH:MM)</label>
+              <input
+                value={contestLengthText}
+                onChange={(e) => setContestLengthText(e.target.value)}
+                placeholder="05:00"
+                className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+              />
+              <p className="mt-1 text-xs text-slate-500">{contestDurationText}</p>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 p-3 bg-slate-50">
+              <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={freezeEnabled}
+                  onChange={(e) => setFreezeEnabled(e.target.checked)}
+                />
+                Enable standing freeze
+              </label>
+
+              {freezeEnabled && (
+                <>
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Freeze Before End (minutes)</label>
                       <input
                         type="number"
-                        value={item.score ?? 100}
-                        onChange={(e) => {
-                          const value = Number(e.target.value || 0);
-                          setSelected((prev) => prev.map((p) => (p.problemId === item.problemId ? { ...p, score: value } : p)));
-                        }}
-                        className="w-full border border-slate-300 rounded-md px-2 py-1 text-xs"
+                        min={0}
+                        value={freezeBeforeMinutes}
+                        onChange={(e) => setFreezeBeforeMinutes(Number(e.target.value || 0))}
+                        className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
                       />
                     </div>
-                  )}
-                  {type !== 'score_based' && <div className="col-span-2" />}
-                  <div className="col-span-1 text-right">
-                    <button type="button" onClick={() => removeProblem(item.problemId)} className="text-red-500 hover:text-red-700">
-                      <X size={14} />
-                    </button>
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Unfreeze After End (minutes)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={freezeAfterMinutes}
+                        onChange={(e) => setFreezeAfterMinutes(Number(e.target.value || 0))}
+                        className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+                      />
+                    </div>
                   </div>
+
+                  <div className="mt-3 text-xs text-slate-500 space-y-1">
+                    <p>Computed End: {computedEndTime ? computedEndTime.toLocaleString() : '—'}</p>
+                    <p>Freeze Start: {computedFreezeStart ? computedFreezeStart.toLocaleString() : '—'}</p>
+                    <p>Freeze End: {computedFreezeEnd ? computedFreezeEnd.toLocaleString() : '—'}</p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-slate-200 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-slate-800">Contest Problems</h3>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowProblemPickerModal(true)}
+                    className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50"
+                  >
+                    Add / Remove Problems
+                  </button>
+                  <button
+                    type="button"
+                    onClick={randomizeSelected}
+                    disabled={selected.length < 2}
+                    className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Random Arrangement
+                  </button>
                 </div>
-              ))}
-              {!selected.length && <p className="text-sm text-slate-500 p-4">Select at least one problem from your list.</p>}
+              </div>
+
+              <div className="mt-3 border border-slate-200 rounded-md overflow-hidden">
+                {selected.map((item, index) => (
+                  <div
+                    key={item.problemId}
+                    draggable
+                    onDragStart={() => setDragIndex(index)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => onDropAt(index)}
+                    className="grid grid-cols-12 items-center gap-2 px-3 py-2 border-b border-slate-100 last:border-b-0 bg-white"
+                  >
+                    <div className="col-span-1 text-slate-400 cursor-grab">
+                      <GripVertical size={16} />
+                    </div>
+                    <div className="col-span-1 text-xs font-semibold text-indigo-700">
+                      {String.fromCharCode(65 + index)}
+                    </div>
+                    <div className="col-span-7 text-sm text-slate-800">
+                      <p>{item.title}</p>
+                      <p className="text-xs text-slate-500">{item.problemCode ?? item.problemId}</p>
+                    </div>
+                    {type === 'score_based' && (
+                      <div className="col-span-2">
+                        <input
+                          type="number"
+                          value={item.score ?? 100}
+                          onChange={(e) => {
+                            const value = Number(e.target.value || 0);
+                            setSelected((prev) => prev.map((p) => (p.problemId === item.problemId ? { ...p, score: value } : p)));
+                          }}
+                          className="w-full border border-slate-300 rounded-md px-2 py-1 text-xs"
+                        />
+                      </div>
+                    )}
+                    {type !== 'score_based' && <div className="col-span-2" />}
+                    <div className="col-span-1 text-right">
+                      <button type="button" onClick={() => removeProblem(item.problemId)} className="text-red-500 hover:text-red-700">
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {!selected.length && <p className="text-sm text-slate-500 p-4">Pick problems, then drag to arrange.</p>}
+              </div>
             </div>
           </div>
 
@@ -531,6 +916,319 @@ export function JudgeContests() {
             >
               {createMutation.isPending ? 'Creating…' : 'Create Contest'}
             </button>
+          </div>
+        </Modal>
+
+        <Modal
+          open={showEditContestModal}
+          title="Edit Contest"
+          onClose={() => {
+            setShowEditContestModal(false);
+            resetEditContestForm();
+          }}
+          maxWidthClass="max-w-3xl"
+        >
+          {isEditLoading ? (
+            <p className="text-sm text-slate-500">Loading contest details...</p>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-slate-600">Contest Title</label>
+                <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="Enter your contest title" className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-600">Contest Description (Optional)</label>
+                <textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={3} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm resize-none" />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-600">Contest Type</label>
+                <select value={editType} onChange={(e) => setEditType(e.target.value as 'icpc' | 'score_based')} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-700 bg-white">
+                  <option value="icpc">ICPC</option>
+                  <option value="score_based">Score Based</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-600">Standing Visibility</label>
+                <select
+                  value={editStandingVisibility}
+                  onChange={(e) => setEditStandingVisibility(e.target.value as 'private' | 'public')}
+                  className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-700 bg-white"
+                >
+                  <option value="private">Private</option>
+                  <option value="public">Public</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-600">Start Date &amp; Time (text)</label>
+                <input
+                  value={editStartAtText}
+                  onChange={(e) => setEditStartAtText(e.target.value)}
+                  placeholder="YYYY-MM-DD HH:mm:ss"
+                  disabled={editingContestPhase !== 'upcoming'}
+                  className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm disabled:bg-slate-100"
+                />
+                {editingContestPhase !== 'upcoming' && (
+                  <p className="mt-1 text-xs text-amber-700">Start time can only be changed for upcoming contests.</p>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-600">Contest Length (HH:MM)</label>
+                <input
+                  value={editContestLengthText}
+                  onChange={(e) => setEditContestLengthText(e.target.value)}
+                  placeholder="05:00"
+                  className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div className="rounded-lg border border-slate-200 p-3 bg-slate-50">
+                <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={editFreezeEnabled}
+                    onChange={(e) => setEditFreezeEnabled(e.target.checked)}
+                  />
+                  Enable standing freeze
+                </label>
+
+                {editFreezeEnabled && (
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Freeze Before End (minutes)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={editFreezeBeforeMinutes}
+                        onChange={(e) => setEditFreezeBeforeMinutes(Number(e.target.value || 0))}
+                        className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Unfreeze After End (minutes)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={editFreezeAfterMinutes}
+                        onChange={(e) => setEditFreezeAfterMinutes(Number(e.target.value || 0))}
+                        className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-lg border border-slate-200 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-slate-800">Contest Problems</h3>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowEditProblemPickerModal(true)}
+                      className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50"
+                    >
+                      Add / Remove Problems
+                    </button>
+                    <button
+                      type="button"
+                      onClick={randomizeEditSelected}
+                      disabled={editingContestPhase !== 'upcoming' || editSelected.length < 2}
+                      className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Random Arrangement
+                    </button>
+                  </div>
+                </div>
+                {editingContestPhase === 'running' && (
+                  <p className="mt-2 text-xs text-amber-700">Running contest: existing problem order is locked. You can add or remove problems only.</p>
+                )}
+
+                <div className="mt-3 border border-slate-200 rounded-md overflow-hidden">
+                  {editSelected.map((item, index) => (
+                    <div
+                      key={item.problemId}
+                      draggable={editingContestPhase === 'upcoming'}
+                      onDragStart={() => setEditDragIndex(index)}
+                      onDragOver={(e) => editingContestPhase === 'upcoming' && e.preventDefault()}
+                      onDrop={() => onEditDropAt(index)}
+                      className="grid grid-cols-12 items-center gap-2 px-3 py-2 border-b border-slate-100 last:border-b-0 bg-white"
+                    >
+                      <div className="col-span-1 text-slate-400 cursor-grab">
+                        <GripVertical size={16} />
+                      </div>
+                      <div className="col-span-1 text-xs font-semibold text-indigo-700">
+                        {String.fromCharCode(65 + index)}
+                      </div>
+                      <div className="col-span-7 text-sm text-slate-800">
+                        <p>{item.title}</p>
+                        <p className="text-xs text-slate-500">{item.problemCode ?? item.problemId}</p>
+                      </div>
+                      {editType === 'score_based' && (
+                        <div className="col-span-2">
+                          <input
+                            type="number"
+                            value={item.score ?? 100}
+                            onChange={(e) => {
+                              const value = Number(e.target.value || 0);
+                              setEditSelected((prev) => prev.map((p) => (p.problemId === item.problemId ? { ...p, score: value } : p)));
+                            }}
+                            className="w-full border border-slate-300 rounded-md px-2 py-1 text-xs"
+                          />
+                        </div>
+                      )}
+                      {editType !== 'score_based' && <div className="col-span-2" />}
+                      <div className="col-span-1 text-right">
+                        <button type="button" onClick={() => removeEditProblem(item.problemId)} className="text-red-500 hover:text-red-700">
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {!editSelected.length && <p className="text-sm text-slate-500 p-4">Pick problems to include in this contest.</p>}
+                </div>
+              </div>
+
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditContestModal(false);
+                    resetEditContestForm();
+                  }}
+                  className="px-4 py-2 border border-slate-300 rounded-md text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateMutation.mutate()}
+                  disabled={updateMutation.isPending}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-md text-sm font-medium"
+                >
+                  {updateMutation.isPending ? 'Saving…' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          )}
+        </Modal>
+
+        <Modal
+          open={showEditProblemPickerModal}
+          title="Select Problems for Contest"
+          onClose={() => setShowEditProblemPickerModal(false)}
+          maxWidthClass="max-w-3xl"
+        >
+          <div className="space-y-3">
+            <div>
+              <input
+                value={editProblemSearchText}
+                onChange={(e) => setEditProblemSearchText(e.target.value)}
+                placeholder="Search by title, problem code, or ID"
+                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div className="border border-slate-200 rounded-md max-h-80 overflow-auto divide-y divide-slate-100">
+              {filteredEditProblems.map((problem) => {
+                const checked = editCheckedProblemIds.includes(problem.id);
+                return (
+                  <label key={problem.id} className="flex items-start gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleEditCheckedProblem(problem.id)}
+                      className="mt-1"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">{problem.title}</p>
+                      <p className="text-xs text-slate-500">{problem.problemCode ?? problem.id}</p>
+                    </div>
+                  </label>
+                );
+              })}
+              {!filteredEditProblems.length && (
+                <p className="text-sm text-slate-500 p-4">No matching problems found.</p>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowEditProblemPickerModal(false)}
+                className="px-4 py-2 border border-slate-300 rounded-md text-sm"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={addCheckedProblemsForEdit}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm font-medium"
+              >
+                Add Selected
+              </button>
+            </div>
+          </div>
+        </Modal>
+
+        <Modal
+          open={showProblemPickerModal}
+          title="Select Contest Problems"
+          onClose={() => setShowProblemPickerModal(false)}
+          maxWidthClass="max-w-3xl"
+        >
+          <div className="space-y-3">
+            <div>
+              <input
+                value={problemSearchText}
+                onChange={(e) => setProblemSearchText(e.target.value)}
+                placeholder="Search by title, problem code, or ID"
+                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div className="border border-slate-200 rounded-md max-h-80 overflow-auto divide-y divide-slate-100">
+              {filteredProblems.map((problem) => {
+                const checked = checkedProblemIds.includes(problem.id);
+                return (
+                  <label key={problem.id} className="flex items-start gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleCheckedProblem(problem.id)}
+                      className="mt-1"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">{problem.title}</p>
+                      <p className="text-xs text-slate-500">{problem.problemCode ?? problem.id}</p>
+                    </div>
+                  </label>
+                );
+              })}
+              {!filteredProblems.length && (
+                <p className="text-sm text-slate-500 p-4">No matching problems found.</p>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowProblemPickerModal(false)}
+                className="px-4 py-2 border border-slate-300 rounded-md text-sm"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={addCheckedProblems}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm font-medium"
+              >
+                Add Selected
+              </button>
+            </div>
           </div>
         </Modal>
 

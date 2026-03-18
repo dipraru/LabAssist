@@ -23,6 +23,7 @@ import {
   CreateProblemDto,
   CreateTempParticipantsDto,
   GradeContestSubmissionDto,
+  UpdateContestDto,
   UpdateProblemDto,
 } from './dto/contests.dto';
 import { StorageService } from '../storage/storage.service';
@@ -152,6 +153,10 @@ export class ContestsService {
     return `KOJ-${String(nextNumber).padStart(5, '0')}`;
   }
 
+  private generatePublicStandingsKey(): string {
+    return uuidv4().replace(/-/g, '');
+  }
+
   private async ensureProblemCodes(): Promise<void> {
     const missing = await this.problemRepo.find({
       where: { problemCode: IsNull() },
@@ -246,6 +251,7 @@ export class ContestsService {
   async createContest(dto: CreateContestDto, judgeUserId: string): Promise<Contest> {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const startTime = new Date(dto.startTime);
+    const now = new Date();
     const durationHours = dto.durationHours ?? 0;
     const durationMinutes = dto.durationMinutes ?? 0;
     const durationTotalMinutes = durationHours * 60 + durationMinutes;
@@ -253,10 +259,22 @@ export class ContestsService {
     const endTime = dto.endTime
       ? new Date(dto.endTime)
       : new Date(startTime.getTime() + durationTotalMinutes * 60 * 1000);
-    const freezeTime = dto.freezeTime ? new Date(dto.freezeTime) : null;
+    const freezeEnabled = dto.freezeEnabled ?? false;
+    const freezeBeforeMinutes = Math.max(0, dto.freezeBeforeMinutes ?? 0);
+    const freezeAfterMinutes = Math.max(0, dto.freezeAfterMinutes ?? 0);
+    const freezeTime = freezeEnabled
+      ? new Date(endTime.getTime() - freezeBeforeMinutes * 60 * 1000)
+      : (dto.freezeTime ? new Date(dto.freezeTime) : null);
+    const standingUnfreezeTime = freezeEnabled
+      ? new Date(endTime.getTime() + freezeAfterMinutes * 60 * 1000)
+      : null;
+    const isPublicStanding = dto.standingVisibility === 'public';
 
     if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
       throw new BadRequestException('Invalid contest start/end time');
+    }
+    if (startTime < now) {
+      throw new BadRequestException('Start time cannot be before current time');
     }
     if (!dto.endTime && durationTotalMinutes <= 0) {
       throw new BadRequestException('Contest duration must be greater than zero');
@@ -288,10 +306,15 @@ export class ContestsService {
         startTime,
         endTime,
         freezeTime,
+        standingUnfreezeTime,
         createdById: judgeProfileId,
         contestNumber: Number.isFinite(currentMax) ? currentMax + 1 : 1001,
         status: ContestStatus.SCHEDULED,
-        isStandingFrozen: false,
+        isStandingFrozen: freezeEnabled,
+        isPublicStanding,
+        publicStandingsKey: isPublicStanding ? this.generatePublicStandingsKey() : null,
+        freezeBeforeMinutes,
+        freezeAfterMinutes,
       });
       await qr.manager.save(contest);
 
@@ -320,6 +343,177 @@ export class ContestsService {
     } finally {
       await qr.release();
     }
+  }
+
+  async updateContest(contestId: string, dto: UpdateContestDto, judgeUserId: string): Promise<Contest> {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
+    const contest = await this.resolveContestOrThrow(contestId, ['problems']);
+    if (!(await this.canJudgeManageContest(contest.id, contest.createdById, judgeUserId, judgeProfileId))) {
+      throw new ForbiddenException();
+    }
+
+    const phase = this.contestPhase(contest.startTime, contest.endTime);
+    if (phase === 'old') {
+      throw new BadRequestException('Ended contests cannot be edited');
+    }
+
+    const nextStartTime = dto.startTime ? new Date(dto.startTime) : contest.startTime;
+    const now = new Date();
+
+    if (Number.isNaN(nextStartTime.getTime())) {
+      throw new BadRequestException('Invalid contest start time');
+    }
+
+    if (dto.startTime && phase !== 'upcoming') {
+      throw new BadRequestException('Start time can only be changed for upcoming contests');
+    }
+
+    if (phase === 'upcoming' && nextStartTime < now) {
+      throw new BadRequestException('Start time cannot be before current time');
+    }
+
+    const existingDurationMinutes = Math.max(
+      1,
+      Math.round((contest.endTime.getTime() - contest.startTime.getTime()) / 60000),
+    );
+    const defaultDurationHours = Math.floor(existingDurationMinutes / 60);
+    const defaultDurationMinutes = existingDurationMinutes % 60;
+    const durationHours = dto.durationHours ?? defaultDurationHours;
+    const durationMinutes = dto.durationMinutes ?? defaultDurationMinutes;
+    const durationTotalMinutes = durationHours * 60 + durationMinutes;
+
+    const nextEndTime = dto.endTime
+      ? new Date(dto.endTime)
+      : new Date(nextStartTime.getTime() + durationTotalMinutes * 60 * 1000);
+
+    if (Number.isNaN(nextEndTime.getTime())) {
+      throw new BadRequestException('Invalid contest end time');
+    }
+    if (durationTotalMinutes <= 0) {
+      throw new BadRequestException('Contest duration must be greater than zero');
+    }
+    if (nextEndTime <= nextStartTime) {
+      throw new BadRequestException('End time must be after start time');
+    }
+
+    const freezeEnabled = dto.freezeEnabled ?? contest.isStandingFrozen;
+    const freezeBeforeMinutes = Math.max(0, dto.freezeBeforeMinutes ?? contest.freezeBeforeMinutes ?? 0);
+    const freezeAfterMinutes = Math.max(0, dto.freezeAfterMinutes ?? contest.freezeAfterMinutes ?? 0);
+    const nextFreezeTime = freezeEnabled
+      ? new Date(nextEndTime.getTime() - freezeBeforeMinutes * 60 * 1000)
+      : null;
+    const nextStandingUnfreezeTime = freezeEnabled
+      ? new Date(nextEndTime.getTime() + freezeAfterMinutes * 60 * 1000)
+      : null;
+
+    if (nextFreezeTime && (nextFreezeTime < nextStartTime || nextFreezeTime > nextEndTime)) {
+      throw new BadRequestException('Freeze time must be between start and end time');
+    }
+
+    const isPublicStanding = dto.standingVisibility
+      ? dto.standingVisibility === 'public'
+      : contest.isPublicStanding;
+
+    contest.title = dto.title ?? contest.title;
+    contest.description = dto.description ?? contest.description;
+    contest.type = dto.type ?? contest.type;
+    contest.startTime = nextStartTime;
+    contest.endTime = nextEndTime;
+    contest.isStandingFrozen = freezeEnabled;
+    contest.freezeBeforeMinutes = freezeBeforeMinutes;
+    contest.freezeAfterMinutes = freezeAfterMinutes;
+    contest.freezeTime = nextFreezeTime;
+    contest.standingUnfreezeTime = nextStandingUnfreezeTime;
+    contest.isPublicStanding = isPublicStanding;
+    if (isPublicStanding && !contest.publicStandingsKey) {
+      contest.publicStandingsKey = this.generatePublicStandingsKey();
+    }
+    if (!isPublicStanding) {
+      contest.publicStandingsKey = null;
+    }
+
+    const existingContestProblems = await this.cpRepo.find({
+      where: { contestId: contest.id },
+      order: { orderIndex: 'ASC' },
+    });
+
+    if (dto.problems) {
+      const uniqueProblemIds = new Set<string>();
+      for (const item of dto.problems) {
+        if (uniqueProblemIds.has(item.problemId)) {
+          throw new BadRequestException('Duplicate problems are not allowed in a contest');
+        }
+        uniqueProblemIds.add(item.problemId);
+      }
+
+      if (phase === 'upcoming') {
+        await this.cpRepo.delete({ contestId: contest.id });
+
+        for (let index = 0; index < dto.problems.length; index += 1) {
+          const cp = dto.problems[index];
+          const exists = await this.problemRepo.findOneBy({ id: cp.problemId });
+          if (!exists) throw new NotFoundException(`Problem ${cp.problemId} not found`);
+          if (exists.authorId !== judgeUserId) {
+            throw new ForbiddenException('Contest can include only your own problems');
+          }
+
+          const entry = this.cpRepo.create({
+            contestId: contest.id,
+            problemId: cp.problemId,
+            label: String.fromCharCode(65 + index),
+            orderIndex: index,
+            score: cp.score ?? null,
+          });
+          await this.cpRepo.save(entry);
+        }
+      } else {
+        const existingByProblemId = new Map(existingContestProblems.map((problem) => [problem.problemId, problem]));
+        const incomingByProblemId = new Map(dto.problems.map((problem) => [problem.problemId, problem]));
+
+        const keptOld = existingContestProblems.filter((problem) => incomingByProblemId.has(problem.problemId));
+        const deletedOld = existingContestProblems.filter((problem) => !incomingByProblemId.has(problem.problemId));
+
+        const incomingNew = dto.problems.filter((problem) => !existingByProblemId.has(problem.problemId));
+
+        if (deletedOld.length) {
+          await this.cpRepo.delete(deletedOld.map((problem) => problem.id));
+        }
+
+        for (const cp of incomingNew) {
+          const exists = await this.problemRepo.findOneBy({ id: cp.problemId });
+          if (!exists) throw new NotFoundException(`Problem ${cp.problemId} not found`);
+          if (exists.authorId !== judgeUserId) {
+            throw new ForbiddenException('Contest can include only your own problems');
+          }
+        }
+
+        const appendedNew: ContestProblem[] = [];
+        for (const cp of incomingNew) {
+          const entry = this.cpRepo.create({
+            contestId: contest.id,
+            problemId: cp.problemId,
+            label: '',
+            orderIndex: 0,
+            score: cp.score ?? null,
+          });
+          appendedNew.push(await this.cpRepo.save(entry));
+        }
+
+        const finalOrdered = [...keptOld, ...appendedNew];
+        for (let index = 0; index < finalOrdered.length; index += 1) {
+          const cp = finalOrdered[index];
+          cp.orderIndex = index;
+          cp.label = String.fromCharCode(65 + index);
+          if (incomingByProblemId.has(cp.problemId)) {
+            cp.score = incomingByProblemId.get(cp.problemId)?.score ?? cp.score ?? null;
+          }
+          await this.cpRepo.save(cp);
+        }
+      }
+    }
+
+    await this.contestRepo.save(contest);
+    return this.getContestById(contest.id);
   }
 
   async getContestById(id: string): Promise<Contest> {
@@ -428,9 +622,12 @@ export class ContestsService {
 
   async getStandings(contestId: string, judgeUserId?: string) {
     const contest = await this.getContestById(contestId);
+    const now = new Date();
+    const freezeStillActive = contest.isStandingFrozen
+      && (!contest.standingUnfreezeTime || now < new Date(contest.standingUnfreezeTime));
 
     // If standings are frozen, only judge sees live standings
-    const showFrozen = contest.isStandingFrozen && !judgeUserId;
+    const showFrozen = freezeStillActive && !judgeUserId;
 
     const problems = await this.cpRepo.find({
       where: { contestId: contest.id },
@@ -511,9 +708,37 @@ export class ContestsService {
     return {
       contestId,
       type: contest.type,
-      isFrozen: contest.isStandingFrozen,
+      isFrozen: freezeStillActive,
       problems: problems.map(p => ({ label: p.label, problemId: p.problemId })),
       rows: rows.map((r, idx) => ({ rank: idx + 1, ...r })),
+    };
+  }
+
+  async getPublicStandingsByKey(publicStandingsKey: string) {
+    const contest = await this.contestRepo.findOne({ where: { publicStandingsKey } });
+    if (!contest || !contest.isPublicStanding) {
+      throw new NotFoundException('Public standings link not found');
+    }
+    return this.getStandings(contest.id);
+  }
+
+  async getPublicStandingsByContest(identifier: string) {
+    const contest = await this.resolveContestOrThrow(identifier);
+    if (!contest.isPublicStanding) {
+      throw new ForbiddenException('Unauthorized');
+    }
+
+    const standings = await this.getStandings(contest.id);
+    return {
+      ...standings,
+      contest: {
+        id: contest.id,
+        contestNumber: contest.contestNumber,
+        title: contest.title,
+        type: contest.type,
+        startTime: contest.startTime,
+        endTime: contest.endTime,
+      },
     };
   }
 

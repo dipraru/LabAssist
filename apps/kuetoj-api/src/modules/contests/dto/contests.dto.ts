@@ -1,6 +1,6 @@
 import {
   IsString, IsOptional, IsUUID, IsEnum, IsNumber, IsArray, ValidateNested,
-  IsDateString, IsBoolean, IsInt,
+  IsDateString, IsBoolean, IsInt, IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ContestType, ProgrammingLanguage } from '../../../common/enums';
@@ -51,6 +51,26 @@ export class CreateContestDto {
   @IsOptional() @IsInt() durationHours?: number;
   @IsOptional() @IsInt() durationMinutes?: number;
   @IsOptional() @IsDateString() freezeTime?: string;
+  @IsOptional() @IsIn(['private', 'public']) standingVisibility?: 'private' | 'public';
+  @IsOptional() @IsBoolean() freezeEnabled?: boolean;
+  @IsOptional() @IsInt() freezeBeforeMinutes?: number;
+  @IsOptional() @IsInt() freezeAfterMinutes?: number;
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => AddContestProblemDto)
+  problems?: AddContestProblemDto[];
+}
+
+export class UpdateContestDto {
+  @IsOptional() @IsString() title?: string;
+  @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsEnum(ContestType) type?: ContestType;
+  @IsOptional() @IsDateString() startTime?: string;
+  @IsOptional() @IsDateString() endTime?: string;
+  @IsOptional() @IsInt() durationHours?: number;
+  @IsOptional() @IsInt() durationMinutes?: number;
+  @IsOptional() @IsIn(['private', 'public']) standingVisibility?: 'private' | 'public';
+  @IsOptional() @IsBoolean() freezeEnabled?: boolean;
+  @IsOptional() @IsInt() freezeBeforeMinutes?: number;
+  @IsOptional() @IsInt() freezeAfterMinutes?: number;
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => AddContestProblemDto)
   problems?: AddContestProblemDto[];
 }
