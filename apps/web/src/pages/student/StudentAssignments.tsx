@@ -4,6 +4,7 @@ import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Upload, FileText, ChevronDown, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useSearchParams } from 'react-router-dom';
 
 function courseCode(course: any): string {
   return course?.courseCode ?? course?.code ?? 'N/A';
@@ -22,6 +23,8 @@ const STATUS_COLOR: Record<string, string> = {
 
 export function StudentAssignments() {
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const deepLinkAssignmentId = searchParams.get('assignmentId') ?? '';
   const [filterCourse, setFilterCourse] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [uploadFile, setUploadFile] = useState<{ [key: string]: File }>({});
@@ -40,11 +43,24 @@ export function StudentAssignments() {
     enabled: !!filterCourse,
   });
 
+  const { data: deepLinkedAssignment } = useQuery({
+    queryKey: ['assignment-by-id', deepLinkAssignmentId],
+    enabled: !!deepLinkAssignmentId,
+    queryFn: () => api.get(`/assignments/${deepLinkAssignmentId}`).then((r) => r.data),
+  });
+
   useEffect(() => {
     if (!filterCourse && (courses as any[]).length > 0) {
       setFilterCourse((courses as any[])[0].id);
     }
   }, [courses, filterCourse]);
+
+  useEffect(() => {
+    const linkedCourseId = deepLinkedAssignment?.courseId;
+    if (linkedCourseId && linkedCourseId !== filterCourse) {
+      setFilterCourse(linkedCourseId);
+    }
+  }, [deepLinkedAssignment, filterCourse]);
 
   const submitMutation = useMutation({
     mutationFn: ({ id, file, note }: { id: string; file: File; note: string }) => {
@@ -89,6 +105,14 @@ export function StudentAssignments() {
 
     return filtered;
   }, [assignments, statusFilter, sortBy]);
+
+  useEffect(() => {
+    if (!deepLinkAssignmentId || !visibleAssignments.length) return;
+    const linked = visibleAssignments.find((a: any) => a.id === deepLinkAssignmentId);
+    if (linked) {
+      setExpandedId(linked.id);
+    }
+  }, [deepLinkAssignmentId, visibleAssignments]);
 
   return (
     <AppShell>

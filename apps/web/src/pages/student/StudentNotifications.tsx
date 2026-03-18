@@ -3,9 +3,11 @@ import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Bell, CheckCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 
 export function StudentNotifications() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: notifications = [], isLoading } = useQuery({
     queryKey: ['notifications'],
@@ -29,6 +31,19 @@ export function StudentNotifications() {
   });
 
   const unreadCount = (notifications as any[]).filter((n: any) => !n.isRead).length;
+
+  const resolveNotificationHref = (n: any): string => {
+    if (n?.type === 'assignment_posted') {
+      return n?.referenceId ? `/student/assignments?assignmentId=${n.referenceId}` : '/student/assignments';
+    }
+    if (n?.type === 'lecture_sheet_posted') {
+      return n?.referenceId ? `/student/courses?sheetId=${n.referenceId}` : '/student/courses';
+    }
+    if (n?.type === 'contest_announcement') {
+      return '/student';
+    }
+    return '/student/notifications';
+  };
 
   return (
     <AppShell>
@@ -64,6 +79,10 @@ export function StudentNotifications() {
                 type="button"
                 onClick={() => {
                   if (!n.isRead) markReadMutation.mutate([n.id]);
+                  const href = resolveNotificationHref(n);
+                  if (href !== '/student/notifications') {
+                    navigate(href);
+                  }
                 }}
                 className={`w-full text-left bg-white rounded-xl border shadow-sm p-4 transition-colors ${
                   n.isRead ? 'border-slate-100' : 'border-indigo-200 bg-indigo-50/40'

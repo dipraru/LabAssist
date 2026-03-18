@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { BookOpen, ExternalLink, User } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 
 function getCourseCode(course: any): string {
   return course?.courseCode ?? course?.code ?? 'N/A';
@@ -20,6 +21,8 @@ function getTeacherNames(course: any): string[] {
 }
 
 export function StudentCourses() {
+  const [searchParams] = useSearchParams();
+  const deepLinkSheetId = searchParams.get('sheetId') ?? '';
   const [selectedCourse, setSelectedCourse] = useState<any>(null);
 
   const { data: courses = [] } = useQuery({
@@ -32,6 +35,34 @@ export function StudentCourses() {
     queryFn: () => api.get(`/courses/${selectedCourse.id}/lecture-sheets`).then(r => r.data),
     enabled: !!selectedCourse,
   });
+
+  const { data: deepLinkedSheetCourseId } = useQuery({
+    queryKey: ['sheet-course-lookup', deepLinkSheetId, (courses as any[]).map((c: any) => c.id).join(',')],
+    enabled: !!deepLinkSheetId && (courses as any[]).length > 0,
+    queryFn: async () => {
+      for (const c of courses as any[]) {
+        const list = await api.get(`/courses/${c.id}/lecture-sheets`).then((r) => r.data).catch(() => []);
+        if ((list as any[]).some((s: any) => s.id === deepLinkSheetId)) {
+          return c.id as string;
+        }
+      }
+      return null;
+    },
+  });
+
+  useEffect(() => {
+    if (!selectedCourse && (courses as any[]).length > 0) {
+      setSelectedCourse((courses as any[])[0]);
+    }
+  }, [courses, selectedCourse]);
+
+  useEffect(() => {
+    if (!deepLinkedSheetCourseId) return;
+    const next = (courses as any[]).find((c: any) => c.id === deepLinkedSheetCourseId);
+    if (next) {
+      setSelectedCourse(next);
+    }
+  }, [deepLinkedSheetCourseId, courses]);
 
   return (
     <AppShell>
@@ -70,7 +101,11 @@ export function StudentCourses() {
             ) : (
               <div className="space-y-3">
                 {(sheets as any[]).map((s: any) => (
-                  <div key={s.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
+                  <div key={s.id} className={`bg-white rounded-xl border shadow-sm p-4 ${
+                    deepLinkSheetId && s.id === deepLinkSheetId
+                      ? 'border-indigo-300 ring-1 ring-indigo-200'
+                      : 'border-slate-100'
+                  }`}>
                     <p className="font-semibold text-slate-800">{s.title}</p>
                     {s.description && <p className="text-sm text-slate-500 mt-0.5">{s.description}</p>}
                     <div className="mt-2 flex flex-wrap gap-2">
