@@ -65,6 +65,12 @@ export function StudentLabTests() {
     enabled: !!filterCourse,
   });
 
+  useEffect(() => {
+    if (!filterCourse && (courses as any[]).length > 0) {
+      setFilterCourse((courses as any[])[0].id);
+    }
+  }, [courses, filterCourse]);
+
   const { data: problems = [] } = useQuery({
     queryKey: ['lab-test-problems', selectedTest?.id],
     queryFn: () => api.get(`/lab-tests/${selectedTest.id}/problems`).then(r => r.data),

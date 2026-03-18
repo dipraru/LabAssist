@@ -26,6 +26,38 @@ export function StudentDashboard() {
     queryFn: () => api.get('/notifications').then(r => r.data),
   });
 
+  const { data: pendingAssignments = 0 } = useQuery({
+    queryKey: ['student-pending-assignments', (courses as any[]).map((c: any) => c.id).join(',')],
+    enabled: (courses as any[]).length > 0,
+    queryFn: async () => {
+      const assignmentLists = await Promise.all(
+        (courses as any[]).map((c: any) =>
+          api.get(`/assignments/course/${c.id}`).then((r) => r.data).catch(() => []),
+        ),
+      );
+
+      const seen = new Set<string>();
+      let pending = 0;
+
+      for (const list of assignmentLists as any[][]) {
+        for (const assignment of list ?? []) {
+          if (!assignment?.id || seen.has(assignment.id)) continue;
+          seen.add(assignment.id);
+
+          if (assignment.mySubmission) continue;
+
+          const deadlineMs = assignment.deadline ? new Date(assignment.deadline).getTime() : null;
+          const isExpired = deadlineMs != null && Number.isFinite(deadlineMs) && deadlineMs < Date.now();
+          if (isExpired && !assignment.allowLateSubmission) continue;
+
+          pending += 1;
+        }
+      }
+
+      return pending;
+    },
+  });
+
   const unread = (notifications as any[]).filter((n: any) => !n.isRead);
 
   const profile = user?.profile as any;
@@ -45,7 +77,9 @@ export function StudentDashboard() {
           <Link to="/student/notifications">
             <StatCard icon={<Bell className="text-amber-500" size={22} />} label="Unread Notifications" value={unread.length} />
           </Link>
-          <StatCard icon={<ClipboardList className="text-green-500" size={22} />} label="Active Contests" value={0} />
+          <Link to="/student/assignments">
+            <StatCard icon={<ClipboardList className="text-green-500" size={22} />} label="Pending Assignments" value={pendingAssignments} />
+          </Link>
         </div>
 
         {/* Recent notifications */}

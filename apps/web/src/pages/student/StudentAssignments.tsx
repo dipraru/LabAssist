@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
@@ -37,6 +37,12 @@ export function StudentAssignments() {
     queryFn: () => api.get(`/assignments/course/${filterCourse}`).then(r => r.data),
     enabled: !!filterCourse,
   });
+
+  useEffect(() => {
+    if (!filterCourse && (courses as any[]).length > 0) {
+      setFilterCourse((courses as any[])[0].id);
+    }
+  }, [courses, filterCourse]);
 
   const submitMutation = useMutation({
     mutationFn: ({ id, file, note }: { id: string; file: File; note: string }) => {

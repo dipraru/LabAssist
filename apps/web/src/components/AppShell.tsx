@@ -26,6 +26,7 @@ const roleNavItems: Record<string, { label: string; href: string; icon: ReactNod
   ],
   student: [
     { label: 'Dashboard', href: '/student', icon: <LayoutDashboard size={18} /> },
+    { label: 'Notifications', href: '/student/notifications', icon: <Bell size={18} /> },
     { label: 'Profile', href: '/student/profile', icon: <User size={18} /> },
     { label: 'Courses', href: '/student/courses', icon: <BookOpen size={18} /> },
     { label: 'Assignments', href: '/student/assignments', icon: <BookOpen size={18} /> },
