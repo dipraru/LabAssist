@@ -27,12 +27,12 @@ export function StudentAssignments() {
   const [uploadFile, setUploadFile] = useState<{ [key: string]: File }>({});
   const [notes, setNotes] = useState<{ [key: string]: string }>({});
 
-  const { data: courses = [] } = useQuery({
+  const { data: courses = [], isLoading: coursesLoading } = useQuery({
     queryKey: ['student-courses'],
     queryFn: () => api.get('/courses/my').then(r => r.data),
   });
 
-  const { data: assignments = [] } = useQuery({
+  const { data: assignments = [], isLoading: assignmentsLoading } = useQuery({
     queryKey: ['student-assignments', filterCourse],
     queryFn: () => api.get(`/assignments/course/${filterCourse}`).then(r => r.data),
     enabled: !!filterCourse,
@@ -68,14 +68,28 @@ export function StudentAssignments() {
         <h1 className="text-2xl font-bold text-slate-900 mb-6">Assignments</h1>
 
         <div className="mb-4">
-          <select value={filterCourse} onChange={e => setFilterCourse(e.target.value)}
-            className="px-3 py-2 border border-slate-300 rounded-lg text-sm">
-            <option value="">— select course —</option>
-            {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{courseCode(c)} — {courseTitle(c)}</option>)}
-          </select>
+          {coursesLoading ? (
+            <div className="h-10 w-64 bg-slate-100 rounded-lg animate-pulse" />
+          ) : (
+            <select value={filterCourse} onChange={e => setFilterCourse(e.target.value)}
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+              <option value="">- select course -</option>
+              {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{courseCode(c)} - {courseTitle(c)}</option>)}
+            </select>
+          )}
         </div>
 
         <div className="space-y-3">
+          {assignmentsLoading && !!filterCourse && (
+            <>
+              {[1, 2].map((k) => (
+                <div key={k} className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 animate-pulse">
+                  <div className="h-4 w-44 bg-slate-100 rounded mb-2" />
+                  <div className="h-3 w-56 bg-slate-100 rounded" />
+                </div>
+              ))}
+            </>
+          )}
           {(assignments as any[]).map((a: any) => {
             const sub = a.mySubmission;
             const expired = isExpired(a.deadline);

@@ -16,12 +16,12 @@ function courseTitle(course: any): string {
 export function StudentDashboard() {
   const { user } = useAuthStore();
 
-  const { data: courses = [] } = useQuery({
+  const { data: courses = [], isLoading: coursesLoading } = useQuery({
     queryKey: ['student-courses'],
     queryFn: () => api.get('/courses/my').then(r => r.data),
   });
 
-  const { data: notifications = [] } = useQuery({
+  const { data: notifications = [], isLoading: notificationsLoading } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => api.get('/notifications').then(r => r.data),
   });
@@ -72,15 +72,27 @@ export function StudentDashboard() {
           <p className="text-slate-500 text-sm mt-0.5">Here's your overview</p>
         </div>
 
-        <div className="grid grid-cols-3 gap-4 mb-8">
-          <StatCard icon={<BookOpen className="text-indigo-500" size={22} />} label="Enrolled Courses" value={(courses as any[]).length} />
-          <Link to="/student/notifications">
-            <StatCard icon={<Bell className="text-amber-500" size={22} />} label="Unread Notifications" value={unread.length} />
-          </Link>
-          <Link to="/student/assignments">
-            <StatCard icon={<ClipboardList className="text-green-500" size={22} />} label="Pending Assignments" value={pendingAssignments} />
-          </Link>
-        </div>
+        {coursesLoading || notificationsLoading ? (
+          <div className="grid grid-cols-3 gap-4 mb-8">
+            {[1, 2, 3].map((k) => (
+              <div key={k} className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 animate-pulse">
+                <div className="w-10 h-10 bg-slate-100 rounded-xl mb-3" />
+                <div className="h-6 w-16 bg-slate-100 rounded mb-2" />
+                <div className="h-4 w-28 bg-slate-100 rounded" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-4 mb-8">
+            <StatCard icon={<BookOpen className="text-indigo-500" size={22} />} label="Enrolled Courses" value={(courses as any[]).length} />
+            <Link to="/student/notifications">
+              <StatCard icon={<Bell className="text-amber-500" size={22} />} label="Unread Notifications" value={unread.length} />
+            </Link>
+            <Link to="/student/assignments">
+              <StatCard icon={<ClipboardList className="text-green-500" size={22} />} label="Pending Assignments" value={pendingAssignments} />
+            </Link>
+          </div>
+        )}
 
         {/* Recent notifications */}
         {unread.length > 0 && (
@@ -101,7 +113,16 @@ export function StudentDashboard() {
         )}
 
         <h2 className="text-lg font-semibold text-slate-800 mb-3">My Courses</h2>
-        {(courses as any[]).length === 0 ? (
+        {coursesLoading ? (
+          <div className="grid grid-cols-2 gap-3">
+            {[1, 2].map((k) => (
+              <div key={k} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 animate-pulse">
+                <div className="h-4 w-40 bg-slate-100 rounded mb-2" />
+                <div className="h-3 w-28 bg-slate-100 rounded" />
+              </div>
+            ))}
+          </div>
+        ) : (courses as any[]).length === 0 ? (
           <p className="text-slate-400 text-sm">Not enrolled in any courses yet.</p>
         ) : (
           <div className="grid grid-cols-2 gap-3">
