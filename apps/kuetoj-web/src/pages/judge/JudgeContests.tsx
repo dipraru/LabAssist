@@ -94,9 +94,8 @@ export function JudgeContests() {
   const [isEditLoading, setIsEditLoading] = useState(false);
 
   const [participantsContest, setParticipantsContest] = useState<ContestItem | null>(null);
-  const [participantCount, setParticipantCount] = useState(10);
-  const [participantAccessFrom, setParticipantAccessFrom] = useState('');
-  const [participantAccessUntil, setParticipantAccessUntil] = useState('');
+  const [participantCsvFileName, setParticipantCsvFileName] = useState('');
+  const [participantNames, setParticipantNames] = useState<string[]>([]);
   const [latestPdfBase64, setLatestPdfBase64] = useState<string | null>(null);
 
   const { data: contests = [] } = useQuery({
@@ -132,12 +131,6 @@ export function JudgeContests() {
       return titleText.includes(q) || idText.includes(q) || codeText.includes(q);
     });
   }, [allProblems, editProblemSearchText]);
-
-  const toLocalInput = (iso: string) => {
-    const date = new Date(iso);
-    const tzOffset = date.getTimezoneOffset() * 60000;
-    return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
-  };
 
   const toPlainDateTimeText = (value: Date) => {
     const year = value.getFullYear();
@@ -519,24 +512,83 @@ export function JudgeContests() {
   };
 
   const openParticipantsModal = (contest: ContestItem) => {
-    const fallbackFrom = contest.startTime ? toLocalInput(contest.startTime) : '';
-    const fallbackUntil = contest.endTime ? toLocalInput(contest.endTime) : '';
     setParticipantsContest(contest);
-    setParticipantCount(10);
-    setParticipantAccessFrom(fallbackFrom);
-    setParticipantAccessUntil(fallbackUntil);
+    setParticipantCsvFileName('');
+    setParticipantNames([]);
     setLatestPdfBase64(null);
     setShowParticipantsModal(true);
+  };
+
+  const parseParticipantCsv = (rawText: string): string[] => {
+    const stripped = rawText.replace(/^\uFEFF/, '');
+    const lines = stripped.split(/\r?\n/);
+
+    while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+      lines.pop();
+    }
+
+    const names = lines.map((line) => {
+      if (line.includes(',')) {
+        throw new Error('CSV must contain exactly one column (participant name only)');
+      }
+      return line.trim();
+    });
+
+    if (!names.length) {
+      throw new Error('CSV file is empty');
+    }
+
+    if (names.length > 200) {
+      throw new Error('Maximum 200 participants are allowed per batch');
+    }
+
+    return names;
+  };
+
+  const onParticipantCsvSelected = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const names = parseParticipantCsv(text);
+      setParticipantCsvFileName(file.name);
+      setParticipantNames(names);
+    } catch (error: any) {
+      setParticipantCsvFileName('');
+      setParticipantNames([]);
+      toast.error(error?.message ?? 'Failed to parse CSV file');
+    }
+  };
+
+  const updateParticipantNameAt = (index: number, value: string) => {
+    setParticipantNames((prev) => prev.map((name, idx) => (idx === index ? value : name)));
+  };
+
+  const addParticipantRow = () => {
+    setParticipantNames((prev) => [...prev, '']);
+  };
+
+  const removeParticipantRow = (index: number) => {
+    setParticipantNames((prev) => prev.filter((_, idx) => idx !== index));
   };
 
   const createParticipantsMutation = useMutation({
     mutationFn: () => {
       if (!participantsContest) throw new Error('Contest not selected');
+
+      const normalizedNames = participantNames.map((name) => name.trim());
+      if (!normalizedNames.length) {
+        throw new Error('Please select a CSV file and load participant names first');
+      }
+      if (normalizedNames.length > 200) {
+        throw new Error('Maximum 200 participants are allowed per batch');
+      }
+      if (normalizedNames.some((name) => !name)) {
+        throw new Error('Participant name list contains empty fields. Fill or remove empty rows.');
+      }
+
       return api.post('/contests/participants/bulk', {
         contestId: participantsContest.id,
-        count: participantCount,
-        accessFrom: participantAccessFrom ? new Date(participantAccessFrom).toISOString() : undefined,
-        accessUntil: participantAccessUntil ? new Date(participantAccessUntil).toISOString() : undefined,
+        names: normalizedNames,
       });
     },
     onSuccess: (res) => {
@@ -1306,37 +1358,59 @@ export function JudgeContests() {
         >
           <div className="space-y-3">
             <div>
-              <label className="text-xs font-medium text-slate-600">Number of Accounts</label>
+              <label className="text-xs font-medium text-slate-600">Participant CSV File</label>
               <input
-                type="number"
-                min={1}
-                max={200}
-                value={participantCount}
-                onChange={(e) => setParticipantCount(Number(e.target.value || 0))}
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => {
+                  const selectedFile = e.target.files?.[0] ?? null;
+                  void onParticipantCsvSelected(selectedFile);
+                }}
                 className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
               />
-              <p className="text-xs text-slate-500 mt-1">You can run this multiple times to create more.</p>
+              <p className="text-xs text-slate-500 mt-1">CSV must contain one column: participant name.</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-medium text-slate-600">Access From (optional)</label>
-                <input
-                  type="datetime-local"
-                  value={participantAccessFrom}
-                  onChange={(e) => setParticipantAccessFrom(e.target.value)}
-                  className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
-                />
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium text-slate-700">Participant Names</p>
+                  <p className="text-xs text-slate-500">
+                    {participantCsvFileName
+                      ? `${participantCsvFileName} · ${participantNames.length} rows loaded`
+                      : 'Choose a CSV file to load rows'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={addParticipantRow}
+                  className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-100"
+                >
+                  Add Row
+                </button>
               </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600">Access Until (optional)</label>
-                <input
-                  type="datetime-local"
-                  min={participantAccessFrom || undefined}
-                  value={participantAccessUntil}
-                  onChange={(e) => setParticipantAccessUntil(e.target.value)}
-                  className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
-                />
+
+              <div className="mt-3 max-h-56 overflow-auto space-y-2">
+                {participantNames.length ? participantNames.map((name, index) => (
+                  <div key={`participant-name-${index}`} className="flex items-center gap-2">
+                    <span className="w-8 shrink-0 text-right text-xs text-slate-500">{index + 1}.</span>
+                    <input
+                      value={name}
+                      onChange={(e) => updateParticipantNameAt(index, e.target.value)}
+                      placeholder="Participant name"
+                      className="flex-1 border border-slate-300 rounded-md px-3 py-1.5 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeParticipantRow(index)}
+                      className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-100"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )) : (
+                  <p className="text-xs text-slate-500">No rows loaded yet.</p>
+                )}
               </div>
             </div>
 

@@ -78,6 +78,11 @@ export class ContestsService {
     };
   }
 
+  private async getContestParticipantNameMap(contestId: string): Promise<Map<string, string>> {
+    const participants = await this.tpRepo.find({ where: { contestId } });
+    return new Map(participants.map((participant) => [participant.userId, participant.fullName]));
+  }
+
   private async getJudgeProfileId(judgeUserId: string): Promise<string> {
     const judgeProfile = await this.tjRepo.findOne({ where: { userId: judgeUserId } });
     if (!judgeProfile) {
@@ -643,6 +648,7 @@ export class ContestsService {
       where: { contestId: contest.id },
       order: { submittedAt: 'ASC' },
     });
+    const participantNameMap = await this.getContestParticipantNameMap(contest.id);
 
     const cutoff = contest.freezeTime && showFrozen ? new Date(contest.freezeTime) : null;
 
@@ -663,7 +669,7 @@ export class ContestsService {
       if (!participantMap.has(sub.participantId)) {
         participantMap.set(sub.participantId, {
           participantId: sub.participantId,
-          participantName: sub.participantName ?? sub.participantId,
+          participantName: participantNameMap.get(sub.participantId) ?? sub.participantName ?? sub.participantId,
           solved: 0,
           penalty: 0,
           scores: 0,
@@ -769,6 +775,8 @@ export class ContestsService {
     file?: Express.Multer.File,
   ) {
     const contest = await this.resolveContestOrThrow(contestId);
+    const participantNameMap = await this.getContestParticipantNameMap(contest.id);
+    const resolvedParticipantName = participantNameMap.get(participantUserId) ?? participantName;
     const now = new Date();
     const phase = this.contestPhase(contest.startTime, contest.endTime);
     if (phase !== 'running')
@@ -795,7 +803,7 @@ export class ContestsService {
       contestId: contest.id,
       contestProblemId: dto.contestProblemId,
       participantId: participantUserId,
-      participantName,
+      participantName: resolvedParticipantName,
       code: dto.code ?? null,
       fileUrl,
       fileName,
@@ -809,22 +817,28 @@ export class ContestsService {
 
   async getMySubmissions(contestId: string, participantUserId: string) {
     const contest = await this.resolveContestOrThrow(contestId);
+    const participantNameMap = await this.getContestParticipantNameMap(contest.id);
     const submissions = await this.subRepo.find({
       where: { contestId: contest.id, participantId: participantUserId },
       order: { submittedAt: 'DESC' },
     });
-    return submissions.map((submission) => this.serializeSubmission(submission));
+    return submissions.map((submission) => {
+      const fullName = participantNameMap.get(submission.participantId) ?? submission.participantName ?? submission.participantId;
+      return this.serializeSubmission({ ...submission, participantName: fullName });
+    });
   }
 
   async getMySubmissionById(contestId: string, submissionId: string, participantUserId: string) {
     const contest = await this.resolveContestOrThrow(contestId);
+    const participantNameMap = await this.getContestParticipantNameMap(contest.id);
     const submission = await this.subRepo.findOne({
       where: { id: submissionId, contestId: contest.id, participantId: participantUserId },
     });
     if (!submission) {
       throw new NotFoundException('Submission not found');
     }
-    return this.serializeSubmission(submission);
+    const fullName = participantNameMap.get(submission.participantId) ?? submission.participantName ?? submission.participantId;
+    return this.serializeSubmission({ ...submission, participantName: fullName });
   }
 
   async getAllSubmissions(contestId: string, judgeUserId: string) {
@@ -833,11 +847,15 @@ export class ContestsService {
     if (!(await this.canJudgeManageContest(c.id, c.createdById, judgeUserId, judgeProfileId))) {
       throw new ForbiddenException();
     }
+    const participantNameMap = await this.getContestParticipantNameMap(c.id);
     const submissions = await this.subRepo.find({
       where: { contestId: c.id },
       order: { submittedAt: 'DESC' },
     });
-    return submissions.map((submission) => this.serializeSubmission(submission));
+    return submissions.map((submission) => {
+      const fullName = participantNameMap.get(submission.participantId) ?? submission.participantName ?? submission.participantId;
+      return this.serializeSubmission({ ...submission, participantName: fullName });
+    });
   }
 
   async gradeSubmission(subId: string, dto: GradeContestSubmissionDto, judgeUserId: string) {
@@ -941,10 +959,13 @@ export class ContestsService {
 
   async askClarification(contestId: string, dto: AskClarificationDto, participantUserId: string) {
     const c = await this.resolveContestOrThrow(contestId);
+    const participantNameMap = await this.getContestParticipantNameMap(c.id);
+    const participantName = participantNameMap.get(participantUserId) ?? null;
 
     const clar = this.clarRepo.create({
       contestId: c.id,
       participantId: participantUserId,
+      participantName,
       question: dto.question,
       contestProblemId: dto.contestProblemId ?? null,
       status: ClarificationStatus.OPEN,
@@ -958,10 +979,17 @@ export class ContestsService {
     if (!(await this.canJudgeManageContest(c.id, c.createdById, judgeUserId, judgeProfileId))) {
       throw new ForbiddenException();
     }
-    return this.clarRepo.find({
+    const participantNameMap = await this.getContestParticipantNameMap(c.id);
+    const clarifications = await this.clarRepo.find({
       where: { contestId: c.id, status: ClarificationStatus.OPEN },
       order: { createdAt: 'ASC' },
     });
+    return clarifications.map((clarification) => ({
+      ...clarification,
+      participantName: participantNameMap.get(clarification.participantId)
+        ?? clarification.participantName
+        ?? clarification.participantId,
+    }));
   }
 
   async getAllClarifications(contestId: string, judgeUserId: string) {
@@ -970,10 +998,17 @@ export class ContestsService {
     if (!(await this.canJudgeManageContest(c.id, c.createdById, judgeUserId, judgeProfileId))) {
       throw new ForbiddenException();
     }
-    return this.clarRepo.find({
+    const participantNameMap = await this.getContestParticipantNameMap(c.id);
+    const clarifications = await this.clarRepo.find({
       where: { contestId: c.id },
       order: { createdAt: 'DESC' },
     });
+    return clarifications.map((clarification) => ({
+      ...clarification,
+      participantName: participantNameMap.get(clarification.participantId)
+        ?? clarification.participantName
+        ?? clarification.participantId,
+    }));
   }
 
   async answerClarification(
@@ -1033,10 +1068,17 @@ export class ContestsService {
 
   async getMyClarifications(contestId: string, participantUserId: string) {
     const contest = await this.resolveContestOrThrow(contestId);
-    return this.clarRepo.find({
+    const participantNameMap = await this.getContestParticipantNameMap(contest.id);
+    const clarifications = await this.clarRepo.find({
       where: { contestId: contest.id, participantId: participantUserId },
       order: { createdAt: 'DESC' },
     });
+    return clarifications.map((clarification) => ({
+      ...clarification,
+      participantName: participantNameMap.get(clarification.participantId)
+        ?? clarification.participantName
+        ?? clarification.participantId,
+    }));
   }
 
   // ─── TEMP PARTICIPANTS ────────────────────────────────────────────────────────
@@ -1047,20 +1089,12 @@ export class ContestsService {
     if (!(await this.canJudgeManageContest(contest.id, contest.createdById, judgeUserId, judgeProfileId))) {
       throw new ForbiddenException();
     }
-    if (dto.count < 1 || dto.count > 200)
-      throw new BadRequestException('Count must be between 1 and 200');
-
-    const now = new Date();
-    const accessFrom = dto.accessFrom
-      ? new Date(dto.accessFrom)
-      : (contest.startTime > now ? contest.startTime : now);
-    const accessUntil = dto.accessUntil ? new Date(dto.accessUntil) : contest.endTime;
-
-    if (Number.isNaN(accessFrom.getTime()) || Number.isNaN(accessUntil.getTime())) {
-      throw new BadRequestException('Invalid participant access window');
+    const normalizedNames = (dto.names ?? []).map((name) => (typeof name === 'string' ? name.trim() : ''));
+    if (!normalizedNames.length || normalizedNames.length > 200) {
+      throw new BadRequestException('Participant names must contain between 1 and 200 rows');
     }
-    if (accessUntil <= accessFrom) {
-      throw new BadRequestException('Participant access end must be after start');
+    if (normalizedNames.some((name) => !name)) {
+      throw new BadRequestException('Participant names contain empty rows');
     }
 
     const qr = this.dataSource.createQueryRunner();
@@ -1081,12 +1115,12 @@ export class ContestsService {
 
       const contestCode = String(contest.contestNumber ?? contest.id.replace(/-/g, '').slice(0, 6)).toUpperCase();
 
-      for (let i = 0; i < dto.count; i++) {
+      for (let i = 0; i < normalizedNames.length; i++) {
         counter++;
         const participantId = `TP-${contestCode}-${String(counter).padStart(3, '0')}`;
         const username = `tp_${String(contest.contestNumber ?? contest.id).slice(0, 8)}_${String(counter).padStart(3, '0')}`;
         const plainPassword = Math.random().toString(36).slice(-8).toUpperCase();
-        const fullName = `Participant ${counter}`;
+        const fullName = normalizedNames[i];
 
         const user = qr.manager.create(User, {
           username,
@@ -1102,8 +1136,6 @@ export class ContestsService {
           participantId,
           fullName,
           contestId: contest.id,
-          accessFrom,
-          accessUntil,
           createdByJudgeId: judgeProfileId,
           userId: user.id,
           loginPassword: plainPassword,
@@ -1145,8 +1177,6 @@ export class ContestsService {
       fullName: tp.fullName,
       username: tp.user?.username ?? null,
       password: tp.loginPassword ?? null,
-      accessFrom: tp.accessFrom,
-      accessUntil: tp.accessUntil,
       createdAt: tp.createdAt,
     }));
   }
@@ -1162,8 +1192,6 @@ export class ContestsService {
       .filter(a => a.contest)
       .map((assignment) => ({
         participantId: assignment.participantId,
-        accessFrom: assignment.accessFrom,
-        accessUntil: assignment.accessUntil,
         contest: {
           id: assignment.contest!.id,
           title: assignment.contest!.title,

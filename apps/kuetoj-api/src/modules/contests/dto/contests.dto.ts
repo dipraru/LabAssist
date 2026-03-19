@@ -1,6 +1,6 @@
 import {
   IsString, IsOptional, IsUUID, IsEnum, IsNumber, IsArray, ValidateNested,
-  IsDateString, IsBoolean, IsInt, IsIn,
+  IsDateString, IsBoolean, IsInt, IsIn, ArrayMaxSize, ArrayNotEmpty,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ContestType, ProgrammingLanguage } from '../../../common/enums';
@@ -116,9 +116,7 @@ export class AskClarificationDto {
 
 export class CreateTempParticipantsDto {
   @IsUUID() contestId: string;
-  @IsInt() count: number;
-  @IsOptional() @IsDateString() accessFrom?: string;
-  @IsOptional() @IsDateString() accessUntil?: string;
+  @IsArray() @ArrayNotEmpty() @ArrayMaxSize(200) @IsString({ each: true }) names: string[];
 }
 
 // ─── Judge webhook ───────────────────────────────────────────────────────────
