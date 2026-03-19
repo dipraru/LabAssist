@@ -124,3 +124,19 @@ export class CreateLectureSheetDto {
   @Type(() => LinkDto)
   links: LinkDto[];
 }
+
+export class UpdateLectureSheetDto {
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => LinkDto)
+  links?: LinkDto[];
+}
