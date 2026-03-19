@@ -682,13 +682,19 @@ export function JudgeContests() {
     return timeB - timeA;
   });
 
+  const sortByEarliestStart = (rows: ContestItem[]) => [...rows].sort((a, b) => {
+    const timeA = new Date(a.startTime ?? 0).getTime();
+    const timeB = new Date(b.startTime ?? 0).getTime();
+    return timeA - timeB;
+  });
+
   const runningContests = useMemo(
     () => sortByNewestStart((contests as ContestItem[]).filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'running')),
     [contests],
   );
 
   const upcomingContests = useMemo(
-    () => sortByNewestStart((contests as ContestItem[]).filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'upcoming')),
+    () => sortByEarliestStart((contests as ContestItem[]).filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'upcoming')),
     [contests],
   );
 
