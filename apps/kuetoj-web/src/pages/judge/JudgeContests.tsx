@@ -36,6 +36,7 @@ type ContestItem = {
   isPublicStanding?: boolean;
   startTime?: string;
   endTime?: string;
+  participatedCount?: number;
 };
 
 const PHASE_COLOR: Record<string, string> = {
@@ -654,31 +655,25 @@ export function JudgeContests() {
     return new Date(computedEndTime.getTime() + Math.max(0, freezeAfterMinutesPreview) * 60 * 1000);
   }, [freezeEnabled, computedEndTime, freezeAfterMinutesPreview]);
 
-  const sortedContests = useMemo(() => {
-    const order: Record<string, number> = { running: 0, upcoming: 1, old: 2 };
-    return [...(contests as ContestItem[])].sort((a, b) => {
-      const phaseA = getContestPhase(a.startTime ?? '', a.endTime ?? '');
-      const phaseB = getContestPhase(b.startTime ?? '', b.endTime ?? '');
-      if (order[phaseA] !== order[phaseB]) return order[phaseA] - order[phaseB];
-      const timeA = new Date(a.startTime ?? '').getTime();
-      const timeB = new Date(b.startTime ?? '').getTime();
-      return timeA - timeB;
-    });
-  }, [contests]);
+  const sortByNewestStart = (rows: ContestItem[]) => [...rows].sort((a, b) => {
+    const timeA = new Date(a.startTime ?? 0).getTime();
+    const timeB = new Date(b.startTime ?? 0).getTime();
+    return timeB - timeA;
+  });
 
   const runningContests = useMemo(
-    () => sortedContests.filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'running'),
-    [sortedContests],
+    () => sortByNewestStart((contests as ContestItem[]).filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'running')),
+    [contests],
   );
 
   const upcomingContests = useMemo(
-    () => sortedContests.filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'upcoming'),
-    [sortedContests],
+    () => sortByNewestStart((contests as ContestItem[]).filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'upcoming')),
+    [contests],
   );
 
   const pastContests = useMemo(
-    () => sortedContests.filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'old'),
-    [sortedContests],
+    () => sortByNewestStart((contests as ContestItem[]).filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'old')),
+    [contests],
   );
 
   const phaseLabel = (phase: string) => {
@@ -703,6 +698,10 @@ export function JudgeContests() {
 
     if (phase === 'upcoming') {
       const seconds = Math.floor((startMs - nowMs) / 1000);
+      if (seconds >= 24 * 60 * 60) {
+        const days = Math.ceil(seconds / (24 * 60 * 60));
+        return `${days} day${days > 1 ? 's' : ''}`;
+      }
       return formatHms(seconds);
     }
 
@@ -714,27 +713,31 @@ export function JudgeContests() {
     return '—';
   };
 
-  const renderContestTable = (title: string, rows: ContestItem[], timerHeader: string) => (
+  const durationText = (contest: ContestItem) => {
+    if (!contest.startTime || !contest.endTime) return '—';
+    const startMs = new Date(contest.startTime).getTime();
+    const endMs = new Date(contest.endTime).getTime();
+    if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs) return '—';
+    const totalMinutes = Math.max(1, Math.round((endMs - startMs) / 60000));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours}h ${minutes}m`;
+  };
+
+  const renderContestTable = (title: string, rows: ContestItem[], section: 'running' | 'upcoming' | 'past') => (
     <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-900 mb-4">{title}</h2>
       <div className="overflow-x-auto">
-        <table className="w-full table-fixed text-sm">
-          <colgroup>
-            <col className="w-[32%]" />
-            <col className="w-[12%]" />
-            <col className="w-[20%]" />
-            <col className="w-[20%]" />
-            <col className="w-[8%]" />
-            <col className="w-[28%]" />
-          </colgroup>
+        <table className="w-full table-auto text-sm">
           <thead className="bg-slate-50 border-y border-slate-200">
             <tr>
               <th className="px-3 py-2 text-left font-medium text-slate-600">Title</th>
+              <th className="px-3 py-2 text-left font-medium text-slate-600">Duration</th>
               <th className="px-3 py-2 text-left font-medium text-slate-600">Start Time</th>
               <th className="px-3 py-2 text-left font-medium text-slate-600">End Time</th>
-              <th className="px-3 py-2 text-left font-medium text-slate-600">{timerHeader}</th>
+              <th className="px-3 py-2 text-left font-medium text-slate-600">{section === 'past' ? 'Total Participant' : section === 'upcoming' ? 'Starts In' : 'Remaining'}</th>
               <th className="px-3 py-2 text-left font-medium text-slate-600">Status</th>
-              <th className="px-3 py-2 text-right font-medium text-slate-600" />
+              <th className="px-3 py-2 text-right font-medium text-slate-600 whitespace-nowrap" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -752,22 +755,25 @@ export function JudgeContests() {
                       {contest.title}
                     </button>
                   </td>
+                  <td className="px-3 py-3 text-slate-700 text-xs">{durationText(contest)}</td>
                   <td className="px-3 py-3 text-slate-700 truncate">{contest.startTime ? new Date(contest.startTime).toLocaleString() : '—'}</td>
                   <td className="px-3 py-3 text-slate-700 truncate">{contest.endTime ? new Date(contest.endTime).toLocaleString() : '—'}</td>
-                  <td className="px-3 py-3 text-slate-700 font-mono text-xs">
-                    {phaseTime(contest)}
+                  <td className="px-3 py-3 text-slate-700 text-xs">
+                    {section === 'past' ? (contest.participatedCount ?? 0) : phaseTime(contest)}
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="px-3 py-3 whitespace-nowrap">
                     <span className={`text-xs px-2 py-1 rounded-full ${PHASE_COLOR[phase] ?? 'bg-slate-100 text-slate-700'}`}>
                       {phaseLabel(phase)}
                     </span>
                   </td>
-                  <td className="px-3 py-3">
-                    <div className="flex justify-end gap-2">
+                  <td className="px-3 py-3 whitespace-nowrap">
+                    <div className="flex items-center justify-end gap-2">
                       {phase !== 'old' && (
                         <button onClick={() => openEditContestModal(contest)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Edit</button>
                       )}
-                      <button onClick={() => openParticipantsModal(contest)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Create Participants</button>
+                      {phase !== 'old' && (
+                        <button onClick={() => openParticipantsModal(contest)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Create Participants</button>
+                      )}
                       <button
                         onClick={() => downloadAllCredentialsMutation.mutate(contest.id)}
                         disabled={downloadAllCredentialsMutation.isPending}
@@ -782,7 +788,7 @@ export function JudgeContests() {
             })}
             {!rows.length && (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-slate-500">No contests in this section.</td>
+                <td colSpan={7} className="px-3 py-8 text-center text-slate-500">No contests in this section.</td>
               </tr>
             )}
           </tbody>
@@ -809,9 +815,9 @@ export function JudgeContests() {
           </div>
         </section>
 
-        {renderContestTable('Running Contests', runningContests, 'Remaining')}
-        {renderContestTable('Upcoming Contests', upcomingContests, 'Starts In')}
-        {renderContestTable('Past Contests', pastContests, '—')}
+        {renderContestTable('Running Contests', runningContests, 'running')}
+        {renderContestTable('Upcoming Contests', upcomingContests, 'upcoming')}
+        {renderContestTable('Past Contests', pastContests, 'past')}
 
         <Modal
           open={showCreateContestModal}

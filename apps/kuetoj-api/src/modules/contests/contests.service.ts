@@ -564,7 +564,7 @@ export class ContestsService {
     }));
   }
 
-  async listMyContests(judgeUserId: string): Promise<Contest[]> {
+  async listMyContests(judgeUserId: string): Promise<Array<Contest & { participatedCount: number }>> {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const contestsByOwner = await this.contestRepo.find({
       where: [{ createdById: judgeProfileId }, { createdById: judgeUserId }],
@@ -588,6 +588,22 @@ export class ContestsService {
       (a, b) => b.startTime.getTime() - a.startTime.getTime(),
     );
 
+    const contestIds = contests.map((contest) => contest.id);
+    const participatedMap = new Map<string, number>();
+    if (contestIds.length) {
+      const participatedRows = await this.subRepo
+        .createQueryBuilder('submission')
+        .select('submission.contestId', 'contestId')
+        .addSelect('COUNT(DISTINCT submission.participantId)', 'participatedCount')
+        .where('submission.contestId IN (:...contestIds)', { contestIds })
+        .groupBy('submission.contestId')
+        .getRawMany<{ contestId: string; participatedCount: string }>();
+
+      for (const row of participatedRows) {
+        participatedMap.set(row.contestId, Number(row.participatedCount) || 0);
+      }
+    }
+
     return contests.map((contest) => ({
       ...contest,
       status: this.contestPhase(contest.startTime, contest.endTime) === 'upcoming'
@@ -595,6 +611,7 @@ export class ContestsService {
         : this.contestPhase(contest.startTime, contest.endTime) === 'running'
           ? ContestStatus.RUNNING
           : ContestStatus.ENDED,
+      participatedCount: participatedMap.get(contest.id) ?? 0,
     }));
   }
 
