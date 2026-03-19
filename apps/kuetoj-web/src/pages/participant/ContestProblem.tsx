@@ -50,14 +50,19 @@ export function ContestProblem() {
   const [activeTab, setActiveTab] = useState<'statement' | 'submissions'>('statement');
   const [leftPanePercent, setLeftPanePercent] = useState(55);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const copyBlock = async (text: string, label: string) => {
+  const copyBlock = async (text: string, label: string, key: string) => {
     if (!text) {
       toast.error(`No ${label} to copy`);
       return;
     }
     try {
       await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      window.setTimeout(() => {
+        setCopiedKey((prev) => (prev === key ? null : prev));
+      }, 1200);
       toast.success(`${label} copied`);
     } catch {
       toast.error(`Failed to copy ${label}`);
@@ -224,10 +229,10 @@ export function ContestProblem() {
                               <p className="text-xs font-medium text-slate-500">Input {i + 1}</p>
                               <button
                                 type="button"
-                                onClick={() => void copyBlock(tc.input, `Sample ${i + 1} input`)}
-                                className="text-xs text-indigo-600 hover:text-indigo-700"
+                                onClick={() => void copyBlock(tc.input, `Sample ${i + 1} input`, `sample-${i}-input`)}
+                                className="cursor-pointer rounded px-2 py-1 text-xs font-medium text-indigo-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
                               >
-                                Copy
+                                {copiedKey === `sample-${i}-input` ? 'Copied' : 'Copy'}
                               </button>
                             </div>
                             <pre className="overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-sm text-slate-800 whitespace-pre-wrap">{tc.input}</pre>
@@ -237,10 +242,10 @@ export function ContestProblem() {
                               <p className="text-xs font-medium text-slate-500">Output {i + 1}</p>
                               <button
                                 type="button"
-                                onClick={() => void copyBlock(tc.output, `Sample ${i + 1} output`)}
-                                className="text-xs text-indigo-600 hover:text-indigo-700"
+                                onClick={() => void copyBlock(tc.output, `Sample ${i + 1} output`, `sample-${i}-output`)}
+                                className="cursor-pointer rounded px-2 py-1 text-xs font-medium text-indigo-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
                               >
-                                Copy
+                                {copiedKey === `sample-${i}-output` ? 'Copied' : 'Copy'}
                               </button>
                             </div>
                             <pre className="overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-sm text-slate-800 whitespace-pre-wrap">{tc.output}</pre>

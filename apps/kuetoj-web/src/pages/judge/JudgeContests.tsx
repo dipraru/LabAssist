@@ -749,7 +749,7 @@ export function JudgeContests() {
                   <td className="px-3 py-3 font-medium text-slate-900 truncate">
                     <button
                       type="button"
-                      onClick={() => navigate(`/judge/contests/${contestRouteId}`)}
+                      onClick={() => navigate(`/contests/${contestRouteId}`)}
                       className="text-left text-indigo-700 hover:underline truncate max-w-full"
                     >
                       {contest.title}

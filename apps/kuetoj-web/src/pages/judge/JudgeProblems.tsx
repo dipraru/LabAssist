@@ -84,11 +84,11 @@ export function JudgeProblems() {
   });
 
   const openCreate = () => {
-    navigate('/judge/problems/new');
+    navigate('/problems/new');
   };
 
   const openEdit = (problem: any) => {
-    navigate(`/judge/problems/${problem.id}/edit`);
+    navigate(`/problems/${problem.problemCode ?? problem.id}/edit`);
   };
 
   const handleDelete = (problem: any) => {

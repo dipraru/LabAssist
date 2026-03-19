@@ -164,7 +164,7 @@ export function JudgeProblemEditor() {
       if (problemId) {
         qc.invalidateQueries({ queryKey: ['judge-problem-detail', problemId] });
       }
-      navigate('/judge/problems');
+      navigate('/problems');
     },
     onError: (error: any) => {
       toast.error(error?.response?.data?.message ?? error?.message ?? 'Failed to save problem');
@@ -180,7 +180,7 @@ export function JudgeProblemEditor() {
             <p className="text-sm text-slate-500 mt-1">Configure statement, sample test cases, and hidden test cases.</p>
           </div>
           <Link
-            to="/judge/problems"
+            to="/problems"
             className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             Back to Problem List
@@ -478,7 +478,7 @@ export function JudgeProblemEditor() {
 
             <div className="flex justify-end gap-2">
               <Link
-                to="/judge/problems"
+                to="/problems"
                 className="px-4 py-2 border border-slate-300 rounded-md text-sm text-slate-700 hover:bg-slate-50"
               >
                 Cancel

@@ -162,7 +162,7 @@ export function ContestManage() {
     { key: 'announcements', label: 'Announcements' },
   ];
 
-  const tabHref = (tab: ContestTab) => `/judge/contests/${id}/${tab}`;
+  const tabHref = (tab: ContestTab) => `/contests/${id}/${tab}`;
 
   const formatHms = (totalSeconds: number) => {
     const clamped = Math.max(0, totalSeconds);
@@ -257,7 +257,7 @@ export function ContestManage() {
                         <td className="px-4 py-3 font-semibold text-slate-700">{cp.label}</td>
                         <td className="px-4 py-3">
                           <Link
-                            to={`/judge/contests/${id}/problems/${cp.problem?.problemCode ?? cp.problem?.id}`}
+                            to={`/contests/${id}/problems/${cp.problem?.problemCode ?? cp.problem?.id}`}
                             className="font-semibold text-indigo-700 hover:underline"
                           >
                             {cp.problem?.title ?? '—'}

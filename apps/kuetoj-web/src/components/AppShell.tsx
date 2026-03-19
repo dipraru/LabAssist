@@ -10,8 +10,8 @@ const LABASSIST_WEB_URL = import.meta.env.VITE_LABASSIST_WEB_URL ?? 'http://loca
 
 const roleNavItems: Record<string, { label: string; href: string }[]> = {
   temp_judge: [
-    { label: 'Contests', href: '/judge/contests' },
-    { label: 'Problems', href: '/judge/problems' },
+    { label: 'Contests', href: '/contests' },
+    { label: 'Problems', href: '/problems' },
   ],
   temp_participant: [],
 };
@@ -27,7 +27,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     localStorage.removeItem('labassist_token');
     localStorage.removeItem('labassist_user');
     const base = LABASSIST_WEB_URL.replace(/\/$/, '');
-    window.location.replace(`${base}/login`);
+    window.location.replace(`${base}/login?logout=1`);
   };
 
   return (
@@ -35,7 +35,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-40 bg-slate-900 text-white border-b border-slate-800">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-6">
           <div className="flex items-center gap-6">
-            <Link to={user?.role === 'temp_judge' ? '/judge/contests' : '/contest'} className="flex items-center gap-2">
+            <Link to={user?.role === 'temp_judge' ? '/contests' : '/contest'} className="flex items-center gap-2">
               <FlaskConical size={20} className="text-indigo-300" />
               <span className="font-semibold tracking-wide">KUETOJ</span>
             </Link>

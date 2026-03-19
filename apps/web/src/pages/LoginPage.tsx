@@ -1,8 +1,8 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { useAuthStore } from '../store/auth.store';
@@ -16,6 +16,9 @@ type FormData = z.infer<typeof schema>;
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { token, user } = useAuthStore();
+  const logout = useAuthStore((s) => s.logout);
   const login = useAuthStore((s) => s.login);
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -29,6 +32,30 @@ export function LoginPage() {
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
+
+  const forcedLogout = searchParams.get('logout') === '1';
+
+  useEffect(() => {
+    if (!forcedLogout) return;
+    logout();
+    localStorage.removeItem('labassist_token');
+    localStorage.removeItem('labassist_user');
+  }, [forcedLogout, logout]);
+
+  useEffect(() => {
+    if (forcedLogout) return;
+    if (!token || !user) return;
+
+    const roleMap: Record<string, string> = {
+      office: '/office',
+      teacher: '/teacher',
+      student: user.isFirstLogin ? '/student/profile' : '/student',
+      temp_judge: '/',
+      temp_participant: '/',
+    };
+
+    navigate(roleMap[user.role] ?? '/', { replace: true });
+  }, [forcedLogout, navigate, token, user]);
 
   const parseAuthError = (err: any): string => {
     const payload = err?.response?.data;

@@ -35,14 +35,19 @@ export function JudgeContestProblem() {
   const [timeLimitMs, setTimeLimitMs] = useState(2000);
   const [memoryLimitKb, setMemoryLimitKb] = useState(262144);
   const [sampleCases, setSampleCases] = useState<SampleCase[]>([{ input: '', output: '' }]);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const copyBlock = async (text: string, label: string) => {
+  const copyBlock = async (text: string, label: string, key: string) => {
     if (!text) {
       toast.error(`No ${label} to copy`);
       return;
     }
     try {
       await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      window.setTimeout(() => {
+        setCopiedKey((prev) => (prev === key ? null : prev));
+      }, 1200);
       toast.success(`${label} copied`);
     } catch {
       toast.error(`Failed to copy ${label}`);
@@ -134,11 +139,11 @@ export function JudgeContestProblem() {
         <div className="mb-6 overflow-x-auto">
           <div className="flex min-w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-2">
             <div className="flex flex-wrap gap-2">
-              <Link to={`/judge/contests/${id}/problems`} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white">Problems</Link>
-              <Link to={`/judge/contests/${id}/status`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Status</Link>
-              <Link to={`/judge/contests/${id}/standings`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Standings</Link>
-              <Link to={`/judge/contests/${id}/clarifications`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Clarifications</Link>
-              <Link to={`/judge/contests/${id}/announcements`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Announcements</Link>
+              <Link to={`/contests/${id}/problems`} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white">Problems</Link>
+              <Link to={`/contests/${id}/status`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Status</Link>
+              <Link to={`/contests/${id}/standings`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Standings</Link>
+              <Link to={`/contests/${id}/clarifications`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Clarifications</Link>
+              <Link to={`/contests/${id}/announcements`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Announcements</Link>
             </div>
             <div className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700">
               {remainingLabel}
@@ -219,10 +224,10 @@ export function JudgeContestProblem() {
                             <p className="text-xs font-medium text-slate-500">Input {index + 1}</p>
                             <button
                               type="button"
-                              onClick={() => void copyBlock(tc.input, `Sample ${index + 1} input`)}
-                              className="text-xs text-indigo-600 hover:text-indigo-700"
+                              onClick={() => void copyBlock(tc.input, `Sample ${index + 1} input`, `sample-${index}-input`)}
+                              className="cursor-pointer rounded px-2 py-1 text-xs font-medium text-indigo-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
                             >
-                              Copy
+                              {copiedKey === `sample-${index}-input` ? 'Copied' : 'Copy'}
                             </button>
                           </div>
                           <pre className="overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-sm text-slate-800 whitespace-pre-wrap">{tc.input}</pre>
@@ -232,10 +237,10 @@ export function JudgeContestProblem() {
                             <p className="text-xs font-medium text-slate-500">Output {index + 1}</p>
                             <button
                               type="button"
-                              onClick={() => void copyBlock(tc.output, `Sample ${index + 1} output`)}
-                              className="text-xs text-indigo-600 hover:text-indigo-700"
+                              onClick={() => void copyBlock(tc.output, `Sample ${index + 1} output`, `sample-${index}-output`)}
+                              className="cursor-pointer rounded px-2 py-1 text-xs font-medium text-indigo-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
                             >
-                              Copy
+                              {copiedKey === `sample-${index}-output` ? 'Copied' : 'Copy'}
                             </button>
                           </div>
                           <pre className="overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-sm text-slate-800 whitespace-pre-wrap">{tc.output}</pre>
