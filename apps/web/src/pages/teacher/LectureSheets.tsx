@@ -38,9 +38,10 @@ export function LectureSheets() {
   const { fields, append, remove } = useFieldArray({ control, name: 'links' });
 
   const createMutation = useMutation({
-    mutationFn: (d: SheetData) => api.post(`/courses/${d.courseId}/lecture-sheets`, {
+    mutationFn: (d: SheetData) => api.post('/courses/lecture-sheets', {
       title: d.title,
       description: d.description,
+      courseId: d.courseId,
       links: d.links,
     }),
     onSuccess: () => {
