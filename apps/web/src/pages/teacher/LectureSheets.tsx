@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Plus, Trash2, ExternalLink } from 'lucide-react';
@@ -19,9 +20,15 @@ type SheetData = z.infer<typeof sheetSchema>;
 
 export function LectureSheets() {
   const qc = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
   const [filterCourse, setFilterCourse] = useState('');
   const [editingSheetId, setEditingSheetId] = useState<string | null>(null);
+  const [highlightedSheetId, setHighlightedSheetId] = useState<string | null>(null);
+  const [resolvedDeepLinkCourseId, setResolvedDeepLinkCourseId] = useState<string | null>(null);
+  const [sheetDeepLinkHandled, setSheetDeepLinkHandled] = useState(false);
+
+  const sheetIdFromQuery = searchParams.get('sheetId');
 
   const { data: courses = [] } = useQuery({ queryKey: ['my-courses'], queryFn: () => api.get('/courses/my').then(r => r.data) });
 
@@ -30,6 +37,49 @@ export function LectureSheets() {
     queryFn: () => api.get(`/courses/${filterCourse}/lecture-sheets`).then(r => r.data),
     enabled: !!filterCourse,
   });
+
+  useEffect(() => {
+    if (!sheetIdFromQuery || resolvedDeepLinkCourseId || !(courses as any[]).length) return;
+
+    let cancelled = false;
+    const resolveCourse = async () => {
+      for (const course of courses as any[]) {
+        const resp = await api.get(`/courses/${course.id}/lecture-sheets`);
+        const list = (resp.data ?? []) as any[];
+        if (list.some((s: any) => s.id === sheetIdFromQuery)) {
+          if (!cancelled) {
+            setResolvedDeepLinkCourseId(course.id);
+            setFilterCourse(course.id);
+          }
+          return;
+        }
+      }
+    };
+
+    resolveCourse().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [sheetIdFromQuery, resolvedDeepLinkCourseId, courses]);
+
+  useEffect(() => {
+    if (!sheetIdFromQuery || sheetDeepLinkHandled) return;
+    const found = (sheets as any[]).find((s: any) => s.id === sheetIdFromQuery);
+    if (!found) return;
+
+    setHighlightedSheetId(found.id);
+    setSheetDeepLinkHandled(true);
+
+    setTimeout(() => {
+      document.getElementById(`lecture-sheet-${found.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 0);
+
+    setTimeout(() => setHighlightedSheetId(null), 1800);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('sheetId');
+    setSearchParams(next, { replace: true });
+  }, [sheetIdFromQuery, sheetDeepLinkHandled, sheets, searchParams, setSearchParams]);
 
   const { register, control, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<SheetData>({
     resolver: zodResolver(sheetSchema),
@@ -187,7 +237,13 @@ export function LectureSheets() {
 
         <div className="space-y-3">
           {(sheets as any[]).map((s: any) => (
-            <div key={s.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
+            <div
+              id={`lecture-sheet-${s.id}`}
+              key={s.id}
+              className={`bg-white rounded-xl border shadow-sm p-4 transition-colors ${
+                highlightedSheetId === s.id ? 'border-indigo-300 bg-indigo-50/30' : 'border-slate-100'
+              }`}
+            >
               <div className="flex items-start justify-between gap-3">
                 <p className="font-semibold text-slate-800">{s.title}</p>
                 <div className="flex gap-2 shrink-0">

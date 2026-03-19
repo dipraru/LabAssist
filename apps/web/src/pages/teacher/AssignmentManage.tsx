@@ -4,6 +4,7 @@ import { useFieldArray, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Plus, ChevronDown, ChevronRight } from 'lucide-react';
@@ -28,10 +29,15 @@ type GradeData = z.infer<typeof gradeSchema>;
 
 export function AssignmentManage() {
   const qc = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState<any>(null);
   const [gradingId, setGradingId] = useState<string | null>(null);
   const [submissionFilter, setSubmissionFilter] = useState<'all' | 'pending' | 'graded'>('all');
+  const [highlightedAssignmentId, setHighlightedAssignmentId] = useState<string | null>(null);
+  const [deepLinkHandled, setDeepLinkHandled] = useState(false);
+
+  const assignmentIdFromQuery = searchParams.get('assignmentId');
 
   const { data: courses = [] } = useQuery({ queryKey: ['my-courses'], queryFn: () => api.get('/courses/my').then(r => r.data) });
   const [filterCourse, setFilterCourse] = useState('');
@@ -40,6 +46,12 @@ export function AssignmentManage() {
     queryKey: ['assignments-teacher', filterCourse],
     queryFn: () => api.get(`/assignments/course/${filterCourse}`).then(r => r.data),
     enabled: !!filterCourse,
+  });
+
+  const { data: deepLinkAssignment } = useQuery({
+    queryKey: ['assignment-deep-link', assignmentIdFromQuery],
+    queryFn: () => api.get(`/assignments/${assignmentIdFromQuery}`).then((r) => r.data),
+    enabled: !!assignmentIdFromQuery,
   });
 
   const { data: submissions = [] } = useQuery({
@@ -53,6 +65,33 @@ export function AssignmentManage() {
       setFilterCourse((courses as any[])[0].id);
     }
   }, [courses, filterCourse]);
+
+  useEffect(() => {
+    const deepLinkCourseId = (deepLinkAssignment as any)?.course?.id ?? (deepLinkAssignment as any)?.courseId;
+    if (assignmentIdFromQuery && deepLinkCourseId && filterCourse !== deepLinkCourseId) {
+      setFilterCourse(deepLinkCourseId);
+    }
+  }, [assignmentIdFromQuery, deepLinkAssignment, filterCourse]);
+
+  useEffect(() => {
+    if (!assignmentIdFromQuery || deepLinkHandled) return;
+    const found = (assignments as any[]).find((a: any) => a.id === assignmentIdFromQuery);
+    if (!found) return;
+
+    setSelectedAssignment(found);
+    setHighlightedAssignmentId(found.id);
+    setDeepLinkHandled(true);
+
+    setTimeout(() => {
+      document.getElementById(`assignment-card-${found.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 0);
+
+    setTimeout(() => setHighlightedAssignmentId(null), 1800);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('assignmentId');
+    setSearchParams(next, { replace: true });
+  }, [assignmentIdFromQuery, deepLinkHandled, assignments, searchParams, setSearchParams]);
 
   const visibleSubmissions = useMemo(() => {
     const list = (submissions as any[]) ?? [];
@@ -205,7 +244,13 @@ export function AssignmentManage() {
 
         <div className="space-y-3">
           {(assignments as any[]).map((a: any) => (
-            <div key={a.id} className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+            <div
+              id={`assignment-card-${a.id}`}
+              key={a.id}
+              className={`bg-white rounded-xl border shadow-sm overflow-hidden transition-colors ${
+                highlightedAssignmentId === a.id ? 'border-indigo-300 bg-indigo-50/30' : 'border-slate-100'
+              }`}
+            >
               <button onClick={() => setSelectedAssignment(selectedAssignment?.id === a.id ? null : a)}
                 className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50">
                 <div className="text-left">
