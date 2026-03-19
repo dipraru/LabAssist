@@ -13,7 +13,8 @@ export function ProtectedRoute({ allowedRoles }: Props) {
 
   if (!token || !user) {
     const base = LABASSIST_WEB_URL.replace(/\/$/, '');
-    window.location.replace(`${base}/login`);
+    sessionStorage.setItem('labassist_forced_logout', '1');
+    window.location.replace(`${base}/login?logout=1`);
     return null;
   }
 

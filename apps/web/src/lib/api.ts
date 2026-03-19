@@ -22,7 +22,8 @@ api.interceptors.response.use(
     if (err.response?.status === 401 && !isAuthLoginRequest) {
       localStorage.removeItem('labassist_token');
       localStorage.removeItem('labassist_user');
-      window.location.href = '/login';
+      sessionStorage.setItem('labassist_forced_logout', '1');
+      window.location.href = '/login?logout=1';
     }
     return Promise.reject(err);
   },

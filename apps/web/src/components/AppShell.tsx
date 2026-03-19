@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth.store';
 import {
   LayoutDashboard, BookOpen, FlaskConical, Bell,
@@ -35,7 +35,6 @@ const roleNavItems: Record<string, { label: string; href: string; icon: ReactNod
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuthStore();
-  const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -48,7 +47,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    localStorage.removeItem('kuetoj_token');
+    localStorage.removeItem('kuetoj_user');
+    sessionStorage.setItem('labassist_forced_logout', '1');
+    window.location.replace('/login?logout=1');
   };
 
   return (

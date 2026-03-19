@@ -24,8 +24,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const handleLogout = () => {
     logout();
+    localStorage.removeItem('kuetoj_token');
+    localStorage.removeItem('kuetoj_user');
     localStorage.removeItem('labassist_token');
     localStorage.removeItem('labassist_user');
+    sessionStorage.setItem('labassist_forced_logout', '1');
     const base = LABASSIST_WEB_URL.replace(/\/$/, '');
     window.location.replace(`${base}/login?logout=1`);
   };

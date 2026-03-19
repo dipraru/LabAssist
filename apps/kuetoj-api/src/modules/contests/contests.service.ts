@@ -201,13 +201,25 @@ export class ContestsService {
 
   async listMyProblems(judgeUserId: string): Promise<Problem[]> {
     await this.ensureProblemCodes();
+    const sortByProblemCode = (left: Problem, right: Problem) => {
+      const leftNumber = left.problemCode ? Number.parseInt(left.problemCode.replace('KOJ-', ''), 10) : Number.MAX_SAFE_INTEGER;
+      const rightNumber = right.problemCode ? Number.parseInt(right.problemCode.replace('KOJ-', ''), 10) : Number.MAX_SAFE_INTEGER;
+
+      if (leftNumber !== rightNumber) {
+        return leftNumber - rightNumber;
+      }
+
+      return left.title.localeCompare(right.title);
+    };
+
     const mine = await this.problemRepo.find({
       where: { authorId: judgeUserId },
       order: { createdAt: 'DESC' },
     });
-    if (mine.length) return mine;
+    if (mine.length) return [...mine].sort(sortByProblemCode);
 
-    return this.problemRepo.find({ order: { createdAt: 'DESC' } });
+    const allProblems = await this.problemRepo.find({ order: { createdAt: 'DESC' } });
+    return allProblems.sort(sortByProblemCode);
   }
 
   async getProblemById(id: string): Promise<Problem> {
@@ -445,28 +457,16 @@ export class ContestsService {
       ? dto.standingVisibility === 'public'
       : contest.isPublicStanding;
 
-    contest.title = dto.title ?? contest.title;
-    contest.description = dto.description ?? contest.description;
-    contest.type = dto.type ?? contest.type;
-    contest.startTime = nextStartTime;
-    contest.endTime = nextEndTime;
-    contest.isStandingFrozen = freezeEnabled;
-    contest.freezeBeforeMinutes = freezeBeforeMinutes;
-    contest.freezeAfterMinutes = manualUnfreeze ? 0 : freezeAfterMinutes;
-    contest.freezeTime = nextFreezeTime;
-    contest.standingUnfreezeTime = nextStandingUnfreezeTime;
-    contest.isPublicStanding = isPublicStanding;
-    if (isPublicStanding && !contest.publicStandingsKey) {
-      contest.publicStandingsKey = this.generatePublicStandingsKey();
+    const nextTitle = dto.title ?? contest.title;
+    const nextDescription = dto.description ?? contest.description;
+    const nextType = dto.type ?? contest.type;
+    let nextPublicStandingsKey = contest.publicStandingsKey;
+    if (isPublicStanding && !nextPublicStandingsKey) {
+      nextPublicStandingsKey = this.generatePublicStandingsKey();
     }
     if (!isPublicStanding) {
-      contest.publicStandingsKey = null;
+      nextPublicStandingsKey = null;
     }
-
-    const existingContestProblems = await this.cpRepo.find({
-      where: { contestId: contest.id },
-      order: { orderIndex: 'ASC' },
-    });
 
     if (dto.problems) {
       const uniqueProblemIds = new Set<string>();
@@ -476,74 +476,43 @@ export class ContestsService {
         }
         uniqueProblemIds.add(item.problemId);
       }
-
-      if (phase === 'upcoming') {
-        await this.cpRepo.delete({ contestId: contest.id });
-
-        for (let index = 0; index < dto.problems.length; index += 1) {
-          const cp = dto.problems[index];
-          const exists = await this.problemRepo.findOneBy({ id: cp.problemId });
-          if (!exists) throw new NotFoundException(`Problem ${cp.problemId} not found`);
-          if (exists.authorId !== judgeUserId) {
-            throw new ForbiddenException('Contest can include only your own problems');
-          }
-
-          const entry = this.cpRepo.create({
-            contestId: contest.id,
-            problemId: cp.problemId,
-            label: String.fromCharCode(65 + index),
-            orderIndex: index,
-            score: cp.score ?? null,
-          });
-          await this.cpRepo.save(entry);
+      for (const cp of dto.problems) {
+        const exists = await this.problemRepo.findOneBy({ id: cp.problemId });
+        if (!exists) throw new NotFoundException(`Problem ${cp.problemId} not found`);
+        if (exists.authorId !== judgeUserId) {
+          throw new ForbiddenException('Contest can include only your own problems');
         }
-      } else {
-        const existingByProblemId = new Map(existingContestProblems.map((problem) => [problem.problemId, problem]));
-        const incomingByProblemId = new Map(dto.problems.map((problem) => [problem.problemId, problem]));
+      }
 
-        const keptOld = existingContestProblems.filter((problem) => incomingByProblemId.has(problem.problemId));
-        const deletedOld = existingContestProblems.filter((problem) => !incomingByProblemId.has(problem.problemId));
+      await this.cpRepo.delete({ contestId: contest.id });
 
-        const incomingNew = dto.problems.filter((problem) => !existingByProblemId.has(problem.problemId));
-
-        if (deletedOld.length) {
-          await this.cpRepo.delete(deletedOld.map((problem) => problem.id));
-        }
-
-        for (const cp of incomingNew) {
-          const exists = await this.problemRepo.findOneBy({ id: cp.problemId });
-          if (!exists) throw new NotFoundException(`Problem ${cp.problemId} not found`);
-          if (exists.authorId !== judgeUserId) {
-            throw new ForbiddenException('Contest can include only your own problems');
-          }
-        }
-
-        const appendedNew: ContestProblem[] = [];
-        for (const cp of incomingNew) {
-          const entry = this.cpRepo.create({
-            contestId: contest.id,
-            problemId: cp.problemId,
-            label: '',
-            orderIndex: 0,
-            score: cp.score ?? null,
-          });
-          appendedNew.push(await this.cpRepo.save(entry));
-        }
-
-        const finalOrdered = [...keptOld, ...appendedNew];
-        for (let index = 0; index < finalOrdered.length; index += 1) {
-          const cp = finalOrdered[index];
-          cp.orderIndex = index;
-          cp.label = String.fromCharCode(65 + index);
-          if (incomingByProblemId.has(cp.problemId)) {
-            cp.score = incomingByProblemId.get(cp.problemId)?.score ?? cp.score ?? null;
-          }
-          await this.cpRepo.save(cp);
-        }
+      for (let index = 0; index < dto.problems.length; index += 1) {
+        const cp = dto.problems[index];
+        const entry = this.cpRepo.create({
+          contestId: contest.id,
+          problemId: cp.problemId,
+          label: String.fromCharCode(65 + index),
+          orderIndex: index,
+          score: cp.score ?? null,
+        });
+        await this.cpRepo.save(entry);
       }
     }
 
-    await this.contestRepo.save(contest);
+    await this.contestRepo.update(contest.id, {
+      title: nextTitle,
+      description: nextDescription,
+      type: nextType,
+      startTime: nextStartTime,
+      endTime: nextEndTime,
+      isStandingFrozen: freezeEnabled,
+      freezeBeforeMinutes,
+      freezeAfterMinutes: manualUnfreeze ? 0 : freezeAfterMinutes,
+      freezeTime: nextFreezeTime,
+      standingUnfreezeTime: nextStandingUnfreezeTime,
+      isPublicStanding,
+      publicStandingsKey: nextPublicStandingsKey,
+    });
     return this.getContestById(contest.id);
   }
 

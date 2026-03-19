@@ -27,6 +27,10 @@ type EditSelectedProblem = SelectedProblem & {
   existing: boolean;
 };
 
+function contestProblemLabel(index: number): string {
+  return String.fromCharCode(65 + index);
+}
+
 type ContestItem = {
   id: string;
   contestNumber?: number | null;
@@ -307,6 +311,12 @@ export function JudgeContests() {
     setShowProblemPickerModal(false);
   };
 
+  useEffect(() => {
+    if (!showProblemPickerModal) return;
+    const selectedIds = selected.map((item) => item.problemId).filter(Boolean);
+    setCheckedProblemIds(selectedIds);
+  }, [showProblemPickerModal, selected]);
+
   const removeProblem = (problemId: string) => {
     setSelected((prev) => prev.filter((p) => p.problemId !== problemId));
     setCheckedProblemIds((prev) => prev.filter((id) => id !== problemId));
@@ -356,12 +366,17 @@ export function JudgeContests() {
       const sortedProblems = [...contestProblems].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
       setEditSelected(
         sortedProblems.map((item) => ({
-          problemId: item.problemId,
+          problemId: item.problemId ?? item.problem?.id,
           problemCode: item.problem?.problemCode,
           title: item.problem?.title ?? 'Untitled Problem',
           score: item.score ?? 100,
           existing: true,
-        })),
+        })).filter((item) => typeof item.problemId === 'string' && item.problemId.length > 0),
+      );
+      setEditCheckedProblemIds(
+        sortedProblems
+          .map((item) => item.problemId ?? item.problem?.id)
+          .filter((problemId): problemId is string => typeof problemId === 'string' && problemId.length > 0),
       );
     } catch (error: any) {
       toast.error(error?.response?.data?.message ?? 'Failed to load contest details');
@@ -395,6 +410,12 @@ export function JudgeContests() {
     setEditSelected((prev) => [...prev, ...toAppend]);
     setShowEditProblemPickerModal(false);
   };
+
+  useEffect(() => {
+    if (!showEditProblemPickerModal) return;
+    const selectedIds = editSelected.map((item) => item.problemId).filter(Boolean);
+    setEditCheckedProblemIds(selectedIds);
+  }, [showEditProblemPickerModal, editSelected]);
 
   const removeEditProblem = (problemId: string) => {
     setEditSelected((prev) => prev.filter((p) => p.problemId !== problemId));
@@ -452,7 +473,7 @@ export function JudgeContests() {
 
       const problems = editSelected.map((problem, index) => ({
         problemId: problem.problemId,
-        label: String.fromCharCode(65 + index),
+        label: contestProblemLabel(index),
         orderIndex: index,
         score: editType === 'score_based' ? (problem.score ?? 100) : undefined,
       }));
@@ -974,7 +995,7 @@ export function JudgeContests() {
                       <GripVertical size={16} />
                     </div>
                     <div className="col-span-1 text-xs font-semibold text-indigo-700">
-                      {String.fromCharCode(65 + index)}
+                      {contestProblemLabel(index)}
                     </div>
                     <div className="col-span-7 text-sm text-slate-800">
                       <p>{item.title}</p>
@@ -1185,7 +1206,7 @@ export function JudgeContests() {
                         <GripVertical size={16} />
                       </div>
                       <div className="col-span-1 text-xs font-semibold text-indigo-700">
-                        {String.fromCharCode(65 + index)}
+                        {contestProblemLabel(index)}
                       </div>
                       <div className="col-span-7 text-sm text-slate-800">
                         <p>{item.title}</p>

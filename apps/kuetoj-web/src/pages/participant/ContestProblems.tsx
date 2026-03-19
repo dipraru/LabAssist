@@ -7,7 +7,8 @@ import { api } from '../../lib/api';
 import { getContestPhase } from '../../components/ContestCountdownBar';
 
 function contestProblemLabel(cp: any, index: number): string {
-  if (cp?.label) return String(cp.label).trim();
+  const raw = typeof cp?.label === 'string' ? cp.label.trim().toUpperCase() : '';
+  if (raw.length === 1 && /^[A-Z]$/.test(raw)) return raw;
   return String.fromCharCode(65 + index);
 }
 

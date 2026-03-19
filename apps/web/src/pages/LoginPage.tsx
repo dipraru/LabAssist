@@ -33,13 +33,16 @@ export function LoginPage() {
     resolver: zodResolver(schema),
   });
 
-  const forcedLogout = searchParams.get('logout') === '1';
+  const forcedLogout = searchParams.get('logout') === '1' || sessionStorage.getItem('labassist_forced_logout') === '1';
 
   useEffect(() => {
     if (!forcedLogout) return;
     logout();
     localStorage.removeItem('labassist_token');
     localStorage.removeItem('labassist_user');
+    localStorage.removeItem('kuetoj_token');
+    localStorage.removeItem('kuetoj_user');
+    sessionStorage.removeItem('labassist_forced_logout');
   }, [forcedLogout, logout]);
 
   useEffect(() => {
