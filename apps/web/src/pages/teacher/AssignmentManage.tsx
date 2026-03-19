@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Plus, ChevronDown, ChevronRight } from 'lucide-react';
@@ -28,9 +29,15 @@ type GradeData = z.infer<typeof gradeSchema>;
 
 export function AssignmentManage() {
   const qc = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState<any>(null);
   const [gradingId, setGradingId] = useState<string | null>(null);
+  const [submissionFilter, setSubmissionFilter] = useState<'all' | 'pending' | 'graded'>('all');
+  const [highlightedAssignmentId, setHighlightedAssignmentId] = useState<string | null>(null);
+  const [deepLinkHandled, setDeepLinkHandled] = useState(false);
+
+  const assignmentIdFromQuery = searchParams.get('assignmentId');
 
   const { data: courses = [] } = useQuery({ queryKey: ['my-courses'], queryFn: () => api.get('/courses/my').then(r => r.data) });
   const [filterCourse, setFilterCourse] = useState('');
@@ -41,11 +48,61 @@ export function AssignmentManage() {
     enabled: !!filterCourse,
   });
 
+  const { data: deepLinkAssignment } = useQuery({
+    queryKey: ['assignment-deep-link', assignmentIdFromQuery],
+    queryFn: () => api.get(`/assignments/${assignmentIdFromQuery}`).then((r) => r.data),
+    enabled: !!assignmentIdFromQuery,
+  });
+
   const { data: submissions = [] } = useQuery({
     queryKey: ['assignment-submissions', selectedAssignment?.id],
     queryFn: () => api.get(`/assignments/${selectedAssignment.id}/submissions`).then(r => r.data),
     enabled: !!selectedAssignment,
   });
+
+  useEffect(() => {
+    if (!filterCourse && (courses as any[]).length > 0) {
+      setFilterCourse((courses as any[])[0].id);
+    }
+  }, [courses, filterCourse]);
+
+  useEffect(() => {
+    const deepLinkCourseId = (deepLinkAssignment as any)?.course?.id ?? (deepLinkAssignment as any)?.courseId;
+    if (assignmentIdFromQuery && deepLinkCourseId && filterCourse !== deepLinkCourseId) {
+      setFilterCourse(deepLinkCourseId);
+    }
+  }, [assignmentIdFromQuery, deepLinkAssignment, filterCourse]);
+
+  useEffect(() => {
+    if (!assignmentIdFromQuery || deepLinkHandled) return;
+    const found = (assignments as any[]).find((a: any) => a.id === assignmentIdFromQuery);
+    if (!found) return;
+
+    setSelectedAssignment(found);
+    setHighlightedAssignmentId(found.id);
+    setDeepLinkHandled(true);
+
+    setTimeout(() => {
+      document.getElementById(`assignment-card-${found.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 0);
+
+    setTimeout(() => setHighlightedAssignmentId(null), 1800);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('assignmentId');
+    setSearchParams(next, { replace: true });
+  }, [assignmentIdFromQuery, deepLinkHandled, assignments, searchParams, setSearchParams]);
+
+  const visibleSubmissions = useMemo(() => {
+    const list = (submissions as any[]) ?? [];
+    if (submissionFilter === 'graded') {
+      return list.filter((sub: any) => sub?.status === 'graded');
+    }
+    if (submissionFilter === 'pending') {
+      return list.filter((sub: any) => sub?.status !== 'graded');
+    }
+    return list;
+  }, [submissions, submissionFilter]);
 
   const assignForm = useForm<AssignData>({
     resolver: zodResolver(assignSchema),
@@ -187,7 +244,13 @@ export function AssignmentManage() {
 
         <div className="space-y-3">
           {(assignments as any[]).map((a: any) => (
-            <div key={a.id} className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+            <div
+              id={`assignment-card-${a.id}`}
+              key={a.id}
+              className={`bg-white rounded-xl border shadow-sm overflow-hidden transition-colors ${
+                highlightedAssignmentId === a.id ? 'border-indigo-300 bg-indigo-50/30' : 'border-slate-100'
+              }`}
+            >
               <button onClick={() => setSelectedAssignment(selectedAssignment?.id === a.id ? null : a)}
                 className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50">
                 <div className="text-left">
@@ -199,18 +262,42 @@ export function AssignmentManage() {
 
               {selectedAssignment?.id === a.id && (
                 <div className="border-t border-slate-100 px-5 py-4">
-                  <h3 className="font-medium text-sm mb-3">Submissions</h3>
-                  {(submissions as any[]).length === 0
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h3 className="font-medium text-sm">Submissions</h3>
+                    <div className="flex gap-2">
+                      {[
+                        { key: 'all', label: `All (${(submissions as any[]).length})` },
+                        { key: 'pending', label: `Pending (${(submissions as any[]).filter((s: any) => s?.status !== 'graded').length})` },
+                        { key: 'graded', label: `Graded (${(submissions as any[]).filter((s: any) => s?.status === 'graded').length})` },
+                      ].map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => setSubmissionFilter(item.key as 'all' | 'pending' | 'graded')}
+                          className={`px-2 py-1 rounded text-xs ${
+                            submissionFilter === item.key
+                              ? 'bg-indigo-600 text-white'
+                              : 'border border-slate-300 text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {visibleSubmissions.length === 0
                     ? <p className="text-sm text-slate-400">No submissions yet</p>
                     : (
                       <table className="w-full text-sm">
                         <thead><tr className="text-xs text-slate-500 uppercase">
-                          <th className="pb-2 text-left">Student</th><th className="pb-2 text-left">Status</th>
+                          <th className="pb-2 text-left">#</th><th className="pb-2 text-left">Student</th><th className="pb-2 text-left">Status</th>
                           <th className="pb-2 text-left">Score</th><th className="pb-2 text-left">Action</th>
                         </tr></thead>
                         <tbody className="divide-y divide-slate-100">
-                          {(submissions as any[]).map((sub: any) => (
+                          {visibleSubmissions.map((sub: any, index: number) => (
                             <tr key={sub.id}>
+                              <td className="py-2 text-slate-500">{index + 1}</td>
                               <td className="py-2">{studentDisplayName(sub)}</td>
                               <td className="py-2"><span className={`px-2 py-0.5 rounded-full text-xs ${sub.status === 'graded' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{sub.status}</span></td>
                               <td className="py-2">{sub.score ?? '—'} / {a.totalMarks}</td>

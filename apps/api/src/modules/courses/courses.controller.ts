@@ -10,7 +10,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/role.enum';
 import {
   CreateCourseDto, UpdateCourseDto, EnrollStudentsDto, AddTeacherToCourseDto,
-  CreateScheduleDto, CreateLectureSheetDto,
+  CreateScheduleDto, CreateLectureSheetDto, UpdateLectureSheetDto,
 } from './dto/courses.dto';
 
 @UseGuards(JwtAuthGuard)
@@ -106,6 +106,24 @@ export class CoursesController {
   @Get(':courseId/lecture-sheets')
   getLectureSheets(@Param('courseId') courseId: string) {
     return this.coursesService.getLectureSheets(courseId);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.TEACHER)
+  @Patch('lecture-sheets/:id')
+  updateLectureSheet(
+    @Param('id') id: string,
+    @Body() dto: UpdateLectureSheetDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.coursesService.updateLectureSheet(id, dto, user.id);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.TEACHER)
+  @Delete('lecture-sheets/:id')
+  deleteLectureSheet(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.coursesService.deleteLectureSheet(id, user.id);
   }
 
   @UseGuards(RolesGuard)

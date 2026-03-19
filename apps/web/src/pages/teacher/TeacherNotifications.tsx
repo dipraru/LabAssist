@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, CheckCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 import { AppShell } from '../../components/AppShell';
 import { api } from '../../lib/api';
 
 export function TeacherNotifications() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: notifications = [], isLoading } = useQuery({
     queryKey: ['notifications'],
@@ -29,6 +31,19 @@ export function TeacherNotifications() {
   });
 
   const unreadCount = (notifications as any[]).filter((n: any) => !n.isRead).length;
+
+  const resolveNotificationHref = (n: any): string => {
+    if (n?.type === 'assignment_posted') {
+      return n?.referenceId ? `/teacher/assignments?assignmentId=${n.referenceId}` : '/teacher/assignments';
+    }
+    if (n?.type === 'lecture_sheet_posted') {
+      return n?.referenceId ? `/teacher/lecture-sheets?sheetId=${n.referenceId}` : '/teacher/lecture-sheets';
+    }
+    if (n?.type === 'contest_announcement') {
+      return '/teacher';
+    }
+    return '/teacher/notifications';
+  };
 
   return (
     <AppShell>
@@ -66,6 +81,10 @@ export function TeacherNotifications() {
                 type="button"
                 onClick={() => {
                   if (!n.isRead) markReadMutation.mutate([n.id]);
+                  const href = resolveNotificationHref(n);
+                  if (href !== '/teacher/notifications') {
+                    navigate(href);
+                  }
                 }}
                 className={`w-full text-left bg-white rounded-xl border shadow-sm p-4 transition-colors ${
                   n.isRead ? 'border-slate-100' : 'border-indigo-200 bg-indigo-50/40'

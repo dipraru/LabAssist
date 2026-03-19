@@ -12,7 +12,7 @@ import { Student } from '../users/entities/student.entity';
 import { Teacher } from '../users/entities/teacher.entity';
 import {
   CreateCourseDto, UpdateCourseDto, EnrollStudentsDto, AddTeacherToCourseDto,
-  CreateScheduleDto, CreateLectureSheetDto,
+  CreateScheduleDto, CreateLectureSheetDto, UpdateLectureSheetDto,
 } from './dto/courses.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
@@ -237,6 +237,46 @@ export class CoursesService {
       where: { courseId },
       order: { createdAt: 'DESC' },
     });
+  }
+
+  async updateLectureSheet(id: string, dto: UpdateLectureSheetDto, teacherUserId: string): Promise<LectureSheet> {
+    const sheet = await this.lectureSheetRepo.findOne({ where: { id } });
+    if (!sheet) throw new NotFoundException('Lecture sheet not found');
+
+    await this.assertTeacherCanManageLectureSheet(sheet, teacherUserId);
+
+    if (dto.title !== undefined) sheet.title = dto.title;
+    if (dto.description !== undefined) sheet.description = dto.description ?? null;
+    if (dto.links !== undefined) sheet.links = dto.links;
+
+    return this.lectureSheetRepo.save(sheet);
+  }
+
+  async deleteLectureSheet(id: string, teacherUserId: string): Promise<{ deleted: true }> {
+    const sheet = await this.lectureSheetRepo.findOne({ where: { id } });
+    if (!sheet) throw new NotFoundException('Lecture sheet not found');
+
+    await this.assertTeacherCanManageLectureSheet(sheet, teacherUserId);
+    await this.lectureSheetRepo.delete({ id: sheet.id });
+
+    return { deleted: true };
+  }
+
+  private async assertTeacherCanManageLectureSheet(sheet: LectureSheet, teacherUserId: string) {
+    const teacher = await this.teacherRepo.findOne({ where: { userId: teacherUserId } });
+    if (!teacher) throw new NotFoundException('Teacher not found');
+
+    if (sheet.postedById && sheet.postedById !== teacher.id) {
+      throw new ForbiddenException('You can manage only your own lecture sheets');
+    }
+
+    if (!sheet.postedById) {
+      const course = await this.courseRepo.findOne({ where: { id: sheet.courseId }, relations: ['teachers'] });
+      const isAssignedTeacher = Boolean(course?.teachers?.some((t) => t.id === teacher.id));
+      if (!isAssignedTeacher) {
+        throw new ForbiddenException('You are not assigned to this course');
+      }
+    }
   }
 
   private async notifyEnrolledStudents(courseId: string, payload: {

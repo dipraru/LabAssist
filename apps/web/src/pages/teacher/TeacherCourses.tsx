@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
@@ -8,7 +8,7 @@ import { courseCode, courseTitle, studentDisplayName } from '../../lib/display';
 export function TeacherCourses() {
   const [selectedCourse, setSelectedCourse] = useState<any>(null);
 
-  const { data: courses = [] } = useQuery({
+  const { data: courses = [], isLoading: coursesLoading } = useQuery({
     queryKey: ['my-courses'],
     queryFn: () => api.get('/courses/my').then(r => r.data),
   });
@@ -25,12 +25,29 @@ export function TeacherCourses() {
     enabled: !!selectedCourse,
   });
 
+  useEffect(() => {
+    if (!selectedCourse && (courses as any[]).length > 0) {
+      setSelectedCourse((courses as any[])[0]);
+    }
+  }, [courses, selectedCourse]);
+
   return (
     <AppShell>
       <div className="max-w-4xl">
         <h1 className="text-2xl font-bold text-slate-900 mb-6">My Courses</h1>
 
         <div className="grid grid-cols-3 gap-3 mb-6">
+          {coursesLoading && (
+            <>
+              {[1, 2, 3].map((k) => (
+                <div key={k} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm animate-pulse">
+                  <div className="w-8 h-8 rounded-lg bg-slate-100 mb-2" />
+                  <div className="h-4 w-16 bg-slate-100 rounded mb-2" />
+                  <div className="h-3 w-32 bg-slate-100 rounded" />
+                </div>
+              ))}
+            </>
+          )}
           {(courses as any[]).map((c: any) => (
             <button key={c.id} onClick={() => setSelectedCourse(c)}
               className={`text-left p-4 rounded-xl border shadow-sm transition-all ${

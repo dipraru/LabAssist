@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Plus, Trash2, ExternalLink } from 'lucide-react';
@@ -19,8 +20,15 @@ type SheetData = z.infer<typeof sheetSchema>;
 
 export function LectureSheets() {
   const qc = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
   const [filterCourse, setFilterCourse] = useState('');
+  const [editingSheetId, setEditingSheetId] = useState<string | null>(null);
+  const [highlightedSheetId, setHighlightedSheetId] = useState<string | null>(null);
+  const [resolvedDeepLinkCourseId, setResolvedDeepLinkCourseId] = useState<string | null>(null);
+  const [sheetDeepLinkHandled, setSheetDeepLinkHandled] = useState(false);
+
+  const sheetIdFromQuery = searchParams.get('sheetId');
 
   const { data: courses = [] } = useQuery({ queryKey: ['my-courses'], queryFn: () => api.get('/courses/my').then(r => r.data) });
 
@@ -30,6 +38,49 @@ export function LectureSheets() {
     enabled: !!filterCourse,
   });
 
+  useEffect(() => {
+    if (!sheetIdFromQuery || resolvedDeepLinkCourseId || !(courses as any[]).length) return;
+
+    let cancelled = false;
+    const resolveCourse = async () => {
+      for (const course of courses as any[]) {
+        const resp = await api.get(`/courses/${course.id}/lecture-sheets`);
+        const list = (resp.data ?? []) as any[];
+        if (list.some((s: any) => s.id === sheetIdFromQuery)) {
+          if (!cancelled) {
+            setResolvedDeepLinkCourseId(course.id);
+            setFilterCourse(course.id);
+          }
+          return;
+        }
+      }
+    };
+
+    resolveCourse().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [sheetIdFromQuery, resolvedDeepLinkCourseId, courses]);
+
+  useEffect(() => {
+    if (!sheetIdFromQuery || sheetDeepLinkHandled) return;
+    const found = (sheets as any[]).find((s: any) => s.id === sheetIdFromQuery);
+    if (!found) return;
+
+    setHighlightedSheetId(found.id);
+    setSheetDeepLinkHandled(true);
+
+    setTimeout(() => {
+      document.getElementById(`lecture-sheet-${found.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 0);
+
+    setTimeout(() => setHighlightedSheetId(null), 1800);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('sheetId');
+    setSearchParams(next, { replace: true });
+  }, [sheetIdFromQuery, sheetDeepLinkHandled, sheets, searchParams, setSearchParams]);
+
   const { register, control, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<SheetData>({
     resolver: zodResolver(sheetSchema),
     defaultValues: { links: [{ url: '', label: '' }] },
@@ -38,9 +89,10 @@ export function LectureSheets() {
   const { fields, append, remove } = useFieldArray({ control, name: 'links' });
 
   const createMutation = useMutation({
-    mutationFn: (d: SheetData) => api.post(`/courses/${d.courseId}/lecture-sheets`, {
+    mutationFn: (d: SheetData) => api.post('/courses/lecture-sheets', {
       title: d.title,
       description: d.description,
+      courseId: d.courseId,
       links: d.links,
     }),
     onSuccess: () => {
@@ -51,6 +103,53 @@ export function LectureSheets() {
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
   });
+
+  const updateMutation = useMutation({
+    mutationFn: (payload: { id: string; data: SheetData }) => api.patch(`/courses/lecture-sheets/${payload.id}`, {
+      title: payload.data.title,
+      description: payload.data.description,
+      links: payload.data.links,
+    }),
+    onSuccess: () => {
+      toast.success('Lecture sheet updated');
+      qc.invalidateQueries({ queryKey: ['lecture-sheets'] });
+      reset({ links: [{ url: '', label: '' }] });
+      setShowForm(false);
+      setEditingSheetId(null);
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to update'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/courses/lecture-sheets/${id}`),
+    onSuccess: () => {
+      toast.success('Lecture sheet deleted');
+      qc.invalidateQueries({ queryKey: ['lecture-sheets'] });
+      if (editingSheetId) {
+        reset({ links: [{ url: '', label: '' }] });
+        setShowForm(false);
+        setEditingSheetId(null);
+      }
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to delete'),
+  });
+
+  const onEdit = (sheet: any) => {
+    setEditingSheetId(sheet.id);
+    setShowForm(true);
+    reset({
+      courseId: sheet.courseId,
+      title: sheet.title,
+      description: sheet.description ?? '',
+      links: Array.isArray(sheet.links) && sheet.links.length ? sheet.links : [{ url: '', label: '' }],
+    });
+  };
+
+  const onCancel = () => {
+    setShowForm(false);
+    setEditingSheetId(null);
+    reset({ links: [{ url: '', label: '' }] });
+  };
 
   return (
     <AppShell>
@@ -73,11 +172,24 @@ export function LectureSheets() {
 
         {showForm && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 mb-6">
-            <h2 className="font-semibold mb-4">New Lecture Sheet</h2>
-            <form onSubmit={handleSubmit(d => createMutation.mutate(d))} className="space-y-4">
+            <h2 className="font-semibold mb-4">{editingSheetId ? 'Edit Lecture Sheet' : 'New Lecture Sheet'}</h2>
+            <form
+              onSubmit={handleSubmit((d) => {
+                if (editingSheetId) {
+                  updateMutation.mutate({ id: editingSheetId, data: d });
+                  return;
+                }
+                createMutation.mutate(d);
+              })}
+              className="space-y-4"
+            >
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Course</label>
-                <select {...register('courseId')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                <select
+                  {...register('courseId')}
+                  disabled={!!editingSheetId}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm disabled:bg-slate-100 disabled:text-slate-500"
+                >
                   <option value="">— select —</option>
                   {(courses as any[]).map((c: any) => <option key={c.id} value={c.id}>{courseCode(c)}</option>)}
                 </select>
@@ -115,8 +227,8 @@ export function LectureSheets() {
               </div>
               <div className="flex gap-3">
                 <button type="submit" disabled={isSubmitting}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">Post</button>
-                <button type="button" onClick={() => setShowForm(false)}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">{editingSheetId ? 'Save Changes' : 'Post'}</button>
+                <button type="button" onClick={onCancel}
                   className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">Cancel</button>
               </div>
             </form>
@@ -125,8 +237,36 @@ export function LectureSheets() {
 
         <div className="space-y-3">
           {(sheets as any[]).map((s: any) => (
-            <div key={s.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
-              <p className="font-semibold text-slate-800">{s.title}</p>
+            <div
+              id={`lecture-sheet-${s.id}`}
+              key={s.id}
+              className={`bg-white rounded-xl border shadow-sm p-4 transition-colors ${
+                highlightedSheetId === s.id ? 'border-indigo-300 bg-indigo-50/30' : 'border-slate-100'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className="font-semibold text-slate-800">{s.title}</p>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => onEdit(s)}
+                    className="px-2 py-1 text-xs border border-slate-300 rounded hover:bg-slate-50"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Delete this lecture sheet?')) {
+                        deleteMutation.mutate(s.id);
+                      }
+                    }}
+                    className="px-2 py-1 text-xs border border-red-200 text-red-600 rounded hover:bg-red-50"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
               {s.description && <p className="text-sm text-slate-500 mt-0.5">{s.description}</p>}
               <div className="mt-2 flex flex-wrap gap-2">
                 {(s.links ?? []).map((l: any, i: number) => (
