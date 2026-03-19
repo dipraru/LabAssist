@@ -23,6 +23,12 @@ export class Problem {
   @Column({ type: 'text' })
   statement: string;
 
+  @Column({ type: 'text', nullable: true })
+  inputDescription: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  outputDescription: string | null;
+
   @Column({ type: 'int', nullable: true })
   timeLimitMs: number | null;
 
@@ -37,7 +43,10 @@ export class Problem {
 
   // Sample test cases
   @Column({ type: 'jsonb', default: '[]' })
-  sampleTestCases: { input: string; output: string; explanation?: string }[];
+  sampleTestCases: { input: string; output: string; note?: string; explanation?: string }[];
+
+  @Column({ type: 'jsonb', default: '[]' })
+  hiddenTestCases: { input: string; output: string; inputFileName?: string; outputFileName?: string }[];
 
   // Author info
   @Column({ type: 'varchar', nullable: true })

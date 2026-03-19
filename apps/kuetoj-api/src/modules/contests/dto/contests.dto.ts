@@ -10,25 +10,41 @@ import { ContestType, ProgrammingLanguage } from '../../../common/enums';
 class SampleTestCaseDto {
   @IsString() input: string;
   @IsString() output: string;
+  @IsOptional() @IsString() note?: string;
   @IsOptional() @IsString() explanation?: string;
+}
+
+class HiddenTestCaseDto {
+  @IsString() input: string;
+  @IsString() output: string;
+  @IsOptional() @IsString() inputFileName?: string;
+  @IsOptional() @IsString() outputFileName?: string;
 }
 
 export class CreateProblemDto {
   @IsString() title: string;
   @IsString() statement: string;
+  @IsOptional() @IsString() inputDescription?: string;
+  @IsOptional() @IsString() outputDescription?: string;
   @IsOptional() @IsInt() timeLimitMs?: number;
   @IsOptional() @IsInt() memoryLimitKb?: number;
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => SampleTestCaseDto)
   sampleTestCases?: SampleTestCaseDto[];
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => HiddenTestCaseDto)
+  hiddenTestCases?: HiddenTestCaseDto[];
 }
 
 export class UpdateProblemDto {
   @IsOptional() @IsString() title?: string;
   @IsOptional() @IsString() statement?: string;
+  @IsOptional() @IsString() inputDescription?: string;
+  @IsOptional() @IsString() outputDescription?: string;
   @IsOptional() @IsInt() timeLimitMs?: number;
   @IsOptional() @IsInt() memoryLimitKb?: number;
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => SampleTestCaseDto)
   sampleTestCases?: SampleTestCaseDto[];
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => HiddenTestCaseDto)
+  hiddenTestCases?: HiddenTestCaseDto[];
 }
 
 // ─── Contest Problem (link existing problem to contest) ──────────────────────

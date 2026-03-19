@@ -36,6 +36,19 @@ export function JudgeContestProblem() {
   const [memoryLimitKb, setMemoryLimitKb] = useState(262144);
   const [sampleCases, setSampleCases] = useState<SampleCase[]>([{ input: '', output: '' }]);
 
+  const copyBlock = async (text: string, label: string) => {
+    if (!text) {
+      toast.error(`No ${label} to copy`);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copied`);
+    } catch {
+      toast.error(`Failed to copy ${label}`);
+    }
+  };
+
   const { data: contest } = useQuery({
     queryKey: ['contest', id],
     queryFn: () => api.get(`/contests/${id}`).then((r) => r.data),
@@ -180,20 +193,59 @@ export function JudgeContestProblem() {
                 <pre className="whitespace-pre-wrap font-sans">{problem.statement}</pre>
               </div>
 
+              {problem.inputDescription && (
+                <div className="mt-5">
+                  <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-700">Input</h3>
+                  <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm text-slate-800 font-sans">{problem.inputDescription}</pre>
+                </div>
+              )}
+
+              {problem.outputDescription && (
+                <div className="mt-5">
+                  <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-700">Output</h3>
+                  <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm text-slate-800 font-sans">{problem.outputDescription}</pre>
+                </div>
+              )}
+
               {problem.sampleTestCases?.length > 0 && (
                 <div className="mt-6">
                   <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">Sample Test Cases</h3>
                   <div className="space-y-3">
                     {problem.sampleTestCases.map((tc: any, index: number) => (
-                      <div key={index} className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                      <div key={index} className="rounded-lg border border-slate-200 p-3 space-y-3">
+                        <p className="text-xs font-semibold text-slate-600">Sample #{index + 1}</p>
                         <div>
-                          <p className="mb-1 text-xs font-medium text-slate-500">Input {index + 1}</p>
-                          <pre className="overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-sm text-slate-800">{tc.input}</pre>
+                          <div className="mb-1 flex items-center justify-between">
+                            <p className="text-xs font-medium text-slate-500">Input {index + 1}</p>
+                            <button
+                              type="button"
+                              onClick={() => void copyBlock(tc.input, `Sample ${index + 1} input`)}
+                              className="text-xs text-indigo-600 hover:text-indigo-700"
+                            >
+                              Copy
+                            </button>
+                          </div>
+                          <pre className="overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-sm text-slate-800 whitespace-pre-wrap">{tc.input}</pre>
                         </div>
                         <div>
-                          <p className="mb-1 text-xs font-medium text-slate-500">Output {index + 1}</p>
-                          <pre className="overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-sm text-slate-800">{tc.output}</pre>
+                          <div className="mb-1 flex items-center justify-between">
+                            <p className="text-xs font-medium text-slate-500">Output {index + 1}</p>
+                            <button
+                              type="button"
+                              onClick={() => void copyBlock(tc.output, `Sample ${index + 1} output`)}
+                              className="text-xs text-indigo-600 hover:text-indigo-700"
+                            >
+                              Copy
+                            </button>
+                          </div>
+                          <pre className="overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-sm text-slate-800 whitespace-pre-wrap">{tc.output}</pre>
                         </div>
+                        {(tc.note || tc.explanation) && (
+                          <div>
+                            <p className="mb-1 text-xs font-medium text-slate-500">Note</p>
+                            <pre className="whitespace-pre-wrap rounded-lg bg-indigo-50 p-3 text-sm text-slate-700 font-sans">{tc.note ?? tc.explanation}</pre>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

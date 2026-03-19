@@ -179,13 +179,21 @@ export class ContestsService {
 
   async createProblem(dto: CreateProblemDto, judgeUserId: string): Promise<Problem> {
     const problemCode = await this.getNextProblemCode();
+    const sampleTestCases = (dto.sampleTestCases ?? []).map((sample) => ({
+      input: sample.input,
+      output: sample.output,
+      note: sample.note ?? sample.explanation,
+    }));
     const p = this.problemRepo.create({
       problemCode,
       title: dto.title,
       statement: dto.statement,
+      inputDescription: dto.inputDescription ?? null,
+      outputDescription: dto.outputDescription ?? null,
       timeLimitMs: dto.timeLimitMs ?? null,
       memoryLimitKb: dto.memoryLimitKb ?? null,
-      sampleTestCases: dto.sampleTestCases ?? [],
+      sampleTestCases,
+      hiddenTestCases: dto.hiddenTestCases ?? [],
       authorId: judgeUserId,
     });
     return this.problemRepo.save(p);
@@ -215,7 +223,22 @@ export class ContestsService {
   async updateProblem(id: string, dto: UpdateProblemDto, judgeUserId: string) {
     const p = await this.getProblemById(id);
     if (p.authorId !== judgeUserId) throw new ForbiddenException();
-    Object.assign(p, dto);
+    p.title = dto.title ?? p.title;
+    p.statement = dto.statement ?? p.statement;
+    p.inputDescription = dto.inputDescription ?? p.inputDescription;
+    p.outputDescription = dto.outputDescription ?? p.outputDescription;
+    p.timeLimitMs = dto.timeLimitMs ?? p.timeLimitMs;
+    p.memoryLimitKb = dto.memoryLimitKb ?? p.memoryLimitKb;
+    if (dto.sampleTestCases) {
+      p.sampleTestCases = dto.sampleTestCases.map((sample) => ({
+        input: sample.input,
+        output: sample.output,
+        note: sample.note ?? sample.explanation,
+      }));
+    }
+    if (dto.hiddenTestCases) {
+      p.hiddenTestCases = dto.hiddenTestCases;
+    }
     return this.problemRepo.save(p);
   }
 
