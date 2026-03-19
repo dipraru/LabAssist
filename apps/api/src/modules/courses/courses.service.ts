@@ -247,7 +247,12 @@ export class CoursesService {
 
     if (dto.title !== undefined) sheet.title = dto.title;
     if (dto.description !== undefined) sheet.description = dto.description ?? null;
-    if (dto.links !== undefined) sheet.links = dto.links;
+    if (dto.links !== undefined) {
+      sheet.links = dto.links.map((link) => ({
+        url: link.url,
+        label: link.label ?? '',
+      }));
+    }
 
     return this.lectureSheetRepo.save(sheet);
   }
