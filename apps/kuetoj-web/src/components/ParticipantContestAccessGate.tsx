@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Navigate, Outlet, useParams } from 'react-router-dom';
+import { Navigate, Outlet, useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { AppShell } from './AppShell';
@@ -15,6 +15,7 @@ function formatDuration(totalSeconds: number) {
 
 export function ParticipantContestAccessGate() {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -57,6 +58,20 @@ export function ParticipantContestAccessGate() {
         </div>
       </AppShell>
     );
+  }
+
+  const canonicalContestPathId = contest.contestNumber != null
+    ? String(contest.contestNumber)
+    : id;
+
+  if (id !== canonicalContestPathId) {
+    const contestPrefix = `/contest/${id}`;
+    const suffix = location.pathname.startsWith(contestPrefix)
+      ? location.pathname.slice(contestPrefix.length)
+      : '';
+    const search = location.search ?? '';
+    const hash = location.hash ?? '';
+    return <Navigate to={`/contest/${canonicalContestPathId}${suffix}${search}${hash}`} replace />;
   }
 
   const phase = contest.startTime && contest.endTime

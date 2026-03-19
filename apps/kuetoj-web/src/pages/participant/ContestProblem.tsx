@@ -43,7 +43,7 @@ function contestTimeLabel(startTime?: string, endTime?: string) {
 }
 
 export function ContestProblem() {
-  const { id, problemId } = useParams<{ id: string; problemId: string }>();
+  const { id, problemLabel } = useParams<{ id: string; problemLabel: string }>();
   const queryClient = useQueryClient();
   const [language, setLanguage] = useState('cpp');
   const [code, setCode] = useState('');
@@ -75,9 +75,21 @@ export function ContestProblem() {
     queryFn: () => api.get(`/contests/${id}`).then(r => r.data),
   });
 
-  const contestProblems: any[] = contest?.problems ?? contest?.contestProblems ?? [];
-  const cp = contestProblems.find((p: any) => p.problem?.id === problemId);
+  const contestProblems: any[] = [...(contest?.problems ?? contest?.contestProblems ?? [])]
+    .sort((a, b) => (a?.orderIndex ?? 0) - (b?.orderIndex ?? 0));
+
+  const normalizedProblemLabel = decodeURIComponent(problemLabel ?? '').trim().toUpperCase();
+  const cp = contestProblems.find((p: any, index: number) => {
+    const label = (p?.label ? String(p.label).trim() : String.fromCharCode(65 + index)).toUpperCase();
+    return label === normalizedProblemLabel;
+  }) ?? contestProblems.find((p: any) => p.problem?.id === problemLabel || p.id === problemLabel);
   const problem = cp?.problem;
+  const currentProblemLabel = cp?.label
+    ? String(cp.label).trim()
+    : normalizedProblemLabel || '—';
+  const contestPathId = contest?.contestNumber != null
+    ? String(contest.contestNumber)
+    : id;
 
   const submitMutation = useMutation({
     mutationFn: () => {
@@ -153,7 +165,7 @@ export function ContestProblem() {
               My Submissions
             </button>
             <Link
-              to={`/contest/${id}/problems`}
+              to={`/contest/${contestPathId}/problems`}
               className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
             >
               Back to Dashboard
@@ -171,7 +183,7 @@ export function ContestProblem() {
               <div className="p-6">
                 <div className="mb-4 flex items-start gap-3">
                   <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100 font-bold text-indigo-700">
-                    {cp.label}
+                    {currentProblemLabel}
                   </span>
                   <div>
                     <h1 className="text-xl font-bold text-slate-900">{problem.title}</h1>
@@ -272,7 +284,7 @@ export function ContestProblem() {
                     disabled={submitMutation.isPending || !code.trim()}
                     onClick={() => submitMutation.mutate()}
                   >
-                    {submitMutation.isPending ? 'Submitting…' : `Submit ${cp.label}`}
+                    {submitMutation.isPending ? 'Submitting…' : `Submit ${currentProblemLabel}`}
                   </button>
                 </div>
               </div>
@@ -320,7 +332,7 @@ export function ContestProblem() {
                       </button>
                     </td>
                     <td className="px-4 py-3">{submission.participantName ?? submission.participantId ?? '—'}</td>
-                    <td className="px-4 py-3">{cp.label}. {problem.title}</td>
+                    <td className="px-4 py-3">{currentProblemLabel}. {problem.title}</td>
                     <td className="px-4 py-3 text-slate-500">{new Date(submission.submittedAt).toLocaleString()}</td>
                     <td className="px-4 py-3">{submission.language ?? '—'}</td>
                     <td className="px-4 py-3">{submission.manualVerdict ?? submission.submissionStatus}</td>
@@ -346,7 +358,7 @@ export function ContestProblem() {
       >
         {selectedSubmission && (
           <div className="space-y-3 text-sm">
-            <p><span className="font-semibold">Problem:</span> {cp.label}. {problem.title}</p>
+            <p><span className="font-semibold">Problem:</span> {currentProblemLabel}. {problem.title}</p>
             <p><span className="font-semibold">Language:</span> {selectedSubmission.language ?? '—'}</p>
             <p><span className="font-semibold">Status:</span> {selectedSubmission.manualVerdict ?? selectedSubmission.submissionStatus}</p>
             <p><span className="font-semibold">Submitted:</span> {new Date(selectedSubmission.submittedAt).toLocaleString()}</p>
@@ -360,7 +372,7 @@ export function ContestProblem() {
             )}
             <div>
               <Link
-                to={`/contest/${id}/submissions/${selectedSubmission.id}`}
+                to={`/contest/${contestPathId}/submissions/${selectedSubmission.id}`}
                 className="text-indigo-600 hover:underline"
               >
                 Open in separate page

@@ -14,6 +14,17 @@ export function ContestSubmissionDetail() {
     enabled: !!id && !!submissionId,
   });
 
+  const { data: contest } = useQuery({
+    queryKey: ['contest', id],
+    queryFn: () => api.get(`/contests/${id}`).then((response) => response.data),
+    enabled: !!id,
+    staleTime: 60_000,
+  });
+
+  const contestPathId = contest?.contestNumber != null
+    ? String(contest.contestNumber)
+    : id;
+
   return (
     <AppShell>
       <div className="w-full">
@@ -22,7 +33,7 @@ export function ContestSubmissionDetail() {
         <p className="mb-4 text-sm text-slate-500">Full details for your submission</p>
         {id && <ParticipantContestNav contestId={id} />}
 
-        <Link to={`/contest/${id}/submissions`} className="mb-4 inline-block text-sm text-indigo-600 hover:underline">
+        <Link to={`/contest/${contestPathId}/submissions`} className="mb-4 inline-block text-sm text-indigo-600 hover:underline">
           ← Back to submissions
         </Link>
 

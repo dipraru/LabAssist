@@ -4,8 +4,10 @@ import { api } from '../../lib/api';
 
 type AssignedContest = {
   contestId?: string;
+  contestNumber?: number | null;
   contest: {
     id: string;
+    contestNumber?: number | null;
     phase?: 'upcoming' | 'running' | 'old';
     startTime?: string;
   };
@@ -35,7 +37,9 @@ export function ParticipantContestEntry() {
     return aStart - bStart;
   });
 
-  const targetContestId = sortedAssignments.find((item) => item.contest?.id)?.contest.id
+  const targetContestId = sortedAssignments.find((item) => item.contest?.contestNumber != null)?.contest.contestNumber
+    ?? sortedAssignments.find((item) => item.contestNumber != null)?.contestNumber
+    ?? sortedAssignments.find((item) => item.contest?.id)?.contest.id
     ?? sortedAssignments.find((item) => item.contestId)?.contestId
     ?? null;
 

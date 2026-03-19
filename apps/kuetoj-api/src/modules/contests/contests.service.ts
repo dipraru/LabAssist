@@ -1239,8 +1239,10 @@ export class ContestsService {
       return {
         participantId: assignment.participantId,
         contestId: contest.id,
+        contestNumber: contest.contestNumber,
         contest: {
           id: contest.id,
+          contestNumber: contest.contestNumber,
           title: contest.title,
           type: contest.type,
           startTime: contest.startTime,

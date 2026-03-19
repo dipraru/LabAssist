@@ -91,7 +91,7 @@ export default function App() {
           <Route index element={<Navigate to="problems" replace />} />
           <Route path="status" element={<ContestView />} />
           <Route path="problems" element={<ContestProblems />} />
-          <Route path="problems/:problemId" element={<ContestProblem />} />
+          <Route path="problems/:problemLabel" element={<ContestProblem />} />
           <Route path="submissions" element={<ContestSubmissions />} />
           <Route path="submissions/:submissionId" element={<ContestSubmissionDetail />} />
           <Route path="standings" element={<ParticipantStandings />} />

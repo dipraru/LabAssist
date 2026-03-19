@@ -26,7 +26,7 @@ export function ParticipantStandings() {
   return (
     <AppShell>
       <div className="w-full">
-        {id && <ParticipantContestHeader contestId={id} hideFrozenBadge />}
+        {id && <ParticipantContestHeader contestId={id} />}
         {id && <ParticipantContestNav contestId={id} />}
         <div className="flex items-center justify-between mb-6">
           <div>
