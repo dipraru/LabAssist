@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, useFieldArray } from 'react-hook-form';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
@@ -22,7 +22,7 @@ type ProblemInput = z.input<typeof problemSchema>;
 type ProblemData = z.output<typeof problemSchema>;
 
 export function JudgeProblems() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingProblemId, setEditingProblemId] = useState<string | null>(null);
@@ -84,61 +84,12 @@ export function JudgeProblems() {
   });
 
   const openCreate = () => {
-    setIsViewOnly(false);
-    setEditingProblemId(null);
-    form.reset({
-      title: '',
-      statement: '',
-      timeLimitMs: 2000,
-      memoryLimitKb: 262144,
-      sampleTestCases: [{ input: '', output: '' }],
-    });
-    setShowCreateModal(true);
+    navigate('/problems/new');
   };
 
   const openEdit = (problem: any) => {
-    setIsViewOnly(false);
-    setEditingProblemId(problem.id);
-    form.reset({
-      title: problem.title ?? '',
-      statement: problem.statement ?? '',
-      timeLimitMs: problem.timeLimitMs ?? 2000,
-      memoryLimitKb: problem.memoryLimitKb ?? 262144,
-      sampleTestCases: problem.sampleTestCases?.length ? problem.sampleTestCases : [{ input: '', output: '' }],
-    });
-    setShowCreateModal(true);
+    navigate(`/problems/${problem.problemCode ?? problem.id}/edit`);
   };
-
-  const openView = (problem: any) => {
-    setIsViewOnly(true);
-    setEditingProblemId(problem.id);
-    form.reset({
-      title: problem.title ?? '',
-      statement: problem.statement ?? '',
-      timeLimitMs: problem.timeLimitMs ?? 2000,
-      memoryLimitKb: problem.memoryLimitKb ?? 262144,
-      sampleTestCases: problem.sampleTestCases?.length ? problem.sampleTestCases : [{ input: '', output: '' }],
-    });
-    setShowCreateModal(true);
-  };
-
-  useEffect(() => {
-    const editProblemId = searchParams.get('editProblemId');
-    const viewProblemId = searchParams.get('viewProblemId');
-    if (!editProblemId && !viewProblemId) return;
-
-    const targetId = editProblemId ?? viewProblemId;
-    const target = (problems as any[]).find((problem: any) => problem.id === targetId);
-    if (!target) return;
-
-    if (editProblemId) openEdit(target);
-    if (viewProblemId) openView(target);
-
-    const next = new URLSearchParams(searchParams);
-    next.delete('editProblemId');
-    next.delete('viewProblemId');
-    setSearchParams(next, { replace: true });
-  }, [problems, searchParams, setSearchParams]);
 
   const handleDelete = (problem: any) => {
     const confirmed = window.confirm(`Delete problem ${problem.problemCode ?? problem.id}?`);

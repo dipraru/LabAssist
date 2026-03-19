@@ -35,6 +35,12 @@ const VERDICT_COLOR: Record<string, string> = {
   manual_review: 'bg-blue-100 text-blue-700',
 };
 
+function contestProblemLabel(cp: any, index: number): string {
+  const raw = typeof cp?.label === 'string' ? cp.label.trim().toUpperCase() : '';
+  if (raw.length === 1 && /^[A-Z]$/.test(raw)) return raw;
+  return String.fromCharCode(65 + index);
+}
+
 export function ContestManage() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
@@ -136,7 +142,8 @@ export function ContestManage() {
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
   });
 
-  const problems: any[] = contest?.problems ?? [];
+  const problems: any[] = [...(contest?.problems ?? [])]
+    .sort((a: any, b: any) => (a?.orderIndex ?? 0) - (b?.orderIndex ?? 0));
   const standingRows: any[] = standings?.rows ?? [];
   const standingProblems: any[] = standings?.problems ?? [];
   const isFreezeActive = Boolean(standings?.isFrozen);
@@ -162,7 +169,7 @@ export function ContestManage() {
     { key: 'announcements', label: 'Announcements' },
   ];
 
-  const tabHref = (tab: ContestTab) => `/judge/contests/${id}/${tab}`;
+  const tabHref = (tab: ContestTab) => `/contests/${id}/${tab}`;
 
   const formatHms = (totalSeconds: number) => {
     const clamped = Math.max(0, totalSeconds);
@@ -240,9 +247,9 @@ export function ContestManage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {problems.map((cp: any) => {
+                  {problems.map((cp: any, index: number) => {
                     const rows: any[] = standingRows ?? [];
-                    const label = cp.label;
+                    const label = contestProblemLabel(cp, index);
                     let solvedCount = 0;
                     let attemptCount = 0;
                     rows.forEach((row: any) => {
@@ -254,10 +261,10 @@ export function ContestManage() {
 
                     return (
                       <tr key={cp.id} className="hover:bg-slate-50">
-                        <td className="px-4 py-3 font-semibold text-slate-700">{cp.label}</td>
+                        <td className="px-4 py-3 font-semibold text-slate-700">{label}</td>
                         <td className="px-4 py-3">
                           <Link
-                            to={`/judge/contests/${id}/problems/${cp.problem?.problemCode ?? cp.problem?.id}`}
+                            to={`/contests/${id}/problems/${cp.problem?.problemCode ?? cp.problem?.id}`}
                             className="font-semibold text-indigo-700 hover:underline"
                           >
                             {cp.problem?.title ?? '—'}

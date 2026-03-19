@@ -42,7 +42,7 @@ export function JudgeStandingsEntry() {
 
   useEffect(() => {
     if (!isJudge && publicCheck.isSuccess) {
-      navigate(`/judge/contests/${id}/standings/public`, { replace: true });
+      navigate(`/contests/${id}/standings/public`, { replace: true });
     }
   }, [id, isJudge, navigate, publicCheck.isSuccess]);
 

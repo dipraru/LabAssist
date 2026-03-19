@@ -34,7 +34,7 @@ export function BridgeLoginPage() {
           isFirstLogin: false,
         });
 
-        navigate(user.role === 'temp_judge' ? '/judge' : '/contest', { replace: true });
+        navigate(user.role === 'temp_judge' ? '/contests' : '/contest', { replace: true });
       } catch {
         toast.error('Bridge login failed. Please sign in again.');
         navigate('/login', { replace: true });

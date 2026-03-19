@@ -30,11 +30,11 @@ export class TempParticipant {
   @Column({ type: 'varchar', nullable: true })
   contestId: string | null;
 
-  @Column({ type: 'timestamptz' })
-  accessFrom: Date;
+  @Column({ type: 'timestamptz', nullable: true })
+  accessFrom: Date | null;
 
-  @Column({ type: 'timestamptz' })
-  accessUntil: Date;
+  @Column({ type: 'timestamptz', nullable: true })
+  accessUntil: Date | null;
 
   @OneToOne(() => User, { eager: true, onDelete: 'CASCADE' })
   @JoinColumn()

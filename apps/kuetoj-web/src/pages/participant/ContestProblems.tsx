@@ -6,6 +6,12 @@ import { ParticipantContestHeader } from '../../components/ParticipantContestHea
 import { api } from '../../lib/api';
 import { getContestPhase } from '../../components/ContestCountdownBar';
 
+function contestProblemLabel(cp: any, index: number): string {
+  const raw = typeof cp?.label === 'string' ? cp.label.trim().toUpperCase() : '';
+  if (raw.length === 1 && /^[A-Z]$/.test(raw)) return raw;
+  return String.fromCharCode(65 + index);
+}
+
 export function ContestProblems() {
   const { id } = useParams<{ id: string }>();
 
@@ -33,7 +39,12 @@ export function ContestProblems() {
     enabled: !!id,
   });
 
-  const problems: any[] = contest?.problems ?? contest?.contestProblems ?? [];
+  const contestPathId = contest?.contestNumber != null
+    ? String(contest.contestNumber)
+    : id;
+
+  const problems: any[] = [...(contest?.problems ?? contest?.contestProblems ?? [])]
+    .sort((a, b) => (a?.orderIndex ?? 0) - (b?.orderIndex ?? 0));
   const phase = contest?.startTime && contest?.endTime
     ? getContestPhase(contest.startTime, contest.endTime)
     : 'upcoming';
@@ -66,7 +77,8 @@ export function ContestProblems() {
                     </tr>
                   </thead>
                   <tbody>
-                    {problems.map((cp: any) => {
+                    {problems.map((cp: any, index: number) => {
+                      const label = contestProblemLabel(cp, index);
                       const myProblemSubs = (mySubmissions as any[]).filter((submission) => submission.contestProblemId === cp.id);
                       const accepted = myProblemSubs.some((submission) => {
                         const verdict = `${submission.manualVerdict ?? submission.submissionStatus ?? ''}`.toLowerCase();
@@ -80,7 +92,6 @@ export function ContestProblems() {
                           : 'bg-transparent text-slate-500';
 
                       const rows: any[] = standings?.rows ?? [];
-                      const label = cp.label;
                       let solvedCount = 0;
                       let attemptCount = 0;
                       rows.forEach((row: any) => {
@@ -92,9 +103,9 @@ export function ContestProblems() {
 
                       return (
                         <tr key={cp.id} className="border-t border-slate-100 hover:bg-slate-50">
-                          <td className="px-4 py-3 font-semibold text-slate-700">{cp.label}</td>
+                          <td className="px-4 py-3 font-semibold text-slate-700">{label}</td>
                           <td className="px-4 py-3">
-                            <Link to={`/contest/${id}/problems/${cp.problem?.id}`} className="font-semibold text-indigo-700 hover:underline">
+                            <Link to={`/contest/${contestPathId}/problems/${encodeURIComponent(label)}`} className="font-semibold text-indigo-700 hover:underline">
                               {cp.problem?.title}
                             </Link>
                             <div className="text-xs text-slate-500">

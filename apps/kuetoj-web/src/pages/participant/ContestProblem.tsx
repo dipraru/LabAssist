@@ -43,13 +43,31 @@ function contestTimeLabel(startTime?: string, endTime?: string) {
 }
 
 export function ContestProblem() {
-  const { id, problemId } = useParams<{ id: string; problemId: string }>();
+  const { id, problemLabel } = useParams<{ id: string; problemLabel: string }>();
   const queryClient = useQueryClient();
   const [language, setLanguage] = useState('cpp');
   const [code, setCode] = useState('');
   const [activeTab, setActiveTab] = useState<'statement' | 'submissions'>('statement');
   const [leftPanePercent, setLeftPanePercent] = useState(55);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const copyBlock = async (text: string, label: string, key: string) => {
+    if (!text) {
+      toast.error(`No ${label} to copy`);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      window.setTimeout(() => {
+        setCopiedKey((prev) => (prev === key ? null : prev));
+      }, 1200);
+      toast.success(`${label} copied`);
+    } catch {
+      toast.error(`Failed to copy ${label}`);
+    }
+  };
 
   const { data: submissions = [] } = useQuery({
     queryKey: ['my-contest-submissions', id],
@@ -62,9 +80,21 @@ export function ContestProblem() {
     queryFn: () => api.get(`/contests/${id}`).then(r => r.data),
   });
 
-  const contestProblems: any[] = contest?.problems ?? contest?.contestProblems ?? [];
-  const cp = contestProblems.find((p: any) => p.problem?.id === problemId);
+  const contestProblems: any[] = [...(contest?.problems ?? contest?.contestProblems ?? [])]
+    .sort((a, b) => (a?.orderIndex ?? 0) - (b?.orderIndex ?? 0));
+
+  const normalizedProblemLabel = decodeURIComponent(problemLabel ?? '').trim().toUpperCase();
+  const cp = contestProblems.find((p: any, index: number) => {
+    const label = (p?.label ? String(p.label).trim() : String.fromCharCode(65 + index)).toUpperCase();
+    return label === normalizedProblemLabel;
+  }) ?? contestProblems.find((p: any) => p.problem?.id === problemLabel || p.id === problemLabel);
   const problem = cp?.problem;
+  const currentProblemLabel = cp?.label
+    ? String(cp.label).trim()
+    : normalizedProblemLabel || '—';
+  const contestPathId = contest?.contestNumber != null
+    ? String(contest.contestNumber)
+    : id;
 
   const submitMutation = useMutation({
     mutationFn: () => {
@@ -140,7 +170,7 @@ export function ContestProblem() {
               My Submissions
             </button>
             <Link
-              to={`/contest/${id}/problems`}
+              to={`/contest/${contestPathId}/problems`}
               className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
             >
               Back to Dashboard
@@ -158,7 +188,7 @@ export function ContestProblem() {
               <div className="p-6">
                 <div className="mb-4 flex items-start gap-3">
                   <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100 font-bold text-indigo-700">
-                    {cp.label}
+                    {currentProblemLabel}
                   </span>
                   <div>
                     <h1 className="text-xl font-bold text-slate-900">{problem.title}</h1>
@@ -173,20 +203,59 @@ export function ContestProblem() {
                   <pre className="whitespace-pre-wrap font-sans">{problem.statement}</pre>
                 </div>
 
+                {problem.inputDescription && (
+                  <div className="mt-5">
+                    <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-700">Input</h3>
+                    <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm text-slate-800 font-sans">{problem.inputDescription}</pre>
+                  </div>
+                )}
+
+                {problem.outputDescription && (
+                  <div className="mt-5">
+                    <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-700">Output</h3>
+                    <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm text-slate-800 font-sans">{problem.outputDescription}</pre>
+                  </div>
+                )}
+
                 {problem.sampleTestCases?.length > 0 && (
                   <div className="mt-6">
                     <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">Sample Test Cases</h3>
                     <div className="space-y-3">
                       {problem.sampleTestCases.map((tc: any, i: number) => (
-                        <div key={i} className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                        <div key={i} className="rounded-lg border border-slate-200 p-3 space-y-3">
+                          <p className="text-xs font-semibold text-slate-600">Sample #{i + 1}</p>
                           <div>
-                            <p className="mb-1 text-xs font-medium text-slate-500">Input {i + 1}</p>
-                            <pre className="overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-sm text-slate-800">{tc.input}</pre>
+                            <div className="mb-1 flex items-center justify-between">
+                              <p className="text-xs font-medium text-slate-500">Input {i + 1}</p>
+                              <button
+                                type="button"
+                                onClick={() => void copyBlock(tc.input, `Sample ${i + 1} input`, `sample-${i}-input`)}
+                                className="cursor-pointer rounded px-2 py-1 text-xs font-medium text-indigo-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                              >
+                                {copiedKey === `sample-${i}-input` ? 'Copied' : 'Copy'}
+                              </button>
+                            </div>
+                            <pre className="overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-sm text-slate-800 whitespace-pre-wrap">{tc.input}</pre>
                           </div>
                           <div>
-                            <p className="mb-1 text-xs font-medium text-slate-500">Output {i + 1}</p>
-                            <pre className="overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-sm text-slate-800">{tc.output}</pre>
+                            <div className="mb-1 flex items-center justify-between">
+                              <p className="text-xs font-medium text-slate-500">Output {i + 1}</p>
+                              <button
+                                type="button"
+                                onClick={() => void copyBlock(tc.output, `Sample ${i + 1} output`, `sample-${i}-output`)}
+                                className="cursor-pointer rounded px-2 py-1 text-xs font-medium text-indigo-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                              >
+                                {copiedKey === `sample-${i}-output` ? 'Copied' : 'Copy'}
+                              </button>
+                            </div>
+                            <pre className="overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-sm text-slate-800 whitespace-pre-wrap">{tc.output}</pre>
                           </div>
+                          {(tc.note || tc.explanation) && (
+                            <div>
+                              <p className="mb-1 text-xs font-medium text-slate-500">Note</p>
+                              <pre className="whitespace-pre-wrap rounded-lg bg-indigo-50 p-3 text-sm text-slate-700 font-sans">{tc.note ?? tc.explanation}</pre>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -220,7 +289,7 @@ export function ContestProblem() {
                     disabled={submitMutation.isPending || !code.trim()}
                     onClick={() => submitMutation.mutate()}
                   >
-                    {submitMutation.isPending ? 'Submitting…' : `Submit ${cp.label}`}
+                    {submitMutation.isPending ? 'Submitting…' : `Submit ${currentProblemLabel}`}
                   </button>
                 </div>
               </div>
@@ -268,7 +337,7 @@ export function ContestProblem() {
                       </button>
                     </td>
                     <td className="px-4 py-3">{submission.participantName ?? submission.participantId ?? '—'}</td>
-                    <td className="px-4 py-3">{cp.label}. {problem.title}</td>
+                    <td className="px-4 py-3">{currentProblemLabel}. {problem.title}</td>
                     <td className="px-4 py-3 text-slate-500">{new Date(submission.submittedAt).toLocaleString()}</td>
                     <td className="px-4 py-3">{submission.language ?? '—'}</td>
                     <td className="px-4 py-3">{submission.manualVerdict ?? submission.submissionStatus}</td>
@@ -294,7 +363,7 @@ export function ContestProblem() {
       >
         {selectedSubmission && (
           <div className="space-y-3 text-sm">
-            <p><span className="font-semibold">Problem:</span> {cp.label}. {problem.title}</p>
+            <p><span className="font-semibold">Problem:</span> {currentProblemLabel}. {problem.title}</p>
             <p><span className="font-semibold">Language:</span> {selectedSubmission.language ?? '—'}</p>
             <p><span className="font-semibold">Status:</span> {selectedSubmission.manualVerdict ?? selectedSubmission.submissionStatus}</p>
             <p><span className="font-semibold">Submitted:</span> {new Date(selectedSubmission.submittedAt).toLocaleString()}</p>
@@ -308,7 +377,7 @@ export function ContestProblem() {
             )}
             <div>
               <Link
-                to={`/contest/${id}/submissions/${selectedSubmission.id}`}
+                to={`/contest/${contestPathId}/submissions/${selectedSubmission.id}`}
                 className="text-indigo-600 hover:underline"
               >
                 Open in separate page

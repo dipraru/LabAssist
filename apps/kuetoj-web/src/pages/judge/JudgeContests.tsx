@@ -27,6 +27,10 @@ type EditSelectedProblem = SelectedProblem & {
   existing: boolean;
 };
 
+function contestProblemLabel(index: number): string {
+  return String.fromCharCode(65 + index);
+}
+
 type ContestItem = {
   id: string;
   contestNumber?: number | null;
@@ -36,6 +40,7 @@ type ContestItem = {
   isPublicStanding?: boolean;
   startTime?: string;
   endTime?: string;
+  participatedCount?: number;
 };
 
 const PHASE_COLOR: Record<string, string> = {
@@ -94,9 +99,8 @@ export function JudgeContests() {
   const [isEditLoading, setIsEditLoading] = useState(false);
 
   const [participantsContest, setParticipantsContest] = useState<ContestItem | null>(null);
-  const [participantCount, setParticipantCount] = useState(10);
-  const [participantAccessFrom, setParticipantAccessFrom] = useState('');
-  const [participantAccessUntil, setParticipantAccessUntil] = useState('');
+  const [participantCsvFileName, setParticipantCsvFileName] = useState('');
+  const [participantNames, setParticipantNames] = useState<string[]>([]);
   const [latestPdfBase64, setLatestPdfBase64] = useState<string | null>(null);
 
   const { data: contests = [] } = useQuery({
@@ -132,12 +136,6 @@ export function JudgeContests() {
       return titleText.includes(q) || idText.includes(q) || codeText.includes(q);
     });
   }, [allProblems, editProblemSearchText]);
-
-  const toLocalInput = (iso: string) => {
-    const date = new Date(iso);
-    const tzOffset = date.getTimezoneOffset() * 60000;
-    return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
-  };
 
   const toPlainDateTimeText = (value: Date) => {
     const year = value.getFullYear();
@@ -313,6 +311,12 @@ export function JudgeContests() {
     setShowProblemPickerModal(false);
   };
 
+  useEffect(() => {
+    if (!showProblemPickerModal) return;
+    const selectedIds = selected.map((item) => item.problemId).filter(Boolean);
+    setCheckedProblemIds(selectedIds);
+  }, [showProblemPickerModal, selected]);
+
   const removeProblem = (problemId: string) => {
     setSelected((prev) => prev.filter((p) => p.problemId !== problemId));
     setCheckedProblemIds((prev) => prev.filter((id) => id !== problemId));
@@ -362,12 +366,17 @@ export function JudgeContests() {
       const sortedProblems = [...contestProblems].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
       setEditSelected(
         sortedProblems.map((item) => ({
-          problemId: item.problemId,
+          problemId: item.problemId ?? item.problem?.id,
           problemCode: item.problem?.problemCode,
           title: item.problem?.title ?? 'Untitled Problem',
           score: item.score ?? 100,
           existing: true,
-        })),
+        })).filter((item) => typeof item.problemId === 'string' && item.problemId.length > 0),
+      );
+      setEditCheckedProblemIds(
+        sortedProblems
+          .map((item) => item.problemId ?? item.problem?.id)
+          .filter((problemId): problemId is string => typeof problemId === 'string' && problemId.length > 0),
       );
     } catch (error: any) {
       toast.error(error?.response?.data?.message ?? 'Failed to load contest details');
@@ -401,6 +410,12 @@ export function JudgeContests() {
     setEditSelected((prev) => [...prev, ...toAppend]);
     setShowEditProblemPickerModal(false);
   };
+
+  useEffect(() => {
+    if (!showEditProblemPickerModal) return;
+    const selectedIds = editSelected.map((item) => item.problemId).filter(Boolean);
+    setEditCheckedProblemIds(selectedIds);
+  }, [showEditProblemPickerModal, editSelected]);
 
   const removeEditProblem = (problemId: string) => {
     setEditSelected((prev) => prev.filter((p) => p.problemId !== problemId));
@@ -458,7 +473,7 @@ export function JudgeContests() {
 
       const problems = editSelected.map((problem, index) => ({
         problemId: problem.problemId,
-        label: String.fromCharCode(65 + index),
+        label: contestProblemLabel(index),
         orderIndex: index,
         score: editType === 'score_based' ? (problem.score ?? 100) : undefined,
       }));
@@ -519,24 +534,83 @@ export function JudgeContests() {
   };
 
   const openParticipantsModal = (contest: ContestItem) => {
-    const fallbackFrom = contest.startTime ? toLocalInput(contest.startTime) : '';
-    const fallbackUntil = contest.endTime ? toLocalInput(contest.endTime) : '';
     setParticipantsContest(contest);
-    setParticipantCount(10);
-    setParticipantAccessFrom(fallbackFrom);
-    setParticipantAccessUntil(fallbackUntil);
+    setParticipantCsvFileName('');
+    setParticipantNames([]);
     setLatestPdfBase64(null);
     setShowParticipantsModal(true);
+  };
+
+  const parseParticipantCsv = (rawText: string): string[] => {
+    const stripped = rawText.replace(/^\uFEFF/, '');
+    const lines = stripped.split(/\r?\n/);
+
+    while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+      lines.pop();
+    }
+
+    const names = lines.map((line) => {
+      if (line.includes(',')) {
+        throw new Error('CSV must contain exactly one column (participant name only)');
+      }
+      return line.trim();
+    });
+
+    if (!names.length) {
+      throw new Error('CSV file is empty');
+    }
+
+    if (names.length > 200) {
+      throw new Error('Maximum 200 participants are allowed per batch');
+    }
+
+    return names;
+  };
+
+  const onParticipantCsvSelected = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const names = parseParticipantCsv(text);
+      setParticipantCsvFileName(file.name);
+      setParticipantNames(names);
+    } catch (error: any) {
+      setParticipantCsvFileName('');
+      setParticipantNames([]);
+      toast.error(error?.message ?? 'Failed to parse CSV file');
+    }
+  };
+
+  const updateParticipantNameAt = (index: number, value: string) => {
+    setParticipantNames((prev) => prev.map((name, idx) => (idx === index ? value : name)));
+  };
+
+  const addParticipantRow = () => {
+    setParticipantNames((prev) => [...prev, '']);
+  };
+
+  const removeParticipantRow = (index: number) => {
+    setParticipantNames((prev) => prev.filter((_, idx) => idx !== index));
   };
 
   const createParticipantsMutation = useMutation({
     mutationFn: () => {
       if (!participantsContest) throw new Error('Contest not selected');
+
+      const normalizedNames = participantNames.map((name) => name.trim());
+      if (!normalizedNames.length) {
+        throw new Error('Please select a CSV file and load participant names first');
+      }
+      if (normalizedNames.length > 200) {
+        throw new Error('Maximum 200 participants are allowed per batch');
+      }
+      if (normalizedNames.some((name) => !name)) {
+        throw new Error('Participant name list contains empty fields. Fill or remove empty rows.');
+      }
+
       return api.post('/contests/participants/bulk', {
         contestId: participantsContest.id,
-        count: participantCount,
-        accessFrom: participantAccessFrom ? new Date(participantAccessFrom).toISOString() : undefined,
-        accessUntil: participantAccessUntil ? new Date(participantAccessUntil).toISOString() : undefined,
+        names: normalizedNames,
       });
     },
     onSuccess: (res) => {
@@ -602,31 +676,31 @@ export function JudgeContests() {
     return new Date(computedEndTime.getTime() + Math.max(0, freezeAfterMinutesPreview) * 60 * 1000);
   }, [freezeEnabled, computedEndTime, freezeAfterMinutesPreview]);
 
-  const sortedContests = useMemo(() => {
-    const order: Record<string, number> = { running: 0, upcoming: 1, old: 2 };
-    return [...(contests as ContestItem[])].sort((a, b) => {
-      const phaseA = getContestPhase(a.startTime ?? '', a.endTime ?? '');
-      const phaseB = getContestPhase(b.startTime ?? '', b.endTime ?? '');
-      if (order[phaseA] !== order[phaseB]) return order[phaseA] - order[phaseB];
-      const timeA = new Date(a.startTime ?? '').getTime();
-      const timeB = new Date(b.startTime ?? '').getTime();
-      return timeA - timeB;
-    });
-  }, [contests]);
+  const sortByNewestStart = (rows: ContestItem[]) => [...rows].sort((a, b) => {
+    const timeA = new Date(a.startTime ?? 0).getTime();
+    const timeB = new Date(b.startTime ?? 0).getTime();
+    return timeB - timeA;
+  });
+
+  const sortByEarliestStart = (rows: ContestItem[]) => [...rows].sort((a, b) => {
+    const timeA = new Date(a.startTime ?? 0).getTime();
+    const timeB = new Date(b.startTime ?? 0).getTime();
+    return timeA - timeB;
+  });
 
   const runningContests = useMemo(
-    () => sortedContests.filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'running'),
-    [sortedContests],
+    () => sortByNewestStart((contests as ContestItem[]).filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'running')),
+    [contests],
   );
 
   const upcomingContests = useMemo(
-    () => sortedContests.filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'upcoming'),
-    [sortedContests],
+    () => sortByEarliestStart((contests as ContestItem[]).filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'upcoming')),
+    [contests],
   );
 
   const pastContests = useMemo(
-    () => sortedContests.filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'old'),
-    [sortedContests],
+    () => sortByNewestStart((contests as ContestItem[]).filter((contest) => getContestPhase(contest.startTime ?? '', contest.endTime ?? '') === 'old')),
+    [contests],
   );
 
   const phaseLabel = (phase: string) => {
@@ -651,6 +725,10 @@ export function JudgeContests() {
 
     if (phase === 'upcoming') {
       const seconds = Math.floor((startMs - nowMs) / 1000);
+      if (seconds >= 24 * 60 * 60) {
+        const days = Math.ceil(seconds / (24 * 60 * 60));
+        return `${days} day${days > 1 ? 's' : ''}`;
+      }
       return formatHms(seconds);
     }
 
@@ -662,27 +740,31 @@ export function JudgeContests() {
     return '—';
   };
 
-  const renderContestTable = (title: string, rows: ContestItem[], timerHeader: string) => (
+  const durationText = (contest: ContestItem) => {
+    if (!contest.startTime || !contest.endTime) return '—';
+    const startMs = new Date(contest.startTime).getTime();
+    const endMs = new Date(contest.endTime).getTime();
+    if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs) return '—';
+    const totalMinutes = Math.max(1, Math.round((endMs - startMs) / 60000));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours}h ${minutes}m`;
+  };
+
+  const renderContestTable = (title: string, rows: ContestItem[], section: 'running' | 'upcoming' | 'past') => (
     <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-900 mb-4">{title}</h2>
       <div className="overflow-x-auto">
-        <table className="w-full table-fixed text-sm">
-          <colgroup>
-            <col className="w-[32%]" />
-            <col className="w-[12%]" />
-            <col className="w-[20%]" />
-            <col className="w-[20%]" />
-            <col className="w-[8%]" />
-            <col className="w-[28%]" />
-          </colgroup>
+        <table className="w-full table-auto text-sm">
           <thead className="bg-slate-50 border-y border-slate-200">
             <tr>
               <th className="px-3 py-2 text-left font-medium text-slate-600">Title</th>
+              <th className="px-3 py-2 text-left font-medium text-slate-600">Duration</th>
               <th className="px-3 py-2 text-left font-medium text-slate-600">Start Time</th>
               <th className="px-3 py-2 text-left font-medium text-slate-600">End Time</th>
-              <th className="px-3 py-2 text-left font-medium text-slate-600">{timerHeader}</th>
+              <th className="px-3 py-2 text-left font-medium text-slate-600">{section === 'past' ? 'Total Participant' : section === 'upcoming' ? 'Starts In' : 'Remaining'}</th>
               <th className="px-3 py-2 text-left font-medium text-slate-600">Status</th>
-              <th className="px-3 py-2 text-right font-medium text-slate-600" />
+              <th className="px-3 py-2 text-right font-medium text-slate-600 whitespace-nowrap" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -694,28 +776,31 @@ export function JudgeContests() {
                   <td className="px-3 py-3 font-medium text-slate-900 truncate">
                     <button
                       type="button"
-                      onClick={() => navigate(`/judge/contests/${contestRouteId}`)}
+                      onClick={() => navigate(`/contests/${contestRouteId}`)}
                       className="text-left text-indigo-700 hover:underline truncate max-w-full"
                     >
                       {contest.title}
                     </button>
                   </td>
+                  <td className="px-3 py-3 text-slate-700 text-xs">{durationText(contest)}</td>
                   <td className="px-3 py-3 text-slate-700 truncate">{contest.startTime ? new Date(contest.startTime).toLocaleString() : '—'}</td>
                   <td className="px-3 py-3 text-slate-700 truncate">{contest.endTime ? new Date(contest.endTime).toLocaleString() : '—'}</td>
-                  <td className="px-3 py-3 text-slate-700 font-mono text-xs">
-                    {phaseTime(contest)}
+                  <td className="px-3 py-3 text-slate-700 text-xs">
+                    {section === 'past' ? (contest.participatedCount ?? 0) : phaseTime(contest)}
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="px-3 py-3 whitespace-nowrap">
                     <span className={`text-xs px-2 py-1 rounded-full ${PHASE_COLOR[phase] ?? 'bg-slate-100 text-slate-700'}`}>
                       {phaseLabel(phase)}
                     </span>
                   </td>
-                  <td className="px-3 py-3">
-                    <div className="flex justify-end gap-2">
+                  <td className="px-3 py-3 whitespace-nowrap">
+                    <div className="flex items-center justify-end gap-2">
                       {phase !== 'old' && (
                         <button onClick={() => openEditContestModal(contest)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Edit</button>
                       )}
-                      <button onClick={() => openParticipantsModal(contest)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Create Participants</button>
+                      {phase !== 'old' && (
+                        <button onClick={() => openParticipantsModal(contest)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Create Participants</button>
+                      )}
                       <button
                         onClick={() => downloadAllCredentialsMutation.mutate(contest.id)}
                         disabled={downloadAllCredentialsMutation.isPending}
@@ -730,7 +815,7 @@ export function JudgeContests() {
             })}
             {!rows.length && (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-slate-500">No contests in this section.</td>
+                <td colSpan={7} className="px-3 py-8 text-center text-slate-500">No contests in this section.</td>
               </tr>
             )}
           </tbody>
@@ -757,9 +842,9 @@ export function JudgeContests() {
           </div>
         </section>
 
-        {renderContestTable('Running Contests', runningContests, 'Remaining')}
-        {renderContestTable('Upcoming Contests', upcomingContests, 'Starts In')}
-        {renderContestTable('Past Contests', pastContests, '—')}
+        {renderContestTable('Running Contests', runningContests, 'running')}
+        {renderContestTable('Upcoming Contests', upcomingContests, 'upcoming')}
+        {renderContestTable('Past Contests', pastContests, 'past')}
 
         <Modal
           open={showCreateContestModal}
@@ -916,7 +1001,7 @@ export function JudgeContests() {
                       <GripVertical size={16} />
                     </div>
                     <div className="col-span-1 text-xs font-semibold text-indigo-700">
-                      {String.fromCharCode(65 + index)}
+                      {contestProblemLabel(index)}
                     </div>
                     <div className="col-span-7 text-sm text-slate-800">
                       <p>{item.title}</p>
@@ -1127,7 +1212,7 @@ export function JudgeContests() {
                         <GripVertical size={16} />
                       </div>
                       <div className="col-span-1 text-xs font-semibold text-indigo-700">
-                        {String.fromCharCode(65 + index)}
+                        {contestProblemLabel(index)}
                       </div>
                       <div className="col-span-7 text-sm text-slate-800">
                         <p>{item.title}</p>
@@ -1306,37 +1391,59 @@ export function JudgeContests() {
         >
           <div className="space-y-3">
             <div>
-              <label className="text-xs font-medium text-slate-600">Number of Accounts</label>
+              <label className="text-xs font-medium text-slate-600">Participant CSV File</label>
               <input
-                type="number"
-                min={1}
-                max={200}
-                value={participantCount}
-                onChange={(e) => setParticipantCount(Number(e.target.value || 0))}
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => {
+                  const selectedFile = e.target.files?.[0] ?? null;
+                  void onParticipantCsvSelected(selectedFile);
+                }}
                 className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
               />
-              <p className="text-xs text-slate-500 mt-1">You can run this multiple times to create more.</p>
+              <p className="text-xs text-slate-500 mt-1">CSV must contain one column: participant name.</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-medium text-slate-600">Access From (optional)</label>
-                <input
-                  type="datetime-local"
-                  value={participantAccessFrom}
-                  onChange={(e) => setParticipantAccessFrom(e.target.value)}
-                  className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
-                />
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium text-slate-700">Participant Names</p>
+                  <p className="text-xs text-slate-500">
+                    {participantCsvFileName
+                      ? `${participantCsvFileName} · ${participantNames.length} rows loaded`
+                      : 'Choose a CSV file to load rows'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={addParticipantRow}
+                  className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-100"
+                >
+                  Add Row
+                </button>
               </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600">Access Until (optional)</label>
-                <input
-                  type="datetime-local"
-                  min={participantAccessFrom || undefined}
-                  value={participantAccessUntil}
-                  onChange={(e) => setParticipantAccessUntil(e.target.value)}
-                  className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
-                />
+
+              <div className="mt-3 max-h-56 overflow-auto space-y-2">
+                {participantNames.length ? participantNames.map((name, index) => (
+                  <div key={`participant-name-${index}`} className="flex items-center gap-2">
+                    <span className="w-8 shrink-0 text-right text-xs text-slate-500">{index + 1}.</span>
+                    <input
+                      value={name}
+                      onChange={(e) => updateParticipantNameAt(index, e.target.value)}
+                      placeholder="Participant name"
+                      className="flex-1 border border-slate-300 rounded-md px-3 py-1.5 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeParticipantRow(index)}
+                      className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-100"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )) : (
+                  <p className="text-xs text-slate-500">No rows loaded yet.</p>
+                )}
               </div>
             </div>
 

@@ -1,10 +1,11 @@
-import { Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { BridgeLoginPage } from './pages/BridgeLoginPage';
 
 // Judge
 import { JudgeContests } from './pages/judge/JudgeContests';
 import { JudgeProblems } from './pages/judge/JudgeProblems';
+import { JudgeProblemEditor } from './pages/judge/JudgeProblemEditor';
 import { ContestManage } from './pages/judge/ContestManage';
 import { JudgeContestProblem } from './pages/judge/JudgeContestProblem';
 import { JudgeStandingsEntry, PublicContestStandings } from './pages/judge/PublicContestStandings';
@@ -19,6 +20,7 @@ import { ContestSubmissionDetail } from './pages/participant/ContestSubmissionDe
 import { ParticipantStandings } from './pages/participant/ContestStandings';
 import { AskClarification } from './pages/participant/AskClarification';
 import { ParticipantContestEntry } from './pages/participant/ParticipantContestEntry';
+import { ParticipantContestAccessGate } from './components/ParticipantContestAccessGate';
 
 import { useAuthStore } from './store/auth.store';
 
@@ -41,7 +43,7 @@ function RoleRedirect() {
     return null;
   }
   const map: Record<string, string> = {
-    temp_judge: '/judge/contests',
+    temp_judge: '/contests',
     temp_participant: '/contest',
   };
   return <Navigate to={map[user.role] ?? '/login'} replace />;
@@ -49,7 +51,13 @@ function RoleRedirect() {
 
 function JudgeContestDefaultRedirect() {
   const { id } = useParams<{ id: string }>();
-  return <Navigate to={`/judge/contests/${id}/problems`} replace />;
+  return <Navigate to={`/contests/${id}/problems`} replace />;
+}
+
+function LegacyJudgeRedirect() {
+  const location = useLocation();
+  const nextPath = location.pathname.replace(/^\/judge/, '') || '/';
+  return <Navigate to={`${nextPath}${location.search}${location.hash}`} replace />;
 }
 
 export default function App() {
@@ -63,36 +71,41 @@ export default function App() {
         </div>
       } />
 
-      <Route path="/judge/contests/:id/standings" element={<JudgeStandingsEntry />} />
-      <Route path="/judge/contests/:id/standings/public" element={<PublicContestStandings />} />
+      <Route path="/contests/:id/standings" element={<JudgeStandingsEntry />} />
+      <Route path="/contests/:id/standings/public" element={<PublicContestStandings />} />
 
       {/* Judge */}
       <Route element={<ProtectedRoute allowedRoles={['temp_judge']} />}>
-        <Route path="/judge" element={<Navigate to="/judge/contests" replace />} />
-        <Route path="/judge/contests" element={<JudgeContests />} />
-        <Route path="/judge/problems" element={<JudgeProblems />} />
-        <Route path="/judge/contests/:id" element={<JudgeContestDefaultRedirect />} />
-        <Route path="/judge/contests/:id/problems" element={<ContestManage />} />
-        <Route path="/judge/contests/:id/status" element={<ContestManage />} />
-        <Route path="/judge/contests/:id/clarifications" element={<ContestManage />} />
-        <Route path="/judge/contests/:id/announcements" element={<ContestManage />} />
-        <Route path="/judge/contests/:id/problems/:problemId" element={<JudgeContestProblem />} />
-        <Route path="/judge/contests/:id/participants" element={<ContestParticipants />} />
+        <Route path="/judge" element={<Navigate to="/contests" replace />} />
+        <Route path="/contests" element={<JudgeContests />} />
+        <Route path="/problems" element={<JudgeProblems />} />
+        <Route path="/problems/new" element={<JudgeProblemEditor />} />
+        <Route path="/problems/:problemId/edit" element={<JudgeProblemEditor />} />
+        <Route path="/contests/:id" element={<JudgeContestDefaultRedirect />} />
+        <Route path="/contests/:id/problems" element={<ContestManage />} />
+        <Route path="/contests/:id/status" element={<ContestManage />} />
+        <Route path="/contests/:id/clarifications" element={<ContestManage />} />
+        <Route path="/contests/:id/announcements" element={<ContestManage />} />
+        <Route path="/contests/:id/problems/:problemId" element={<JudgeContestProblem />} />
+        <Route path="/contests/:id/participants" element={<ContestParticipants />} />
       </Route>
 
       {/* Participant */}
       <Route element={<ProtectedRoute allowedRoles={['temp_participant']} />}>
         <Route path="/contest" element={<ParticipantContestEntry />} />
-        <Route path="/contest/:id" element={<Navigate to="problems" replace />} />
-        <Route path="/contest/:id/status" element={<ContestView />} />
-        <Route path="/contest/:id/problems" element={<ContestProblems />} />
-        <Route path="/contest/:id/problems/:problemId" element={<ContestProblem />} />
-        <Route path="/contest/:id/submissions" element={<ContestSubmissions />} />
-        <Route path="/contest/:id/submissions/:submissionId" element={<ContestSubmissionDetail />} />
-        <Route path="/contest/:id/standings" element={<ParticipantStandings />} />
-        <Route path="/contest/:id/clarifications" element={<AskClarification />} />
+        <Route path="/contest/:id" element={<ParticipantContestAccessGate />}>
+          <Route index element={<Navigate to="problems" replace />} />
+          <Route path="status" element={<ContestView />} />
+          <Route path="problems" element={<ContestProblems />} />
+          <Route path="problems/:problemLabel" element={<ContestProblem />} />
+          <Route path="submissions" element={<ContestSubmissions />} />
+          <Route path="submissions/:submissionId" element={<ContestSubmissionDetail />} />
+          <Route path="standings" element={<ParticipantStandings />} />
+          <Route path="clarifications" element={<AskClarification />} />
+        </Route>
       </Route>
 
+      <Route path="/judge/*" element={<LegacyJudgeRedirect />} />
       <Route path="/" element={<RoleRedirect />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

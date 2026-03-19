@@ -26,8 +26,9 @@ api.interceptors.response.use(
       localStorage.removeItem('kuetoj_user');
       localStorage.removeItem('labassist_token');
       localStorage.removeItem('labassist_user');
+      sessionStorage.setItem('labassist_forced_logout', '1');
       const base = LABASSIST_WEB_URL.replace(/\/$/, '');
-      window.location.href = `${base}/login`;
+      window.location.href = `${base}/login?logout=1`;
     }
     return Promise.reject(err);
   },

@@ -24,6 +24,17 @@ export function ContestSubmissions() {
     enabled: !!id,
   });
 
+  const { data: contest } = useQuery({
+    queryKey: ['contest', id],
+    queryFn: () => api.get(`/contests/${id}`).then((response) => response.data),
+    enabled: !!id,
+    staleTime: 60_000,
+  });
+
+  const contestPathId = contest?.contestNumber != null
+    ? String(contest.contestNumber)
+    : id;
+
   const selected = useMemo(
     () => (submissions as any[]).find((submission) => submission.id === selectedSubmissionId) ?? null,
     [submissions, selectedSubmissionId],
@@ -82,7 +93,7 @@ export function ContestSubmissions() {
                       >
                         Quick View
                       </button>
-                      <Link to={`/contest/${id}/submissions/${submission.id}`} className="text-slate-700 hover:underline">
+                      <Link to={`/contest/${contestPathId}/submissions/${submission.id}`} className="text-slate-700 hover:underline">
                         Open
                       </Link>
                     </div>

@@ -44,7 +44,8 @@ export function AskClarification() {
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
   });
 
-  const problems: any[] = contest?.problems ?? contest?.contestProblems ?? [];
+  const problems: any[] = [...(contest?.problems ?? contest?.contestProblems ?? [])]
+    .sort((a, b) => (a?.orderIndex ?? 0) - (b?.orderIndex ?? 0));
 
   return (
     <AppShell>
@@ -60,9 +61,10 @@ export function AskClarification() {
               <label className="block text-sm font-medium text-slate-700 mb-1">Problem (optional)</label>
               <select {...register('contestProblemId')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                 <option value="">General question</option>
-                {problems.map((cp: any) => (
-                  <option key={cp.id} value={cp.id}>{cp.label}. {cp.problem?.title}</option>
-                ))}
+                {problems.map((cp: any, index: number) => {
+                  const label = cp?.label ? String(cp.label).trim() : String.fromCharCode(65 + index);
+                  return <option key={cp.id} value={cp.id}>{label}. {cp.problem?.title}</option>;
+                })}
               </select>
             </div>
             <div>

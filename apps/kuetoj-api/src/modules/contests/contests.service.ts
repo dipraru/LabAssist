@@ -78,6 +78,11 @@ export class ContestsService {
     };
   }
 
+  private async getContestParticipantNameMap(contestId: string): Promise<Map<string, string>> {
+    const participants = await this.tpRepo.find({ where: { contestId } });
+    return new Map(participants.map((participant) => [participant.userId, participant.fullName]));
+  }
+
   private async getJudgeProfileId(judgeUserId: string): Promise<string> {
     const judgeProfile = await this.tjRepo.findOne({ where: { userId: judgeUserId } });
     if (!judgeProfile) {
@@ -174,13 +179,21 @@ export class ContestsService {
 
   async createProblem(dto: CreateProblemDto, judgeUserId: string): Promise<Problem> {
     const problemCode = await this.getNextProblemCode();
+    const sampleTestCases = (dto.sampleTestCases ?? []).map((sample) => ({
+      input: sample.input,
+      output: sample.output,
+      note: sample.note ?? sample.explanation,
+    }));
     const p = this.problemRepo.create({
       problemCode,
       title: dto.title,
       statement: dto.statement,
+      inputDescription: dto.inputDescription ?? null,
+      outputDescription: dto.outputDescription ?? null,
       timeLimitMs: dto.timeLimitMs ?? null,
       memoryLimitKb: dto.memoryLimitKb ?? null,
-      sampleTestCases: dto.sampleTestCases ?? [],
+      sampleTestCases,
+      hiddenTestCases: dto.hiddenTestCases ?? [],
       authorId: judgeUserId,
     });
     return this.problemRepo.save(p);
@@ -188,13 +201,25 @@ export class ContestsService {
 
   async listMyProblems(judgeUserId: string): Promise<Problem[]> {
     await this.ensureProblemCodes();
+    const sortByProblemCode = (left: Problem, right: Problem) => {
+      const leftNumber = left.problemCode ? Number.parseInt(left.problemCode.replace('KOJ-', ''), 10) : Number.MAX_SAFE_INTEGER;
+      const rightNumber = right.problemCode ? Number.parseInt(right.problemCode.replace('KOJ-', ''), 10) : Number.MAX_SAFE_INTEGER;
+
+      if (leftNumber !== rightNumber) {
+        return leftNumber - rightNumber;
+      }
+
+      return left.title.localeCompare(right.title);
+    };
+
     const mine = await this.problemRepo.find({
       where: { authorId: judgeUserId },
       order: { createdAt: 'DESC' },
     });
-    if (mine.length) return mine;
+    if (mine.length) return [...mine].sort(sortByProblemCode);
 
-    return this.problemRepo.find({ order: { createdAt: 'DESC' } });
+    const allProblems = await this.problemRepo.find({ order: { createdAt: 'DESC' } });
+    return allProblems.sort(sortByProblemCode);
   }
 
   async getProblemById(id: string): Promise<Problem> {
@@ -210,7 +235,22 @@ export class ContestsService {
   async updateProblem(id: string, dto: UpdateProblemDto, judgeUserId: string) {
     const p = await this.getProblemById(id);
     if (p.authorId !== judgeUserId) throw new ForbiddenException();
-    Object.assign(p, dto);
+    p.title = dto.title ?? p.title;
+    p.statement = dto.statement ?? p.statement;
+    p.inputDescription = dto.inputDescription ?? p.inputDescription;
+    p.outputDescription = dto.outputDescription ?? p.outputDescription;
+    p.timeLimitMs = dto.timeLimitMs ?? p.timeLimitMs;
+    p.memoryLimitKb = dto.memoryLimitKb ?? p.memoryLimitKb;
+    if (dto.sampleTestCases) {
+      p.sampleTestCases = dto.sampleTestCases.map((sample) => ({
+        input: sample.input,
+        output: sample.output,
+        note: sample.note ?? sample.explanation,
+      }));
+    }
+    if (dto.hiddenTestCases) {
+      p.hiddenTestCases = dto.hiddenTestCases;
+    }
     return this.problemRepo.save(p);
   }
 
@@ -417,28 +457,16 @@ export class ContestsService {
       ? dto.standingVisibility === 'public'
       : contest.isPublicStanding;
 
-    contest.title = dto.title ?? contest.title;
-    contest.description = dto.description ?? contest.description;
-    contest.type = dto.type ?? contest.type;
-    contest.startTime = nextStartTime;
-    contest.endTime = nextEndTime;
-    contest.isStandingFrozen = freezeEnabled;
-    contest.freezeBeforeMinutes = freezeBeforeMinutes;
-    contest.freezeAfterMinutes = manualUnfreeze ? 0 : freezeAfterMinutes;
-    contest.freezeTime = nextFreezeTime;
-    contest.standingUnfreezeTime = nextStandingUnfreezeTime;
-    contest.isPublicStanding = isPublicStanding;
-    if (isPublicStanding && !contest.publicStandingsKey) {
-      contest.publicStandingsKey = this.generatePublicStandingsKey();
+    const nextTitle = dto.title ?? contest.title;
+    const nextDescription = dto.description ?? contest.description;
+    const nextType = dto.type ?? contest.type;
+    let nextPublicStandingsKey = contest.publicStandingsKey;
+    if (isPublicStanding && !nextPublicStandingsKey) {
+      nextPublicStandingsKey = this.generatePublicStandingsKey();
     }
     if (!isPublicStanding) {
-      contest.publicStandingsKey = null;
+      nextPublicStandingsKey = null;
     }
-
-    const existingContestProblems = await this.cpRepo.find({
-      where: { contestId: contest.id },
-      order: { orderIndex: 'ASC' },
-    });
 
     if (dto.problems) {
       const uniqueProblemIds = new Set<string>();
@@ -448,74 +476,43 @@ export class ContestsService {
         }
         uniqueProblemIds.add(item.problemId);
       }
-
-      if (phase === 'upcoming') {
-        await this.cpRepo.delete({ contestId: contest.id });
-
-        for (let index = 0; index < dto.problems.length; index += 1) {
-          const cp = dto.problems[index];
-          const exists = await this.problemRepo.findOneBy({ id: cp.problemId });
-          if (!exists) throw new NotFoundException(`Problem ${cp.problemId} not found`);
-          if (exists.authorId !== judgeUserId) {
-            throw new ForbiddenException('Contest can include only your own problems');
-          }
-
-          const entry = this.cpRepo.create({
-            contestId: contest.id,
-            problemId: cp.problemId,
-            label: String.fromCharCode(65 + index),
-            orderIndex: index,
-            score: cp.score ?? null,
-          });
-          await this.cpRepo.save(entry);
+      for (const cp of dto.problems) {
+        const exists = await this.problemRepo.findOneBy({ id: cp.problemId });
+        if (!exists) throw new NotFoundException(`Problem ${cp.problemId} not found`);
+        if (exists.authorId !== judgeUserId) {
+          throw new ForbiddenException('Contest can include only your own problems');
         }
-      } else {
-        const existingByProblemId = new Map(existingContestProblems.map((problem) => [problem.problemId, problem]));
-        const incomingByProblemId = new Map(dto.problems.map((problem) => [problem.problemId, problem]));
+      }
 
-        const keptOld = existingContestProblems.filter((problem) => incomingByProblemId.has(problem.problemId));
-        const deletedOld = existingContestProblems.filter((problem) => !incomingByProblemId.has(problem.problemId));
+      await this.cpRepo.delete({ contestId: contest.id });
 
-        const incomingNew = dto.problems.filter((problem) => !existingByProblemId.has(problem.problemId));
-
-        if (deletedOld.length) {
-          await this.cpRepo.delete(deletedOld.map((problem) => problem.id));
-        }
-
-        for (const cp of incomingNew) {
-          const exists = await this.problemRepo.findOneBy({ id: cp.problemId });
-          if (!exists) throw new NotFoundException(`Problem ${cp.problemId} not found`);
-          if (exists.authorId !== judgeUserId) {
-            throw new ForbiddenException('Contest can include only your own problems');
-          }
-        }
-
-        const appendedNew: ContestProblem[] = [];
-        for (const cp of incomingNew) {
-          const entry = this.cpRepo.create({
-            contestId: contest.id,
-            problemId: cp.problemId,
-            label: '',
-            orderIndex: 0,
-            score: cp.score ?? null,
-          });
-          appendedNew.push(await this.cpRepo.save(entry));
-        }
-
-        const finalOrdered = [...keptOld, ...appendedNew];
-        for (let index = 0; index < finalOrdered.length; index += 1) {
-          const cp = finalOrdered[index];
-          cp.orderIndex = index;
-          cp.label = String.fromCharCode(65 + index);
-          if (incomingByProblemId.has(cp.problemId)) {
-            cp.score = incomingByProblemId.get(cp.problemId)?.score ?? cp.score ?? null;
-          }
-          await this.cpRepo.save(cp);
-        }
+      for (let index = 0; index < dto.problems.length; index += 1) {
+        const cp = dto.problems[index];
+        const entry = this.cpRepo.create({
+          contestId: contest.id,
+          problemId: cp.problemId,
+          label: String.fromCharCode(65 + index),
+          orderIndex: index,
+          score: cp.score ?? null,
+        });
+        await this.cpRepo.save(entry);
       }
     }
 
-    await this.contestRepo.save(contest);
+    await this.contestRepo.update(contest.id, {
+      title: nextTitle,
+      description: nextDescription,
+      type: nextType,
+      startTime: nextStartTime,
+      endTime: nextEndTime,
+      isStandingFrozen: freezeEnabled,
+      freezeBeforeMinutes,
+      freezeAfterMinutes: manualUnfreeze ? 0 : freezeAfterMinutes,
+      freezeTime: nextFreezeTime,
+      standingUnfreezeTime: nextStandingUnfreezeTime,
+      isPublicStanding,
+      publicStandingsKey: nextPublicStandingsKey,
+    });
     return this.getContestById(contest.id);
   }
 
@@ -559,7 +556,7 @@ export class ContestsService {
     }));
   }
 
-  async listMyContests(judgeUserId: string): Promise<Contest[]> {
+  async listMyContests(judgeUserId: string): Promise<Array<Contest & { participatedCount: number }>> {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const contestsByOwner = await this.contestRepo.find({
       where: [{ createdById: judgeProfileId }, { createdById: judgeUserId }],
@@ -583,6 +580,22 @@ export class ContestsService {
       (a, b) => b.startTime.getTime() - a.startTime.getTime(),
     );
 
+    const contestIds = contests.map((contest) => contest.id);
+    const participatedMap = new Map<string, number>();
+    if (contestIds.length) {
+      const participatedRows = await this.subRepo
+        .createQueryBuilder('submission')
+        .select('submission.contestId', 'contestId')
+        .addSelect('COUNT(DISTINCT submission.participantId)', 'participatedCount')
+        .where('submission.contestId IN (:...contestIds)', { contestIds })
+        .groupBy('submission.contestId')
+        .getRawMany<{ contestId: string; participatedCount: string }>();
+
+      for (const row of participatedRows) {
+        participatedMap.set(row.contestId, Number(row.participatedCount) || 0);
+      }
+    }
+
     return contests.map((contest) => ({
       ...contest,
       status: this.contestPhase(contest.startTime, contest.endTime) === 'upcoming'
@@ -590,6 +603,7 @@ export class ContestsService {
         : this.contestPhase(contest.startTime, contest.endTime) === 'running'
           ? ContestStatus.RUNNING
           : ContestStatus.ENDED,
+      participatedCount: participatedMap.get(contest.id) ?? 0,
     }));
   }
 
@@ -643,6 +657,7 @@ export class ContestsService {
       where: { contestId: contest.id },
       order: { submittedAt: 'ASC' },
     });
+    const participantNameMap = await this.getContestParticipantNameMap(contest.id);
 
     const cutoff = contest.freezeTime && showFrozen ? new Date(contest.freezeTime) : null;
 
@@ -663,7 +678,7 @@ export class ContestsService {
       if (!participantMap.has(sub.participantId)) {
         participantMap.set(sub.participantId, {
           participantId: sub.participantId,
-          participantName: sub.participantName ?? sub.participantId,
+          participantName: participantNameMap.get(sub.participantId) ?? sub.participantName ?? sub.participantId,
           solved: 0,
           penalty: 0,
           scores: 0,
@@ -769,6 +784,8 @@ export class ContestsService {
     file?: Express.Multer.File,
   ) {
     const contest = await this.resolveContestOrThrow(contestId);
+    const participantNameMap = await this.getContestParticipantNameMap(contest.id);
+    const resolvedParticipantName = participantNameMap.get(participantUserId) ?? participantName;
     const now = new Date();
     const phase = this.contestPhase(contest.startTime, contest.endTime);
     if (phase !== 'running')
@@ -795,7 +812,7 @@ export class ContestsService {
       contestId: contest.id,
       contestProblemId: dto.contestProblemId,
       participantId: participantUserId,
-      participantName,
+      participantName: resolvedParticipantName,
       code: dto.code ?? null,
       fileUrl,
       fileName,
@@ -809,22 +826,28 @@ export class ContestsService {
 
   async getMySubmissions(contestId: string, participantUserId: string) {
     const contest = await this.resolveContestOrThrow(contestId);
+    const participantNameMap = await this.getContestParticipantNameMap(contest.id);
     const submissions = await this.subRepo.find({
       where: { contestId: contest.id, participantId: participantUserId },
       order: { submittedAt: 'DESC' },
     });
-    return submissions.map((submission) => this.serializeSubmission(submission));
+    return submissions.map((submission) => {
+      const fullName = participantNameMap.get(submission.participantId) ?? submission.participantName ?? submission.participantId;
+      return this.serializeSubmission({ ...submission, participantName: fullName });
+    });
   }
 
   async getMySubmissionById(contestId: string, submissionId: string, participantUserId: string) {
     const contest = await this.resolveContestOrThrow(contestId);
+    const participantNameMap = await this.getContestParticipantNameMap(contest.id);
     const submission = await this.subRepo.findOne({
       where: { id: submissionId, contestId: contest.id, participantId: participantUserId },
     });
     if (!submission) {
       throw new NotFoundException('Submission not found');
     }
-    return this.serializeSubmission(submission);
+    const fullName = participantNameMap.get(submission.participantId) ?? submission.participantName ?? submission.participantId;
+    return this.serializeSubmission({ ...submission, participantName: fullName });
   }
 
   async getAllSubmissions(contestId: string, judgeUserId: string) {
@@ -833,11 +856,15 @@ export class ContestsService {
     if (!(await this.canJudgeManageContest(c.id, c.createdById, judgeUserId, judgeProfileId))) {
       throw new ForbiddenException();
     }
+    const participantNameMap = await this.getContestParticipantNameMap(c.id);
     const submissions = await this.subRepo.find({
       where: { contestId: c.id },
       order: { submittedAt: 'DESC' },
     });
-    return submissions.map((submission) => this.serializeSubmission(submission));
+    return submissions.map((submission) => {
+      const fullName = participantNameMap.get(submission.participantId) ?? submission.participantName ?? submission.participantId;
+      return this.serializeSubmission({ ...submission, participantName: fullName });
+    });
   }
 
   async gradeSubmission(subId: string, dto: GradeContestSubmissionDto, judgeUserId: string) {
@@ -941,10 +968,13 @@ export class ContestsService {
 
   async askClarification(contestId: string, dto: AskClarificationDto, participantUserId: string) {
     const c = await this.resolveContestOrThrow(contestId);
+    const participantNameMap = await this.getContestParticipantNameMap(c.id);
+    const participantName = participantNameMap.get(participantUserId) ?? null;
 
     const clar = this.clarRepo.create({
       contestId: c.id,
       participantId: participantUserId,
+      participantName,
       question: dto.question,
       contestProblemId: dto.contestProblemId ?? null,
       status: ClarificationStatus.OPEN,
@@ -958,10 +988,17 @@ export class ContestsService {
     if (!(await this.canJudgeManageContest(c.id, c.createdById, judgeUserId, judgeProfileId))) {
       throw new ForbiddenException();
     }
-    return this.clarRepo.find({
+    const participantNameMap = await this.getContestParticipantNameMap(c.id);
+    const clarifications = await this.clarRepo.find({
       where: { contestId: c.id, status: ClarificationStatus.OPEN },
       order: { createdAt: 'ASC' },
     });
+    return clarifications.map((clarification) => ({
+      ...clarification,
+      participantName: participantNameMap.get(clarification.participantId)
+        ?? clarification.participantName
+        ?? clarification.participantId,
+    }));
   }
 
   async getAllClarifications(contestId: string, judgeUserId: string) {
@@ -970,10 +1007,17 @@ export class ContestsService {
     if (!(await this.canJudgeManageContest(c.id, c.createdById, judgeUserId, judgeProfileId))) {
       throw new ForbiddenException();
     }
-    return this.clarRepo.find({
+    const participantNameMap = await this.getContestParticipantNameMap(c.id);
+    const clarifications = await this.clarRepo.find({
       where: { contestId: c.id },
       order: { createdAt: 'DESC' },
     });
+    return clarifications.map((clarification) => ({
+      ...clarification,
+      participantName: participantNameMap.get(clarification.participantId)
+        ?? clarification.participantName
+        ?? clarification.participantId,
+    }));
   }
 
   async answerClarification(
@@ -1033,10 +1077,17 @@ export class ContestsService {
 
   async getMyClarifications(contestId: string, participantUserId: string) {
     const contest = await this.resolveContestOrThrow(contestId);
-    return this.clarRepo.find({
+    const participantNameMap = await this.getContestParticipantNameMap(contest.id);
+    const clarifications = await this.clarRepo.find({
       where: { contestId: contest.id, participantId: participantUserId },
       order: { createdAt: 'DESC' },
     });
+    return clarifications.map((clarification) => ({
+      ...clarification,
+      participantName: participantNameMap.get(clarification.participantId)
+        ?? clarification.participantName
+        ?? clarification.participantId,
+    }));
   }
 
   // ─── TEMP PARTICIPANTS ────────────────────────────────────────────────────────
@@ -1047,20 +1098,12 @@ export class ContestsService {
     if (!(await this.canJudgeManageContest(contest.id, contest.createdById, judgeUserId, judgeProfileId))) {
       throw new ForbiddenException();
     }
-    if (dto.count < 1 || dto.count > 200)
-      throw new BadRequestException('Count must be between 1 and 200');
-
-    const now = new Date();
-    const accessFrom = dto.accessFrom
-      ? new Date(dto.accessFrom)
-      : (contest.startTime > now ? contest.startTime : now);
-    const accessUntil = dto.accessUntil ? new Date(dto.accessUntil) : contest.endTime;
-
-    if (Number.isNaN(accessFrom.getTime()) || Number.isNaN(accessUntil.getTime())) {
-      throw new BadRequestException('Invalid participant access window');
+    const normalizedNames = (dto.names ?? []).map((name) => (typeof name === 'string' ? name.trim() : ''));
+    if (!normalizedNames.length || normalizedNames.length > 200) {
+      throw new BadRequestException('Participant names must contain between 1 and 200 rows');
     }
-    if (accessUntil <= accessFrom) {
-      throw new BadRequestException('Participant access end must be after start');
+    if (normalizedNames.some((name) => !name)) {
+      throw new BadRequestException('Participant names contain empty rows');
     }
 
     const qr = this.dataSource.createQueryRunner();
@@ -1081,12 +1124,12 @@ export class ContestsService {
 
       const contestCode = String(contest.contestNumber ?? contest.id.replace(/-/g, '').slice(0, 6)).toUpperCase();
 
-      for (let i = 0; i < dto.count; i++) {
+      for (let i = 0; i < normalizedNames.length; i++) {
         counter++;
         const participantId = `TP-${contestCode}-${String(counter).padStart(3, '0')}`;
         const username = `tp_${String(contest.contestNumber ?? contest.id).slice(0, 8)}_${String(counter).padStart(3, '0')}`;
         const plainPassword = Math.random().toString(36).slice(-8).toUpperCase();
-        const fullName = `Participant ${counter}`;
+        const fullName = normalizedNames[i];
 
         const user = qr.manager.create(User, {
           username,
@@ -1102,8 +1145,6 @@ export class ContestsService {
           participantId,
           fullName,
           contestId: contest.id,
-          accessFrom,
-          accessUntil,
           createdByJudgeId: judgeProfileId,
           userId: user.id,
           loginPassword: plainPassword,
@@ -1145,8 +1186,6 @@ export class ContestsService {
       fullName: tp.fullName,
       username: tp.user?.username ?? null,
       password: tp.loginPassword ?? null,
-      accessFrom: tp.accessFrom,
-      accessUntil: tp.accessUntil,
       createdAt: tp.createdAt,
     }));
   }
@@ -1158,26 +1197,49 @@ export class ContestsService {
       order: { createdAt: 'DESC' },
     });
 
-    return assignments
-      .filter(a => a.contest)
-      .map((assignment) => ({
+    const resolved = await Promise.all(assignments.map(async (assignment) => {
+      let contest = assignment.contest ?? null;
+      if (!contest && assignment.contestId) {
+        contest = await this.contestRepo.findOne({ where: { id: assignment.contestId } });
+      }
+      if (!contest) return null;
+
+      const phase = this.contestPhase(contest.startTime, contest.endTime);
+      return {
         participantId: assignment.participantId,
-        accessFrom: assignment.accessFrom,
-        accessUntil: assignment.accessUntil,
+        contestId: contest.id,
+        contestNumber: contest.contestNumber,
         contest: {
-          id: assignment.contest!.id,
-          title: assignment.contest!.title,
-          type: assignment.contest!.type,
-          startTime: assignment.contest!.startTime,
-          endTime: assignment.contest!.endTime,
-          phase: this.contestPhase(assignment.contest!.startTime, assignment.contest!.endTime),
-          status: this.contestPhase(assignment.contest!.startTime, assignment.contest!.endTime) === 'upcoming'
+          id: contest.id,
+          contestNumber: contest.contestNumber,
+          title: contest.title,
+          type: contest.type,
+          startTime: contest.startTime,
+          endTime: contest.endTime,
+          phase,
+          status: phase === 'upcoming'
             ? ContestStatus.SCHEDULED
-            : this.contestPhase(assignment.contest!.startTime, assignment.contest!.endTime) === 'running'
+            : phase === 'running'
               ? ContestStatus.RUNNING
               : ContestStatus.ENDED,
         },
-      }));
+      };
+    }));
+
+    const phasePriority: Record<'running' | 'upcoming' | 'old', number> = {
+      running: 0,
+      upcoming: 1,
+      old: 2,
+    };
+
+    return resolved
+      .filter((item): item is NonNullable<typeof item> => !!item)
+      .sort((a, b) => {
+        const aPriority = phasePriority[a.contest.phase as 'running' | 'upcoming' | 'old'] ?? 3;
+        const bPriority = phasePriority[b.contest.phase as 'running' | 'upcoming' | 'old'] ?? 3;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return new Date(a.contest.startTime).getTime() - new Date(b.contest.startTime).getTime();
+      });
   }
 
   async getContestCredentialsPdf(contestId: string, judgeUserId: string) {
