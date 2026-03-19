@@ -1228,24 +1228,47 @@ export class ContestsService {
       order: { createdAt: 'DESC' },
     });
 
-    return assignments
-      .filter(a => a.contest)
-      .map((assignment) => ({
+    const resolved = await Promise.all(assignments.map(async (assignment) => {
+      let contest = assignment.contest ?? null;
+      if (!contest && assignment.contestId) {
+        contest = await this.contestRepo.findOne({ where: { id: assignment.contestId } });
+      }
+      if (!contest) return null;
+
+      const phase = this.contestPhase(contest.startTime, contest.endTime);
+      return {
         participantId: assignment.participantId,
+        contestId: contest.id,
         contest: {
-          id: assignment.contest!.id,
-          title: assignment.contest!.title,
-          type: assignment.contest!.type,
-          startTime: assignment.contest!.startTime,
-          endTime: assignment.contest!.endTime,
-          phase: this.contestPhase(assignment.contest!.startTime, assignment.contest!.endTime),
-          status: this.contestPhase(assignment.contest!.startTime, assignment.contest!.endTime) === 'upcoming'
+          id: contest.id,
+          title: contest.title,
+          type: contest.type,
+          startTime: contest.startTime,
+          endTime: contest.endTime,
+          phase,
+          status: phase === 'upcoming'
             ? ContestStatus.SCHEDULED
-            : this.contestPhase(assignment.contest!.startTime, assignment.contest!.endTime) === 'running'
+            : phase === 'running'
               ? ContestStatus.RUNNING
               : ContestStatus.ENDED,
         },
-      }));
+      };
+    }));
+
+    const phasePriority: Record<'running' | 'upcoming' | 'old', number> = {
+      running: 0,
+      upcoming: 1,
+      old: 2,
+    };
+
+    return resolved
+      .filter((item): item is NonNullable<typeof item> => !!item)
+      .sort((a, b) => {
+        const aPriority = phasePriority[a.contest.phase as 'running' | 'upcoming' | 'old'] ?? 3;
+        const bPriority = phasePriority[b.contest.phase as 'running' | 'upcoming' | 'old'] ?? 3;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return new Date(a.contest.startTime).getTime() - new Date(b.contest.startTime).getTime();
+      });
   }
 
   async getContestCredentialsPdf(contestId: string, judgeUserId: string) {

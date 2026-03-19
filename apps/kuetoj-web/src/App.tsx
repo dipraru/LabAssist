@@ -20,6 +20,7 @@ import { ContestSubmissionDetail } from './pages/participant/ContestSubmissionDe
 import { ParticipantStandings } from './pages/participant/ContestStandings';
 import { AskClarification } from './pages/participant/AskClarification';
 import { ParticipantContestEntry } from './pages/participant/ParticipantContestEntry';
+import { ParticipantContestAccessGate } from './components/ParticipantContestAccessGate';
 
 import { useAuthStore } from './store/auth.store';
 
@@ -86,14 +87,16 @@ export default function App() {
       {/* Participant */}
       <Route element={<ProtectedRoute allowedRoles={['temp_participant']} />}>
         <Route path="/contest" element={<ParticipantContestEntry />} />
-        <Route path="/contest/:id" element={<Navigate to="problems" replace />} />
-        <Route path="/contest/:id/status" element={<ContestView />} />
-        <Route path="/contest/:id/problems" element={<ContestProblems />} />
-        <Route path="/contest/:id/problems/:problemId" element={<ContestProblem />} />
-        <Route path="/contest/:id/submissions" element={<ContestSubmissions />} />
-        <Route path="/contest/:id/submissions/:submissionId" element={<ContestSubmissionDetail />} />
-        <Route path="/contest/:id/standings" element={<ParticipantStandings />} />
-        <Route path="/contest/:id/clarifications" element={<AskClarification />} />
+        <Route path="/contest/:id" element={<ParticipantContestAccessGate />}>
+          <Route index element={<Navigate to="problems" replace />} />
+          <Route path="status" element={<ContestView />} />
+          <Route path="problems" element={<ContestProblems />} />
+          <Route path="problems/:problemId" element={<ContestProblem />} />
+          <Route path="submissions" element={<ContestSubmissions />} />
+          <Route path="submissions/:submissionId" element={<ContestSubmissionDetail />} />
+          <Route path="standings" element={<ParticipantStandings />} />
+          <Route path="clarifications" element={<AskClarification />} />
+        </Route>
       </Route>
 
       <Route path="/" element={<RoleRedirect />} />

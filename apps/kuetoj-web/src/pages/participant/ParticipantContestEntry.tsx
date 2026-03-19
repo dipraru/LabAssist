@@ -3,8 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 
 type AssignedContest = {
+  contestId?: string;
   contest: {
     id: string;
+    phase?: 'upcoming' | 'running' | 'old';
+    startTime?: string;
   };
 };
 
@@ -14,8 +17,30 @@ export function ParticipantContestEntry() {
     queryFn: () => api.get('/contests/assigned/mine').then((response) => response.data),
   });
 
-  if (!isLoading && (assigned as AssignedContest[]).length > 0) {
-    return <Navigate to={`/contest/${(assigned as AssignedContest[])[0].contest.id}/problems`} replace />;
+  const phasePriority: Record<'running' | 'upcoming' | 'old', number> = {
+    running: 0,
+    upcoming: 1,
+    old: 2,
+  };
+
+  const sortedAssignments = [...(assigned as AssignedContest[])].sort((a, b) => {
+    const aPhase = a.contest?.phase ?? 'old';
+    const bPhase = b.contest?.phase ?? 'old';
+    const aPriority = phasePriority[aPhase];
+    const bPriority = phasePriority[bPhase];
+    if (aPriority !== bPriority) return aPriority - bPriority;
+
+    const aStart = a.contest?.startTime ? new Date(a.contest.startTime).getTime() : Number.POSITIVE_INFINITY;
+    const bStart = b.contest?.startTime ? new Date(b.contest.startTime).getTime() : Number.POSITIVE_INFINITY;
+    return aStart - bStart;
+  });
+
+  const targetContestId = sortedAssignments.find((item) => item.contest?.id)?.contest.id
+    ?? sortedAssignments.find((item) => item.contestId)?.contestId
+    ?? null;
+
+  if (!isLoading && targetContestId) {
+    return <Navigate to={`/contest/${targetContestId}/problems`} replace />;
   }
 
   return (
