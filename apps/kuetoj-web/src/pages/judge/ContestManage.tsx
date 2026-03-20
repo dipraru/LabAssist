@@ -157,6 +157,32 @@ export function ContestManage() {
   const standingRows: any[] = standings?.rows ?? [];
   const standingProblems: any[] = standings?.problems ?? [];
   const isFreezeActive = Boolean(standings?.isFrozen);
+  const isIcpcStanding = contest?.type === 'icpc';
+
+  const getStandingProblemCell = (row: any, label: string) => {
+    const fromList = (row?.problems ?? []).find((problem: any) => problem?.label === label);
+    if (fromList) return fromList;
+
+    const fromStatus = row?.problemStatus?.[label];
+    if (!fromStatus) {
+      return { accepted: false, wrongAttempts: 0, attempts: 0, acceptedAtMinute: null };
+    }
+
+    return {
+      accepted: Boolean(fromStatus.accepted),
+      wrongAttempts: Number(fromStatus.tries ?? 0),
+      attempts: Number(fromStatus.attempts ?? fromStatus.tries ?? 0),
+      acceptedAtMinute: fromStatus.acceptedAtMinute ?? null,
+      isFirstSolve: Boolean(fromStatus.isFirstSolve),
+      score: fromStatus.score ?? null,
+    };
+  };
+
+  const formatAcceptedText = (minute: number | null | undefined, wrongAttempts: number) => {
+    const safeMinute = Math.max(0, Number(minute ?? 0));
+    if ((wrongAttempts ?? 0) <= 0) return `${safeMinute}`;
+    return `${safeMinute}(+${wrongAttempts})`;
+  };
 
   const pendingClarifications = useMemo(
     () => (clarifications as any[]).filter((item: any) => item.status === 'open'),
@@ -385,17 +411,6 @@ export function ContestManage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => refetchStandings()}
-                  disabled={standingsFetching}
-                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm hover:bg-slate-50"
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    <RefreshCw size={14} className={standingsFetching ? 'animate-spin' : ''} />
-                    Refresh
-                  </span>
-                </button>
                 {isFreezeActive && (
                   <button
                     type="button"
@@ -411,33 +426,100 @@ export function ContestManage() {
                   Frozen
                 </div>
               )}
+              <button
+                type="button"
+                onClick={() => refetchStandings()}
+                disabled={standingsFetching}
+                className="cursor-pointer px-3 py-2 border border-slate-300 rounded-lg text-sm hover:bg-slate-50 disabled:opacity-50"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <RefreshCw size={14} className={standingsFetching ? 'animate-spin' : ''} />
+                  Refresh
+                </span>
+              </button>
             </div>
             <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[980px] text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="px-4 py-3 text-left">#</th>
-                    <th className="px-4 py-3 text-left">Participant</th>
-                    {standingProblems.map((p: any) => (
-                      <th key={p.label} className="px-3 py-3 text-center">{p.label}</th>
-                    ))}
+                    <th className="w-12 px-4 py-3 text-left font-semibold text-slate-700">Rank</th>
+                    <th className="min-w-[220px] px-4 py-3 text-left font-semibold text-slate-700">Participant</th>
+                    {isIcpcStanding ? (
+                      <>
+                        <th className="w-24 px-4 py-3 text-center font-semibold text-slate-700">Solved</th>
+                        {standingProblems.map((problem: any) => (
+                          <th key={problem.label} className="min-w-[92px] px-3 py-3 text-center font-semibold text-slate-700">
+                            <div>{problem.label}</div>
+                            <div className="text-[11px] font-medium text-slate-500">{problem.solvedCount ?? 0}/{problem.attemptsCount ?? 0}</div>
+                          </th>
+                        ))}
+                      </>
+                    ) : (
+                      <>
+                        <th className="px-4 py-3 text-center font-semibold text-slate-700">Score</th>
+                        {standingProblems.map((problem: any) => (
+                          <th key={problem.label} className="min-w-[92px] px-3 py-3 text-center font-semibold text-slate-700">
+                            <div>{problem.label}</div>
+                            <div className="text-[11px] font-medium text-slate-500">{problem.solvedCount ?? 0}/{problem.attemptsCount ?? 0}</div>
+                          </th>
+                        ))}
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {standingRows.map((row: any, idx: number) => (
                     <tr key={row.participantId ?? idx} className="hover:bg-slate-50">
-                      <td className="px-4 py-3">{idx + 1}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-600">{row.rank ?? idx + 1}</td>
                       <td className="px-4 py-3 font-medium">{row.participantName ?? row.participantId}</td>
-                      {standingProblems.map((p: any) => {
-                        const status = row.problemStatus?.[p.label];
-                        if (!status) return <td key={p.label} className="px-3 py-3 text-center text-slate-300">—</td>;
-                        if (status.accepted) return <td key={p.label} className="px-3 py-3 text-center text-green-600">Solved</td>;
-                        return <td key={p.label} className="px-3 py-3 text-center text-red-500">{status.tries ?? 0}</td>;
-                      })}
+                      {isIcpcStanding ? (
+                        <>
+                          <td
+                            className="px-4 py-3 text-center"
+                            title={(row.solved ?? 0) > 0 ? `Penalty: ${row.totalPenalty ?? row.penalty ?? 0}` : undefined}
+                          >
+                            <div className="font-bold text-green-600">{row.solved ?? 0}</div>
+                            {(row.solved ?? 0) > 0 && (
+                              <div className="text-[11px] font-medium text-slate-500">{row.totalPenalty ?? row.penalty ?? 0}</div>
+                            )}
+                          </td>
+                          {standingProblems.map((problem: any) => {
+                            const problemCell = getStandingProblemCell(row, problem.label);
+                            return (
+                              <td key={problem.label} className="px-3 py-3 text-center align-middle">
+                                {problemCell.accepted ? (
+                                  <div className="text-xs">
+                                    <div className={`text-base leading-none ${problemCell.isFirstSolve ? 'text-amber-500' : 'text-green-600'}`}>
+                                      {problemCell.isFirstSolve ? '★' : '✓'}
+                                    </div>
+                                    <div className={`mt-1 text-[11px] ${problemCell.isFirstSolve ? 'text-amber-700' : 'text-green-700'}`}>
+                                      {formatAcceptedText(problemCell.acceptedAtMinute, problemCell.wrongAttempts ?? 0)}
+                                    </div>
+                                  </div>
+                                ) : (problemCell.wrongAttempts ?? 0) > 0 ? (
+                                  <span className="text-sm font-semibold text-red-600">-{problemCell.wrongAttempts}</span>
+                                ) : <span className="text-slate-300">—</span>}
+                              </td>
+                            );
+                          })}
+                        </>
+                      ) : (
+                        <>
+                          <td className="px-4 py-3 text-center font-bold text-indigo-600">{row.totalScore ?? row.scores ?? 0}</td>
+                          {standingProblems.map((problem: any) => {
+                            const problemCell = getStandingProblemCell(row, problem.label);
+                            return (
+                              <td key={problem.label} className="px-3 py-3 text-center text-xs">
+                                {problemCell.score != null ? <span className="font-medium text-green-600">{problemCell.score}</span> : <span className="text-slate-300">—</span>}
+                              </td>
+                            );
+                          })}
+                        </>
+                      )}
                     </tr>
                   ))}
                   {!standingRows.length && (
-                    <tr><td colSpan={2 + standingProblems.length} className="px-4 py-8 text-center text-slate-400">No standings yet</td></tr>
+                    <tr><td colSpan={4 + standingProblems.length} className="px-4 py-8 text-center text-slate-400">No standings yet</td></tr>
                   )}
                 </tbody>
               </table>

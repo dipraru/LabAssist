@@ -15,7 +15,9 @@ type PublicStandingsResponse = {
     startTime: string;
     endTime: string;
   };
-  problems?: Array<{ label: string }>;
+  type?: string;
+  isFrozen?: boolean;
+  problems?: Array<{ label: string; solvedCount?: number; attemptsCount?: number }>;
   rows?: any[];
 };
 
@@ -115,6 +117,32 @@ export function PublicContestStandings() {
 
   const rows = data.rows ?? [];
   const problems = data.problems ?? [];
+  const isIcpc = data?.type === 'icpc' || data?.contest?.type === 'icpc';
+
+  const getProblemCell = (row: any, label: string) => {
+    const fromList = (row?.problems ?? []).find((problem: any) => problem?.label === label);
+    if (fromList) return fromList;
+
+    const fromStatus = row?.problemStatus?.[label];
+    if (!fromStatus) {
+      return { accepted: false, wrongAttempts: 0, attempts: 0, acceptedAtMinute: null, isFirstSolve: false };
+    }
+
+    return {
+      accepted: Boolean(fromStatus.accepted),
+      wrongAttempts: Number(fromStatus.tries ?? 0),
+      attempts: Number(fromStatus.attempts ?? fromStatus.tries ?? 0),
+      acceptedAtMinute: fromStatus.acceptedAtMinute ?? null,
+      isFirstSolve: Boolean(fromStatus.isFirstSolve),
+      score: fromStatus.score ?? null,
+    };
+  };
+
+  const formatAcceptedText = (minute: number | null | undefined, wrongAttempts: number) => {
+    const safeMinute = Math.max(0, Number(minute ?? 0));
+    if ((wrongAttempts ?? 0) <= 0) return `${safeMinute}`;
+    return `${safeMinute}(+${wrongAttempts})`;
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8">
@@ -134,7 +162,7 @@ export function PublicContestStandings() {
             type="button"
             onClick={() => refetch()}
             disabled={isFetching}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
             <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
             Refresh
@@ -145,32 +173,88 @@ export function PublicContestStandings() {
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[980px] text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-4 py-3 text-left">#</th>
-                <th className="px-4 py-3 text-left">Participant</th>
-                {problems.map((problem) => (
-                  <th key={problem.label} className="px-3 py-3 text-center">{problem.label}</th>
-                ))}
+                <th className="w-12 px-4 py-3 text-left font-semibold text-slate-700">Rank</th>
+                <th className="min-w-[240px] px-4 py-3 text-left font-semibold text-slate-700">Participant</th>
+                {isIcpc ? (
+                  <>
+                    <th className="w-24 px-4 py-3 text-center font-semibold text-slate-700">Solved</th>
+                    {problems.map((problem) => (
+                      <th key={problem.label} className="min-w-[92px] px-3 py-3 text-center font-semibold text-slate-700">
+                        <div>{problem.label}</div>
+                        <div className="text-[11px] font-medium text-slate-500">{problem.solvedCount ?? 0}/{problem.attemptsCount ?? 0}</div>
+                      </th>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <th className="px-4 py-3 text-center font-semibold text-slate-700">Score</th>
+                    {problems.map((problem) => (
+                      <th key={problem.label} className="min-w-[92px] px-3 py-3 text-center font-semibold text-slate-700">
+                        <div>{problem.label}</div>
+                        <div className="text-[11px] font-medium text-slate-500">{problem.solvedCount ?? 0}/{problem.attemptsCount ?? 0}</div>
+                      </th>
+                    ))}
+                  </>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((row: any, index: number) => (
                 <tr key={row.participantId ?? index} className="hover:bg-slate-50">
-                  <td className="px-4 py-3">{index + 1}</td>
+                  <td className="px-4 py-3 font-semibold text-slate-600">{row.rank ?? index + 1}</td>
                   <td className="px-4 py-3 font-medium">{row.participantName ?? row.participantId}</td>
-                  {problems.map((problem) => {
-                    const status = row.problemStatus?.[problem.label];
-                    if (!status) return <td key={problem.label} className="px-3 py-3 text-center text-slate-300">—</td>;
-                    if (status.accepted) return <td key={problem.label} className="px-3 py-3 text-center text-green-600">Solved</td>;
-                    return <td key={problem.label} className="px-3 py-3 text-center text-red-500">{status.tries ?? 0}</td>;
-                  })}
+                  {isIcpc ? (
+                    <>
+                      <td
+                        className="px-4 py-3 text-center"
+                        title={(row.solved ?? 0) > 0 ? `Penalty: ${row.totalPenalty ?? row.penalty ?? 0}` : undefined}
+                      >
+                        <div className="font-bold text-green-600">{row.solved ?? 0}</div>
+                        {(row.solved ?? 0) > 0 && (
+                          <div className="text-[11px] font-medium text-slate-500">{row.totalPenalty ?? row.penalty ?? 0}</div>
+                        )}
+                      </td>
+                      {problems.map((problem) => {
+                        const problemCell = getProblemCell(row, problem.label);
+                        return (
+                          <td key={problem.label} className="px-3 py-3 text-center align-middle">
+                            {problemCell.accepted ? (
+                              <div className="text-xs">
+                                <div className={`text-base leading-none ${problemCell.isFirstSolve ? 'text-amber-500' : 'text-green-600'}`}>
+                                  {problemCell.isFirstSolve ? '★' : '✓'}
+                                </div>
+                                <div className={`mt-1 text-[11px] ${problemCell.isFirstSolve ? 'text-amber-700' : 'text-green-700'}`}>
+                                  {formatAcceptedText(problemCell.acceptedAtMinute, problemCell.wrongAttempts ?? 0)}
+                                </div>
+                              </div>
+                            ) : (problemCell.wrongAttempts ?? 0) > 0 ? (
+                              <span className="text-sm font-semibold text-red-600">-{problemCell.wrongAttempts}</span>
+                            ) : <span className="text-slate-300">—</span>}
+                          </td>
+                        );
+                      })}
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-4 py-3 text-center font-bold text-indigo-600">{row.totalScore ?? row.scores ?? 0}</td>
+                      {problems.map((problem) => {
+                        const problemCell = getProblemCell(row, problem.label);
+                        return (
+                          <td key={problem.label} className="px-3 py-3 text-center text-xs">
+                            {problemCell.score != null ? <span className="font-medium text-green-600">{problemCell.score}</span> : <span className="text-slate-300">—</span>}
+                          </td>
+                        );
+                      })}
+                    </>
+                  )}
                 </tr>
               ))}
               {!rows.length && (
                 <tr>
-                  <td colSpan={2 + problems.length} className="px-4 py-8 text-center text-slate-400">No standings yet</td>
+                  <td colSpan={4 + problems.length} className="px-4 py-8 text-center text-slate-400">No standings yet</td>
                 </tr>
               )}
             </tbody>
