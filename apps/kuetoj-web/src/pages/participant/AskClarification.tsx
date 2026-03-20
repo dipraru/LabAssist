@@ -91,7 +91,11 @@ export function AskClarification() {
                   c.status === 'answered' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
                 }`}>{c.status}</span>
               </div>
-              {c.contestProblem && <p className="text-xs text-slate-500 mt-0.5">Re: Problem {c.contestProblem.label}</p>}
+              {c.contestProblemLabel && (
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Re: Problem {c.contestProblemLabel}. {c.contestProblemTitle ?? 'Untitled Problem'}
+                </p>
+              )}
               {c.answer ? (
                 <div className="mt-2 bg-green-50 rounded-lg p-3 text-sm text-green-800">
                   <p className="font-medium text-xs text-green-600 mb-0.5">Judge's Answer{c.isBroadcast ? ' (Broadcast)' : ''}:</p>

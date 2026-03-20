@@ -67,8 +67,8 @@ export class ContestsService {
   }
 
   private formatSubmissionDisplayId(submissionNumber: number | null | undefined): string {
-    if (!submissionNumber || submissionNumber < 1) return '0000000';
-    return String(submissionNumber).padStart(7, '0');
+    if (!submissionNumber || submissionNumber < 1) return '1000001';
+    return String(1_000_000 + submissionNumber);
   }
 
   private serializeSubmission(submission: ContestSubmission) {
@@ -81,6 +81,25 @@ export class ContestsService {
   private async getContestParticipantNameMap(contestId: string): Promise<Map<string, string>> {
     const participants = await this.tpRepo.find({ where: { contestId } });
     return new Map(participants.map((participant) => [participant.userId, participant.fullName]));
+  }
+
+  private async getContestProblemMetaMap(
+    contestId: string,
+  ): Promise<Map<string, { label: string; title: string }>> {
+    const contestProblems = await this.cpRepo.find({
+      where: { contestId },
+      order: { orderIndex: 'ASC' },
+    });
+
+    return new Map(
+      contestProblems.map((problem, index) => [
+        problem.id,
+        {
+          label: problem.label?.trim() || String.fromCharCode(65 + index),
+          title: problem.problem?.title ?? 'Untitled Problem',
+        },
+      ]),
+    );
   }
 
   private async getJudgeProfileId(judgeUserId: string): Promise<string> {
@@ -878,14 +897,14 @@ export class ContestsService {
       throw new ForbiddenException();
     }
 
-    const verdictUpper = (dto.verdict.toUpperCase().replace(/-/g, '_')) as ManualVerdict;
-    sub.manualVerdict = verdictUpper;
+    const normalizedVerdict = dto.verdict.toLowerCase().replace(/-/g, '_') as ManualVerdict;
+    sub.manualVerdict = normalizedVerdict;
     sub.submissionStatus = SubmissionStatus.MANUAL_REVIEW;
     sub.score = dto.score ?? null;
 
     // ICPC: compute penalty immediately
     if (sub.contest.type === ContestType.ICPC &&
-        verdictUpper === ManualVerdict.ACCEPTED) {
+      normalizedVerdict === ManualVerdict.ACCEPTED) {
       const minutesFromStart =
         Math.floor((new Date().getTime() - sub.contest.startTime.getTime()) / 60000);
       sub.penaltyMinutes = minutesFromStart;
@@ -989,12 +1008,19 @@ export class ContestsService {
       throw new ForbiddenException();
     }
     const participantNameMap = await this.getContestParticipantNameMap(c.id);
+    const contestProblemMetaMap = await this.getContestProblemMetaMap(c.id);
     const clarifications = await this.clarRepo.find({
       where: { contestId: c.id, status: ClarificationStatus.OPEN },
       order: { createdAt: 'ASC' },
     });
     return clarifications.map((clarification) => ({
       ...clarification,
+      contestProblemLabel: clarification.contestProblemId
+        ? (contestProblemMetaMap.get(clarification.contestProblemId)?.label ?? null)
+        : null,
+      contestProblemTitle: clarification.contestProblemId
+        ? (contestProblemMetaMap.get(clarification.contestProblemId)?.title ?? null)
+        : null,
       participantName: participantNameMap.get(clarification.participantId)
         ?? clarification.participantName
         ?? clarification.participantId,
@@ -1008,12 +1034,19 @@ export class ContestsService {
       throw new ForbiddenException();
     }
     const participantNameMap = await this.getContestParticipantNameMap(c.id);
+    const contestProblemMetaMap = await this.getContestProblemMetaMap(c.id);
     const clarifications = await this.clarRepo.find({
       where: { contestId: c.id },
       order: { createdAt: 'DESC' },
     });
     return clarifications.map((clarification) => ({
       ...clarification,
+      contestProblemLabel: clarification.contestProblemId
+        ? (contestProblemMetaMap.get(clarification.contestProblemId)?.label ?? null)
+        : null,
+      contestProblemTitle: clarification.contestProblemId
+        ? (contestProblemMetaMap.get(clarification.contestProblemId)?.title ?? null)
+        : null,
       participantName: participantNameMap.get(clarification.participantId)
         ?? clarification.participantName
         ?? clarification.participantId,
@@ -1078,12 +1111,19 @@ export class ContestsService {
   async getMyClarifications(contestId: string, participantUserId: string) {
     const contest = await this.resolveContestOrThrow(contestId);
     const participantNameMap = await this.getContestParticipantNameMap(contest.id);
+    const contestProblemMetaMap = await this.getContestProblemMetaMap(contest.id);
     const clarifications = await this.clarRepo.find({
       where: { contestId: contest.id, participantId: participantUserId },
       order: { createdAt: 'DESC' },
     });
     return clarifications.map((clarification) => ({
       ...clarification,
+      contestProblemLabel: clarification.contestProblemId
+        ? (contestProblemMetaMap.get(clarification.contestProblemId)?.label ?? null)
+        : null,
+      contestProblemTitle: clarification.contestProblemId
+        ? (contestProblemMetaMap.get(clarification.contestProblemId)?.title ?? null)
+        : null,
       participantName: participantNameMap.get(clarification.participantId)
         ?? clarification.participantName
         ?? clarification.participantId,
