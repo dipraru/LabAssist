@@ -60,23 +60,30 @@ export function ContestSubmissions() {
                 <th className="px-4 py-3 text-left">Verdict</th>
                 <th className="px-4 py-3 text-left">Time</th>
                 <th className="px-4 py-3 text-left">Memory</th>
-                <th className="px-4 py-3 text-left">Action</th>
               </tr>
             </thead>
             <tbody>
               {isLoading && (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">Loading submissions…</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">Loading submissions…</td></tr>
               )}
 
               {!isLoading && !(submissions as any[]).length && (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">No submissions yet.</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">No submissions yet.</td></tr>
               )}
 
               {(submissions as any[]).map((submission: any) => (
                 <tr key={submission.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3 font-mono text-xs">#{submission.submissionDisplayId}</td>
+                  <td className="px-4 py-3 font-mono text-xs">
+                    <button
+                      type="button"
+                      className="text-indigo-600 hover:underline"
+                      onClick={() => setSelectedSubmissionId(submission.id)}
+                    >
+                      {submission.submissionDisplayId}
+                    </button>
+                  </td>
                   <td className="px-4 py-3">{submission.participantName ?? submission.participantId ?? '—'}</td>
-                  <td className="px-4 py-3">{submission.contestProblem?.label ?? '—'}</td>
+                  <td className="px-4 py-3">{submission.contestProblem?.label ?? '—'}. {submission.contestProblem?.problem?.title ?? 'Untitled Problem'}</td>
                   <td className="px-4 py-3 text-slate-500">{new Date(submission.submittedAt).toLocaleString()}</td>
                   <td className="px-4 py-3">{submission.language ?? '—'}</td>
                   <td className={`px-4 py-3 font-medium ${VERDICT_COLOR[submission.manualVerdict ?? submission.submissionStatus] ?? 'text-slate-600'}`}>
@@ -84,20 +91,6 @@ export function ContestSubmissions() {
                   </td>
                   <td className="px-4 py-3">{submission.executionTimeMs != null ? `${submission.executionTimeMs} ms` : '—'}</td>
                   <td className="px-4 py-3">{submission.memoryUsedKb != null ? `${submission.memoryUsedKb} KB` : '—'}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        className="text-indigo-600 hover:underline"
-                        onClick={() => setSelectedSubmissionId(submission.id)}
-                      >
-                        Quick View
-                      </button>
-                      <Link to={`/contest/${contestPathId}/submissions/${submission.id}`} className="text-slate-700 hover:underline">
-                        Open
-                      </Link>
-                    </div>
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -112,7 +105,7 @@ export function ContestSubmissions() {
       >
         {selected && (
           <div className="space-y-3 text-sm">
-            <p><span className="font-semibold">Problem:</span> {selected.contestProblem?.label ?? '—'}</p>
+            <p><span className="font-semibold">Problem:</span> {selected.contestProblem?.label ?? '—'}. {selected.contestProblem?.problem?.title ?? 'Untitled Problem'}</p>
             <p><span className="font-semibold">Language:</span> {selected.language ?? '—'}</p>
             <p><span className="font-semibold">Status:</span> {selected.manualVerdict ?? selected.submissionStatus}</p>
             <p><span className="font-semibold">Submitted:</span> {new Date(selected.submittedAt).toLocaleString()}</p>
@@ -125,6 +118,11 @@ export function ContestSubmissions() {
             ) : (
               <p className="text-slate-500">No inline code. File upload submission.</p>
             )}
+            <div>
+              <Link to={`/contest/${contestPathId}/submissions/${selected.id}`} className="text-indigo-600 hover:underline">
+                Open in separate page
+              </Link>
+            </div>
           </div>
         )}
       </Modal>

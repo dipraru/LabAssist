@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { RefreshCw } from 'lucide-react';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
+import { Modal } from '../../components/Modal';
 
 const gradeSchema = z.object({
   manualVerdict: z.string().min(1, 'Select verdict'),
@@ -26,7 +27,7 @@ type AnnouncementData = z.infer<typeof announcementSchema>;
 
 type ContestTab = 'problems' | 'status' | 'standings' | 'clarifications' | 'announcements';
 
-const VERDICTS = ['accepted', 'wrong_answer', 'time_limit_exceeded', 'memory_limit_exceeded', 'runtime_error', 'presentation_error', 'partial'];
+const VERDICTS = ['accepted', 'wrong_answer', 'time_limit_exceeded', 'memory_limit_exceeded', 'runtime_error', 'compilation_error', 'partial'];
 
 const VERDICT_COLOR: Record<string, string> = {
   accepted: 'bg-green-100 text-green-700',
@@ -47,6 +48,8 @@ export function ContestManage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [gradingId, setGradingId] = useState<string | null>(null);
+  const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
+  const [editingAnswerId, setEditingAnswerId] = useState<string | null>(null);
   const [answerText, setAnswerText] = useState<{ [key: string]: string }>({});
   const [nowMs, setNowMs] = useState<number>(Date.now());
 
@@ -144,9 +147,42 @@ export function ContestManage() {
 
   const problems: any[] = [...(contest?.problems ?? [])]
     .sort((a: any, b: any) => (a?.orderIndex ?? 0) - (b?.orderIndex ?? 0));
+  const contestPathId = contest?.contestNumber != null
+    ? String(contest.contestNumber)
+    : id;
+  const selectedSubmission = useMemo(
+    () => (submissions as any[]).find((submission: any) => submission.id === selectedSubmissionId) ?? null,
+    [submissions, selectedSubmissionId],
+  );
   const standingRows: any[] = standings?.rows ?? [];
   const standingProblems: any[] = standings?.problems ?? [];
   const isFreezeActive = Boolean(standings?.isFrozen);
+  const isIcpcStanding = contest?.type === 'icpc';
+
+  const getStandingProblemCell = (row: any, label: string) => {
+    const fromList = (row?.problems ?? []).find((problem: any) => problem?.label === label);
+    if (fromList) return fromList;
+
+    const fromStatus = row?.problemStatus?.[label];
+    if (!fromStatus) {
+      return { accepted: false, wrongAttempts: 0, attempts: 0, acceptedAtMinute: null };
+    }
+
+    return {
+      accepted: Boolean(fromStatus.accepted),
+      wrongAttempts: Number(fromStatus.tries ?? 0),
+      attempts: Number(fromStatus.attempts ?? fromStatus.tries ?? 0),
+      acceptedAtMinute: fromStatus.acceptedAtMinute ?? null,
+      isFirstSolve: Boolean(fromStatus.isFirstSolve),
+      score: fromStatus.score ?? null,
+    };
+  };
+
+  const formatAcceptedText = (minute: number | null | undefined, wrongAttempts: number) => {
+    const safeMinute = Math.max(0, Number(minute ?? 0));
+    if ((wrongAttempts ?? 0) <= 0) return `${safeMinute}`;
+    return `${safeMinute}(+${wrongAttempts})`;
+  };
 
   const pendingClarifications = useMemo(
     () => (clarifications as any[]).filter((item: any) => item.status === 'open'),
@@ -316,7 +352,7 @@ export function ContestManage() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
-                  {['Participant', 'Problem', 'Language', 'Verdict', 'Score', 'Action'].map(h => (
+                  {['ID', 'Who', 'Problem', 'When', 'Lang', 'Verdict', 'Time', 'Memory', 'Action'].map(h => (
                     <th key={h} className="px-4 py-2 text-left font-medium">{h}</th>
                   ))}
                 </tr>
@@ -324,15 +360,26 @@ export function ContestManage() {
               <tbody className="divide-y divide-slate-100">
                 {(submissions as any[]).map((sub: any) => (
                   <tr key={sub.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-2.5 font-mono text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSubmissionId(sub.id)}
+                        className="text-indigo-600 hover:underline"
+                      >
+                        {sub.submissionDisplayId}
+                      </button>
+                    </td>
                     <td className="px-4 py-2.5">{sub.participantName ?? sub.participantId}</td>
-                    <td className="px-4 py-2.5">{sub.contestProblem?.label ?? '—'}</td>
+                    <td className="px-4 py-2.5">{sub.contestProblem?.label ?? '—'}. {sub.contestProblem?.problem?.title ?? 'Untitled Problem'}</td>
+                    <td className="px-4 py-2.5 text-slate-500">{new Date(sub.submittedAt).toLocaleString()}</td>
                     <td className="px-4 py-2.5 font-mono text-xs">{sub.language}</td>
                     <td className="px-4 py-2.5">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${VERDICT_COLOR[sub.submissionStatus] ?? 'bg-slate-100 text-slate-600'}`}>
                         {sub.manualVerdict ?? sub.submissionStatus}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5">{sub.score ?? '—'}</td>
+                    <td className="px-4 py-2.5">{sub.executionTimeMs != null ? `${sub.executionTimeMs} ms` : '—'}</td>
+                    <td className="px-4 py-2.5">{sub.memoryUsedKb != null ? `${sub.memoryUsedKb} KB` : '—'}</td>
                     <td className="px-4 py-2.5">
                       {gradingId === sub.id ? (
                         <form onSubmit={gradeForm.handleSubmit(d => gradeMutation.mutate({ subId: sub.id, d }))}
@@ -353,7 +400,7 @@ export function ContestManage() {
                   </tr>
                 ))}
                 {!(submissions as any[]).length && (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No submissions yet</td></tr>
+                  <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">No submissions yet</td></tr>
                 )}
               </tbody>
             </table>
@@ -364,17 +411,6 @@ export function ContestManage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => refetchStandings()}
-                  disabled={standingsFetching}
-                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm hover:bg-slate-50"
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    <RefreshCw size={14} className={standingsFetching ? 'animate-spin' : ''} />
-                    Refresh
-                  </span>
-                </button>
                 {isFreezeActive && (
                   <button
                     type="button"
@@ -390,33 +426,100 @@ export function ContestManage() {
                   Frozen
                 </div>
               )}
+              <button
+                type="button"
+                onClick={() => refetchStandings()}
+                disabled={standingsFetching}
+                className="cursor-pointer px-3 py-2 border border-slate-300 rounded-lg text-sm hover:bg-slate-50 disabled:opacity-50"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <RefreshCw size={14} className={standingsFetching ? 'animate-spin' : ''} />
+                  Refresh
+                </span>
+              </button>
             </div>
             <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[980px] text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="px-4 py-3 text-left">#</th>
-                    <th className="px-4 py-3 text-left">Participant</th>
-                    {standingProblems.map((p: any) => (
-                      <th key={p.label} className="px-3 py-3 text-center">{p.label}</th>
-                    ))}
+                    <th className="w-12 px-4 py-3 text-left font-semibold text-slate-700">Rank</th>
+                    <th className="min-w-[220px] px-4 py-3 text-left font-semibold text-slate-700">Participant</th>
+                    {isIcpcStanding ? (
+                      <>
+                        <th className="w-24 px-4 py-3 text-center font-semibold text-slate-700">Solved</th>
+                        {standingProblems.map((problem: any) => (
+                          <th key={problem.label} className="min-w-[92px] px-3 py-3 text-center font-semibold text-slate-700">
+                            <div>{problem.label}</div>
+                            <div className="text-[11px] font-medium text-slate-500">{problem.solvedCount ?? 0}/{problem.attemptsCount ?? 0}</div>
+                          </th>
+                        ))}
+                      </>
+                    ) : (
+                      <>
+                        <th className="px-4 py-3 text-center font-semibold text-slate-700">Score</th>
+                        {standingProblems.map((problem: any) => (
+                          <th key={problem.label} className="min-w-[92px] px-3 py-3 text-center font-semibold text-slate-700">
+                            <div>{problem.label}</div>
+                            <div className="text-[11px] font-medium text-slate-500">{problem.solvedCount ?? 0}/{problem.attemptsCount ?? 0}</div>
+                          </th>
+                        ))}
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {standingRows.map((row: any, idx: number) => (
                     <tr key={row.participantId ?? idx} className="hover:bg-slate-50">
-                      <td className="px-4 py-3">{idx + 1}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-600">{row.rank ?? idx + 1}</td>
                       <td className="px-4 py-3 font-medium">{row.participantName ?? row.participantId}</td>
-                      {standingProblems.map((p: any) => {
-                        const status = row.problemStatus?.[p.label];
-                        if (!status) return <td key={p.label} className="px-3 py-3 text-center text-slate-300">—</td>;
-                        if (status.accepted) return <td key={p.label} className="px-3 py-3 text-center text-green-600">Solved</td>;
-                        return <td key={p.label} className="px-3 py-3 text-center text-red-500">{status.tries ?? 0}</td>;
-                      })}
+                      {isIcpcStanding ? (
+                        <>
+                          <td
+                            className="px-4 py-3 text-center"
+                            title={(row.solved ?? 0) > 0 ? `Penalty: ${row.totalPenalty ?? row.penalty ?? 0}` : undefined}
+                          >
+                            <div className="font-bold text-green-600">{row.solved ?? 0}</div>
+                            {(row.solved ?? 0) > 0 && (
+                              <div className="text-[11px] font-medium text-slate-500">{row.totalPenalty ?? row.penalty ?? 0}</div>
+                            )}
+                          </td>
+                          {standingProblems.map((problem: any) => {
+                            const problemCell = getStandingProblemCell(row, problem.label);
+                            return (
+                              <td key={problem.label} className="px-3 py-3 text-center align-middle">
+                                {problemCell.accepted ? (
+                                  <div className="text-xs">
+                                    <div className={`text-base leading-none ${problemCell.isFirstSolve ? 'text-amber-500' : 'text-green-600'}`}>
+                                      {problemCell.isFirstSolve ? '★' : '✓'}
+                                    </div>
+                                    <div className={`mt-1 text-[11px] ${problemCell.isFirstSolve ? 'text-amber-700' : 'text-green-700'}`}>
+                                      {formatAcceptedText(problemCell.acceptedAtMinute, problemCell.wrongAttempts ?? 0)}
+                                    </div>
+                                  </div>
+                                ) : (problemCell.wrongAttempts ?? 0) > 0 ? (
+                                  <span className="text-sm font-semibold text-red-600">-{problemCell.wrongAttempts}</span>
+                                ) : <span className="text-slate-300">—</span>}
+                              </td>
+                            );
+                          })}
+                        </>
+                      ) : (
+                        <>
+                          <td className="px-4 py-3 text-center font-bold text-indigo-600">{row.totalScore ?? row.scores ?? 0}</td>
+                          {standingProblems.map((problem: any) => {
+                            const problemCell = getStandingProblemCell(row, problem.label);
+                            return (
+                              <td key={problem.label} className="px-3 py-3 text-center text-xs">
+                                {problemCell.score != null ? <span className="font-medium text-green-600">{problemCell.score}</span> : <span className="text-slate-300">—</span>}
+                              </td>
+                            );
+                          })}
+                        </>
+                      )}
                     </tr>
                   ))}
                   {!standingRows.length && (
-                    <tr><td colSpan={2 + standingProblems.length} className="px-4 py-8 text-center text-slate-400">No standings yet</td></tr>
+                    <tr><td colSpan={4 + standingProblems.length} className="px-4 py-8 text-center text-slate-400">No standings yet</td></tr>
                   )}
                 </tbody>
               </table>
@@ -432,6 +535,9 @@ export function ContestManage() {
                 {pendingClarifications.map((c: any) => (
                   <div key={c.id} className="px-5 py-4">
                     <p className="text-sm font-medium text-slate-800">{c.question}</p>
+                    {c.contestProblemLabel && (
+                      <p className="text-xs text-slate-500 mt-1">Problem: {c.contestProblemLabel}. {c.contestProblemTitle ?? 'Untitled Problem'}</p>
+                    )}
                     <p className="text-xs text-slate-500 mt-1">From: {c.participantName ?? c.participantId}</p>
                     <div className="mt-2 flex gap-2">
                       <input
@@ -468,6 +574,9 @@ export function ContestManage() {
                 {ignoredClarifications.map((c: any) => (
                   <div key={c.id} className="px-5 py-4">
                     <p className="text-sm font-medium text-slate-800">{c.question}</p>
+                    {c.contestProblemLabel && (
+                      <p className="text-xs text-slate-500 mt-1">Problem: {c.contestProblemLabel}. {c.contestProblemTitle ?? 'Untitled Problem'}</p>
+                    )}
                     <div className="mt-2 flex gap-2">
                       <input
                         value={answerText[c.id] ?? ''}
@@ -496,6 +605,9 @@ export function ContestManage() {
                 {answeredClarifications.map((c: any) => (
                   <div key={c.id} className="px-5 py-4">
                     <p className="text-sm font-medium text-slate-800">{c.question}</p>
+                    {c.contestProblemLabel && (
+                      <p className="text-xs text-slate-500 mt-1">Problem: {c.contestProblemLabel}. {c.contestProblemTitle ?? 'Untitled Problem'}</p>
+                    )}
                     <p className="mt-2 text-sm text-green-700">Answer: {c.answer ?? '—'}</p>
                     <div className="mt-2 flex gap-2">
                       <input
@@ -503,14 +615,26 @@ export function ContestManage() {
                         onChange={(e) => setAnswerText((prev) => ({ ...prev, [c.id]: e.target.value }))}
                         placeholder="Edit answer"
                         className="flex-1 px-3 py-1.5 border border-slate-300 rounded text-sm"
+                        readOnly={editingAnswerId !== c.id}
                       />
                       <button
                         type="button"
-                        onClick={() => answerMutation.mutate({ clarId: c.id, answer: answerText[c.id] ?? c.answer ?? '' })}
-                        disabled={!((answerText[c.id] ?? c.answer ?? '').trim())}
+                        onClick={() => {
+                          if (editingAnswerId !== c.id) {
+                            setEditingAnswerId(c.id);
+                            setAnswerText((prev) => ({ ...prev, [c.id]: prev[c.id] ?? c.answer ?? '' }));
+                            return;
+                          }
+                          answerMutation.mutate({ clarId: c.id, answer: answerText[c.id] ?? c.answer ?? '' }, {
+                            onSuccess: () => {
+                              setEditingAnswerId(null);
+                            },
+                          });
+                        }}
+                        disabled={editingAnswerId === c.id && !((answerText[c.id] ?? c.answer ?? '').trim())}
                         className="px-3 py-1.5 border border-slate-300 rounded text-sm hover:bg-slate-50 disabled:opacity-50"
                       >
-                        Edit
+                        {editingAnswerId === c.id ? 'Save' : 'Edit'}
                       </button>
                     </div>
                   </div>
@@ -554,6 +678,37 @@ export function ContestManage() {
             </div>
           </div>
         )}
+
+        <Modal
+          open={!!selectedSubmission}
+          title={selectedSubmission ? `Submission #${selectedSubmission.submissionDisplayId}` : 'Submission'}
+          onClose={() => setSelectedSubmissionId(null)}
+        >
+          {selectedSubmission && (
+            <div className="space-y-3 text-sm">
+              <p><span className="font-semibold">Problem:</span> {selectedSubmission.contestProblem?.label ?? '—'}. {selectedSubmission.contestProblem?.problem?.title ?? 'Untitled Problem'}</p>
+              <p><span className="font-semibold">Language:</span> {selectedSubmission.language ?? '—'}</p>
+              <p><span className="font-semibold">Status:</span> {selectedSubmission.manualVerdict ?? selectedSubmission.submissionStatus}</p>
+              <p><span className="font-semibold">Submitted:</span> {new Date(selectedSubmission.submittedAt).toLocaleString()}</p>
+              {selectedSubmission.code ? (
+                <div>
+                  <p className="mb-1 font-semibold">Code</p>
+                  <pre className="max-h-[50vh] overflow-auto rounded-lg bg-slate-50 p-3 text-xs">{selectedSubmission.code}</pre>
+                </div>
+              ) : (
+                <p className="text-slate-500">No inline code. File upload submission.</p>
+              )}
+              <div>
+                <Link
+                  to={`/contest/${contestPathId}/submissions/${selectedSubmission.id}`}
+                  className="text-indigo-600 hover:underline"
+                >
+                  Open in separate page
+                </Link>
+              </div>
+            </div>
+          )}
+        </Modal>
       </div>
     </AppShell>
   );

@@ -3,7 +3,7 @@ import {
   IsDateString, IsBoolean, IsInt, IsIn, ArrayMaxSize, ArrayNotEmpty,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ContestType, ProgrammingLanguage } from '../../../common/enums';
+import { ContestType, ManualVerdict, ProgrammingLanguage } from '../../../common/enums';
 
 // ─── Problem Bank ────────────────────────────────────────────────────────────
 
@@ -104,8 +104,7 @@ export class ContestSubmitDto {
 // ─── Grade ────────────────────────────────────────────────────────────────────
 
 export class GradeContestSubmissionDto {
-  @IsEnum(['accepted','wrong_answer','time_limit_exceeded','memory_limit_exceeded',
-           'runtime_error','compilation_error','presentation_error'])
+  @IsEnum(ManualVerdict)
   verdict: string;
   @IsOptional() @IsNumber() score?: number;
 }

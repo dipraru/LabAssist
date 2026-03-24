@@ -67,8 +67,8 @@ export class ContestsService {
   }
 
   private formatSubmissionDisplayId(submissionNumber: number | null | undefined): string {
-    if (!submissionNumber || submissionNumber < 1) return '0000000';
-    return String(submissionNumber).padStart(7, '0');
+    if (!submissionNumber || submissionNumber < 1) return '1000001';
+    return String(1_000_000 + submissionNumber);
   }
 
   private serializeSubmission(submission: ContestSubmission) {
@@ -81,6 +81,25 @@ export class ContestsService {
   private async getContestParticipantNameMap(contestId: string): Promise<Map<string, string>> {
     const participants = await this.tpRepo.find({ where: { contestId } });
     return new Map(participants.map((participant) => [participant.userId, participant.fullName]));
+  }
+
+  private async getContestProblemMetaMap(
+    contestId: string,
+  ): Promise<Map<string, { label: string; title: string }>> {
+    const contestProblems = await this.cpRepo.find({
+      where: { contestId },
+      order: { orderIndex: 'ASC' },
+    });
+
+    return new Map(
+      contestProblems.map((problem, index) => [
+        problem.id,
+        {
+          label: problem.label?.trim() || String.fromCharCode(65 + index),
+          title: problem.problem?.title ?? 'Untitled Problem',
+        },
+      ]),
+    );
   }
 
   private async getJudgeProfileId(judgeUserId: string): Promise<string> {
@@ -658,6 +677,15 @@ export class ContestsService {
       order: { submittedAt: 'ASC' },
     });
     const participantNameMap = await this.getContestParticipantNameMap(contest.id);
+    const problemMap = new Map(
+      problems.map((problem, index) => [
+        problem.id,
+        {
+          label: problem.label?.trim() || String.fromCharCode(65 + index),
+          problemId: problem.problemId,
+        },
+      ]),
+    );
 
     const cutoff = contest.freezeTime && showFrozen ? new Date(contest.freezeTime) : null;
 
@@ -668,8 +696,35 @@ export class ContestsService {
       solved: number;
       penalty: number;
       scores: number;
-      problemStatus: Record<string, { accepted: boolean; tries: number; acceptedAt?: Date; score?: number }>;
+      problemStatus: Record<string, {
+        accepted: boolean;
+        tries: number;
+        attempts: number;
+        acceptedAt?: Date;
+        acceptedAtMinute?: number;
+        score?: number;
+      }>;
     }>();
+
+    const isFinalSubmissionStatus = (status?: SubmissionStatus | null): boolean => (
+      status === SubmissionStatus.ACCEPTED
+      || status === SubmissionStatus.WRONG_ANSWER
+      || status === SubmissionStatus.TIME_LIMIT_EXCEEDED
+      || status === SubmissionStatus.MEMORY_LIMIT_EXCEEDED
+      || status === SubmissionStatus.RUNTIME_ERROR
+      || status === SubmissionStatus.COMPILATION_ERROR
+      || status === SubmissionStatus.PRESENTATION_ERROR
+    );
+
+    const getEffectiveVerdict = (submission: ContestSubmission): ManualVerdict | SubmissionStatus | null => {
+      if (submission.manualVerdict && submission.manualVerdict !== ManualVerdict.PENDING) {
+        return submission.manualVerdict;
+      }
+      if (isFinalSubmissionStatus(submission.submissionStatus)) {
+        return submission.submissionStatus;
+      }
+      return null;
+    };
 
     for (const sub of subs) {
       // Skip submissions after freeze for public view
@@ -686,28 +741,36 @@ export class ContestsService {
         });
       }
       const entry = participantMap.get(sub.participantId)!;
-      const pLabel = problems.find(p => p.id === sub.contestProblemId)?.label ?? '?';
+      const problemMeta = problemMap.get(sub.contestProblemId);
+      if (!problemMeta) continue;
+      const pLabel = problemMeta.label;
 
       if (!entry.problemStatus[pLabel]) {
-        entry.problemStatus[pLabel] = { accepted: false, tries: 0 };
+        entry.problemStatus[pLabel] = { accepted: false, tries: 0, attempts: 0 };
       }
       const ps = entry.problemStatus[pLabel];
       if (ps.accepted) continue; // already accepted
 
+      const effectiveVerdict = getEffectiveVerdict(sub);
+      if (!effectiveVerdict) continue;
+
       if (contest.type === ContestType.ICPC) {
-        if (sub.manualVerdict === ManualVerdict.ACCEPTED ||
-            sub.submissionStatus === SubmissionStatus.ACCEPTED) {
+        ps.attempts += 1;
+        if (effectiveVerdict === ManualVerdict.ACCEPTED ||
+            effectiveVerdict === SubmissionStatus.ACCEPTED) {
           ps.accepted = true;
           ps.acceptedAt = sub.submittedAt;
           const minutesFromStart =
             Math.floor((sub.submittedAt.getTime() - contest.startTime.getTime()) / 60000);
+          ps.acceptedAtMinute = Math.max(0, minutesFromStart);
           entry.solved += 1;
-          entry.penalty += minutesFromStart + ps.tries * ICPC_WRONG_PENALTY;
+          entry.penalty += Math.max(0, minutesFromStart) + ps.tries * ICPC_WRONG_PENALTY;
         } else {
           ps.tries += 1;
         }
       } else {
         // score_based
+        ps.attempts += 1;
         if (sub.score != null && sub.score > (ps.score ?? 0)) {
           ps.score = sub.score;
           entry.scores = Object.values(entry.problemStatus)
@@ -724,12 +787,77 @@ export class ContestsService {
       rows.sort((a, b) => b.scores - a.scores);
     }
 
+    const problemSummaries = problems.map((problem, index) => {
+      const label = problem.label?.trim() || String.fromCharCode(65 + index);
+      const aggregate = rows.reduce((acc, row) => {
+        const status = row.problemStatus[label];
+        if (!status) return acc;
+        if (status.accepted) {
+          acc.solvedCount += 1;
+        }
+        acc.attemptsCount += status.attempts;
+        return acc;
+      }, { solvedCount: 0, attemptsCount: 0 });
+
+      return {
+        label,
+        problemId: problem.problemId,
+        solvedCount: aggregate.solvedCount,
+        attemptsCount: aggregate.attemptsCount,
+      };
+    });
+
+    const firstSolvedMinuteMap = new Map<string, number>();
+    for (const problemSummary of problemSummaries) {
+      let earliestMinute: number | null = null;
+      for (const row of rows) {
+        const status = row.problemStatus[problemSummary.label];
+        if (!status?.accepted || status.acceptedAtMinute == null) continue;
+        if (earliestMinute == null || status.acceptedAtMinute < earliestMinute) {
+          earliestMinute = status.acceptedAtMinute;
+        }
+      }
+      if (earliestMinute != null) {
+        firstSolvedMinuteMap.set(problemSummary.label, earliestMinute);
+      }
+    }
+
     return {
       contestId,
       type: contest.type,
       isFrozen: freezeStillActive,
-      problems: problems.map(p => ({ label: p.label, problemId: p.problemId })),
-      rows: rows.map((r, idx) => ({ rank: idx + 1, ...r })),
+      problems: problemSummaries,
+      rows: rows.map((r, idx) => ({
+        rank: idx + 1,
+        participantId: r.participantId,
+        participantName: r.participantName,
+        solved: r.solved,
+        penalty: r.penalty,
+        totalPenalty: r.penalty,
+        scores: r.scores,
+        totalScore: r.scores,
+        problemStatus: r.problemStatus,
+        problems: problemSummaries.map((problemSummary) => {
+          const status = r.problemStatus[problemSummary.label] ?? {
+            accepted: false,
+            tries: 0,
+            attempts: 0,
+          };
+          return {
+            label: problemSummary.label,
+            accepted: status.accepted,
+            attempts: status.attempts,
+            wrongAttempts: status.tries,
+            acceptedAtMinute: status.acceptedAtMinute ?? null,
+            isFirstSolve: Boolean(
+              status.accepted
+              && status.acceptedAtMinute != null
+              && firstSolvedMinuteMap.get(problemSummary.label) === status.acceptedAtMinute,
+            ),
+            score: status.score ?? null,
+          };
+        }),
+      })),
     };
   }
 
@@ -878,14 +1006,14 @@ export class ContestsService {
       throw new ForbiddenException();
     }
 
-    const verdictUpper = (dto.verdict.toUpperCase().replace(/-/g, '_')) as ManualVerdict;
-    sub.manualVerdict = verdictUpper;
+    const normalizedVerdict = dto.verdict.toLowerCase().replace(/-/g, '_') as ManualVerdict;
+    sub.manualVerdict = normalizedVerdict;
     sub.submissionStatus = SubmissionStatus.MANUAL_REVIEW;
     sub.score = dto.score ?? null;
 
     // ICPC: compute penalty immediately
     if (sub.contest.type === ContestType.ICPC &&
-        verdictUpper === ManualVerdict.ACCEPTED) {
+      normalizedVerdict === ManualVerdict.ACCEPTED) {
       const minutesFromStart =
         Math.floor((new Date().getTime() - sub.contest.startTime.getTime()) / 60000);
       sub.penaltyMinutes = minutesFromStart;
@@ -989,12 +1117,19 @@ export class ContestsService {
       throw new ForbiddenException();
     }
     const participantNameMap = await this.getContestParticipantNameMap(c.id);
+    const contestProblemMetaMap = await this.getContestProblemMetaMap(c.id);
     const clarifications = await this.clarRepo.find({
       where: { contestId: c.id, status: ClarificationStatus.OPEN },
       order: { createdAt: 'ASC' },
     });
     return clarifications.map((clarification) => ({
       ...clarification,
+      contestProblemLabel: clarification.contestProblemId
+        ? (contestProblemMetaMap.get(clarification.contestProblemId)?.label ?? null)
+        : null,
+      contestProblemTitle: clarification.contestProblemId
+        ? (contestProblemMetaMap.get(clarification.contestProblemId)?.title ?? null)
+        : null,
       participantName: participantNameMap.get(clarification.participantId)
         ?? clarification.participantName
         ?? clarification.participantId,
@@ -1008,12 +1143,19 @@ export class ContestsService {
       throw new ForbiddenException();
     }
     const participantNameMap = await this.getContestParticipantNameMap(c.id);
+    const contestProblemMetaMap = await this.getContestProblemMetaMap(c.id);
     const clarifications = await this.clarRepo.find({
       where: { contestId: c.id },
       order: { createdAt: 'DESC' },
     });
     return clarifications.map((clarification) => ({
       ...clarification,
+      contestProblemLabel: clarification.contestProblemId
+        ? (contestProblemMetaMap.get(clarification.contestProblemId)?.label ?? null)
+        : null,
+      contestProblemTitle: clarification.contestProblemId
+        ? (contestProblemMetaMap.get(clarification.contestProblemId)?.title ?? null)
+        : null,
       participantName: participantNameMap.get(clarification.participantId)
         ?? clarification.participantName
         ?? clarification.participantId,
@@ -1078,12 +1220,19 @@ export class ContestsService {
   async getMyClarifications(contestId: string, participantUserId: string) {
     const contest = await this.resolveContestOrThrow(contestId);
     const participantNameMap = await this.getContestParticipantNameMap(contest.id);
+    const contestProblemMetaMap = await this.getContestProblemMetaMap(contest.id);
     const clarifications = await this.clarRepo.find({
       where: { contestId: contest.id, participantId: participantUserId },
       order: { createdAt: 'DESC' },
     });
     return clarifications.map((clarification) => ({
       ...clarification,
+      contestProblemLabel: clarification.contestProblemId
+        ? (contestProblemMetaMap.get(clarification.contestProblemId)?.label ?? null)
+        : null,
+      contestProblemTitle: clarification.contestProblemId
+        ? (contestProblemMetaMap.get(clarification.contestProblemId)?.title ?? null)
+        : null,
       participantName: participantNameMap.get(clarification.participantId)
         ?? clarification.participantName
         ?? clarification.participantId,
