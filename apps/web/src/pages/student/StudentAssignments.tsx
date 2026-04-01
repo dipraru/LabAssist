@@ -23,10 +23,12 @@ const STATUS_COLOR: Record<string, string> = {
 
 export function StudentAssignments() {
   const qc = useQueryClient();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const deepLinkAssignmentId = searchParams.get('assignmentId') ?? '';
   const [filterCourse, setFilterCourse] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [highlightedAssignmentId, setHighlightedAssignmentId] = useState<string | null>(null);
+  const [assignmentDeepLinkHandled, setAssignmentDeepLinkHandled] = useState(false);
   const [uploadFile, setUploadFile] = useState<{ [key: string]: File }>({});
   const [notes, setNotes] = useState<{ [key: string]: string }>({});
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'submitted' | 'overdue'>('all');
@@ -107,12 +109,24 @@ export function StudentAssignments() {
   }, [assignments, statusFilter, sortBy]);
 
   useEffect(() => {
-    if (!deepLinkAssignmentId || !visibleAssignments.length) return;
+    if (!deepLinkAssignmentId || assignmentDeepLinkHandled || !visibleAssignments.length) return;
     const linked = visibleAssignments.find((a: any) => a.id === deepLinkAssignmentId);
-    if (linked) {
-      setExpandedId(linked.id);
-    }
-  }, [deepLinkAssignmentId, visibleAssignments]);
+    if (!linked) return;
+
+    setExpandedId(linked.id);
+    setHighlightedAssignmentId(linked.id);
+    setAssignmentDeepLinkHandled(true);
+
+    setTimeout(() => {
+      document.getElementById(`student-assignment-${linked.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 0);
+
+    setTimeout(() => setHighlightedAssignmentId(null), 1800);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('assignmentId');
+    setSearchParams(next, { replace: true });
+  }, [deepLinkAssignmentId, assignmentDeepLinkHandled, visibleAssignments, searchParams, setSearchParams]);
 
   return (
     <AppShell>
@@ -182,7 +196,13 @@ export function StudentAssignments() {
             const sub = a.mySubmission;
             const expired = isExpired(a.deadline);
             return (
-              <div key={a.id} className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+              <div
+                id={`student-assignment-${a.id}`}
+                key={a.id}
+                className={`bg-white rounded-xl border shadow-sm overflow-hidden transition-colors ${
+                  highlightedAssignmentId === a.id ? 'border-indigo-300 bg-indigo-50/30' : 'border-slate-100'
+                }`}
+              >
                 <button onClick={() => setExpandedId(expandedId === a.id ? null : a.id)}
                   className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50">
                   <div className="text-left">

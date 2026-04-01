@@ -21,9 +21,11 @@ function getTeacherNames(course: any): string[] {
 }
 
 export function StudentCourses() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const deepLinkSheetId = searchParams.get('sheetId') ?? '';
   const [selectedCourse, setSelectedCourse] = useState<any>(null);
+  const [highlightedSheetId, setHighlightedSheetId] = useState<string | null>(null);
+  const [sheetDeepLinkHandled, setSheetDeepLinkHandled] = useState(false);
 
   const { data: courses = [] } = useQuery({
     queryKey: ['student-courses'],
@@ -64,6 +66,25 @@ export function StudentCourses() {
     }
   }, [deepLinkedSheetCourseId, courses]);
 
+  useEffect(() => {
+    if (!deepLinkSheetId || sheetDeepLinkHandled) return;
+    const linkedSheet = (sheets as any[]).find((s: any) => s.id === deepLinkSheetId);
+    if (!linkedSheet) return;
+
+    setHighlightedSheetId(linkedSheet.id);
+    setSheetDeepLinkHandled(true);
+
+    setTimeout(() => {
+      document.getElementById(`student-sheet-${linkedSheet.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 0);
+
+    setTimeout(() => setHighlightedSheetId(null), 1800);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('sheetId');
+    setSearchParams(next, { replace: true });
+  }, [deepLinkSheetId, sheetDeepLinkHandled, sheets, searchParams, setSearchParams]);
+
   return (
     <AppShell>
       <div className="max-w-4xl">
@@ -101,8 +122,8 @@ export function StudentCourses() {
             ) : (
               <div className="space-y-3">
                 {(sheets as any[]).map((s: any) => (
-                  <div key={s.id} className={`bg-white rounded-xl border shadow-sm p-4 ${
-                    deepLinkSheetId && s.id === deepLinkSheetId
+                  <div id={`student-sheet-${s.id}`} key={s.id} className={`bg-white rounded-xl border shadow-sm p-4 ${
+                    highlightedSheetId && s.id === highlightedSheetId
                       ? 'border-indigo-300 ring-1 ring-indigo-200'
                       : 'border-slate-100'
                   }`}>
