@@ -13,6 +13,17 @@ function courseTitle(course: any): string {
   return course?.title ?? course?.name ?? 'Untitled Course';
 }
 
+function formatShortDateTime(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export function StudentDashboard() {
   const { user } = useAuthStore();
 
@@ -58,6 +69,84 @@ export function StudentDashboard() {
     },
   });
 
+  const { data: upcomingDeadlines = [], isLoading: upcomingLoading } = useQuery({
+    queryKey: ['student-upcoming-deadlines', (courses as any[]).map((c: any) => c.id).join(',')],
+    enabled: (courses as any[]).length > 0,
+    queryFn: async () => {
+      const now = Date.now();
+      const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+      const until = now + sevenDaysMs;
+
+      const assignmentLists = await Promise.all(
+        (courses as any[]).map((c: any) =>
+          api.get(`/assignments/course/${c.id}`).then((r) => r.data).catch(() => []),
+        ),
+      );
+
+      const labTestLists = await Promise.all(
+        (courses as any[]).map((c: any) =>
+          api.get(`/lab-tests/course/${c.id}`).then((r) => r.data).catch(() => []),
+        ),
+      );
+
+      const assignmentSeen = new Set<string>();
+      const labSeen = new Set<string>();
+      const items: {
+        id: string;
+        title: string;
+        kind: 'assignment' | 'lab-test';
+        dueAt: string;
+        href: string;
+        courseCode: string;
+      }[] = [];
+
+      (courses as any[]).forEach((course: any, index: number) => {
+        const assignmentList = (assignmentLists[index] as any[]) ?? [];
+        for (const assignment of assignmentList) {
+          if (!assignment?.id || assignmentSeen.has(assignment.id)) continue;
+          assignmentSeen.add(assignment.id);
+
+          if (assignment.mySubmission) continue;
+          const deadlineMs = assignment.deadline ? new Date(assignment.deadline).getTime() : Number.NaN;
+          if (!Number.isFinite(deadlineMs) || deadlineMs < now || deadlineMs > until) continue;
+
+          items.push({
+            id: assignment.id,
+            title: assignment.title ?? 'Untitled Assignment',
+            kind: 'assignment',
+            dueAt: assignment.deadline,
+            href: `/student/assignments?assignmentId=${assignment.id}`,
+            courseCode: courseCode(course),
+          });
+        }
+
+        const labList = (labTestLists[index] as any[]) ?? [];
+        for (const lab of labList) {
+          if (!lab?.id || labSeen.has(lab.id)) continue;
+          labSeen.add(lab.id);
+
+          const dueAt = lab.endTime ?? lab.startTime;
+          const dueMs = dueAt ? new Date(dueAt).getTime() : Number.NaN;
+          if (!Number.isFinite(dueMs) || dueMs < now || dueMs > until) continue;
+          if (lab.status === 'ended') continue;
+
+          items.push({
+            id: lab.id,
+            title: lab.title ?? 'Untitled Lab Test',
+            kind: 'lab-test',
+            dueAt,
+            href: '/student/lab-tests',
+            courseCode: courseCode(course),
+          });
+        }
+      });
+
+      return items
+        .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())
+        .slice(0, 8);
+    },
+  });
+
   const unread = (notifications as any[]).filter((n: any) => !n.isRead);
 
   const profile = user?.profile as any;
@@ -93,6 +182,39 @@ export function StudentDashboard() {
             </Link>
           </div>
         )}
+
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold text-slate-800 mb-3">Upcoming Deadlines (7 days)</h2>
+          {upcomingLoading ? (
+            <div className="space-y-2">
+              {[1, 2].map((k) => (
+                <div key={k} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 animate-pulse">
+                  <div className="h-4 w-44 bg-slate-100 rounded mb-2" />
+                  <div className="h-3 w-28 bg-slate-100 rounded" />
+                </div>
+              ))}
+            </div>
+          ) : !(upcomingDeadlines as any[]).length ? (
+            <p className="text-slate-400 text-sm">No upcoming deadlines in the next 7 days.</p>
+          ) : (
+            <div className="space-y-2">
+              {(upcomingDeadlines as any[]).map((item: any) => (
+                <Link key={`${item.kind}-${item.id}`} to={item.href}
+                  className="block bg-white rounded-xl border border-slate-100 shadow-sm p-4 hover:border-indigo-300 transition-colors">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-slate-800 text-sm">{item.title}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {item.kind === 'assignment' ? 'Assignment' : 'Lab Test'} · {item.courseCode}
+                      </p>
+                    </div>
+                    <p className="text-xs text-slate-600 whitespace-nowrap">{formatShortDateTime(item.dueAt)}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Recent notifications */}
         {unread.length > 0 && (
