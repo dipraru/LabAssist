@@ -1,6 +1,11 @@
 import {
-  WebSocketGateway, WebSocketServer, SubscribeMessage,
-  OnGatewayConnection, OnGatewayDisconnect, ConnectedSocket, MessageBody,
+  WebSocketGateway,
+  WebSocketServer,
+  SubscribeMessage,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  ConnectedSocket,
+  MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
@@ -10,7 +15,9 @@ import { ConfigService } from '@nestjs/config';
   cors: { origin: '*', credentials: true },
   namespace: '/notifications',
 })
-export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class NotificationsGateway
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
@@ -26,7 +33,10 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
     try {
       const token =
         (client.handshake.auth?.token as string) ||
-        (client.handshake.headers?.authorization as string)?.replace('Bearer ', '');
+        (client.handshake.headers?.authorization as string)?.replace(
+          'Bearer ',
+          '',
+        );
 
       const payload = this.jwtService.verify(token, {
         secret: this.config.get<string>('JWT_SECRET'),
@@ -65,12 +75,18 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
   }
 
   @SubscribeMessage('join-contest')
-  handleJoinContest(@ConnectedSocket() client: Socket, @MessageBody() contestId: string) {
+  handleJoinContest(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() contestId: string,
+  ) {
     client.join(`contest:${contestId}`);
   }
 
   @SubscribeMessage('leave-contest')
-  handleLeaveContest(@ConnectedSocket() client: Socket, @MessageBody() contestId: string) {
+  handleLeaveContest(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() contestId: string,
+  ) {
     client.leave(`contest:${contestId}`);
   }
 }

@@ -1,6 +1,16 @@
 import {
-  Controller, Post, Get, Patch, Body, Param, Query, UseGuards, Delete,
-  UseInterceptors, UploadedFile, BadRequestException,
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Delete,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { OfficeService } from './office.service';
@@ -11,8 +21,13 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/role.enum';
 import {
-  CreateTeacherDto, CreateStudentsBulkDto, CreateTempJudgeDto,
-  ExtendTempJudgeDto, CorrectStudentDto, CorrectTeacherDto, CreateSemesterDto,
+  CreateTeacherDto,
+  CreateStudentsBulkDto,
+  CreateTempJudgeDto,
+  ExtendTempJudgeDto,
+  CorrectStudentDto,
+  CorrectTeacherDto,
+  CreateSemesterDto,
   CreateStudentDto,
 } from './dto/office.dto';
 
@@ -33,11 +48,20 @@ export class OfficeController {
   // ── Teachers ─────────────────────────────────────────────
   @Post('teachers')
   async createTeacher(@Body() dto: CreateTeacherDto) {
-    const { teacher, plainPassword } = await this.officeService.createTeacher(dto);
+    const { teacher, plainPassword } =
+      await this.officeService.createTeacher(dto);
     const pdf = await this.pdfService.generateCredentialsPdf([
-      { username: teacher.teacherId, password: plainPassword, name: teacher.fullName ?? teacher.teacherId },
+      {
+        username: teacher.teacherId,
+        password: plainPassword,
+        name: teacher.fullName ?? teacher.teacherId,
+      },
     ]);
-    return { teacher, credentials: { username: teacher.teacherId, password: plainPassword }, credentialsPdf: pdf };
+    return {
+      teacher,
+      credentials: { username: teacher.teacherId, password: plainPassword },
+      credentialsPdf: pdf,
+    };
   }
 
   @Get('teachers')
@@ -47,11 +71,20 @@ export class OfficeController {
 
   @Post('teachers/:id/credentials/reset')
   async resetTeacherCredentials(@Param('id') id: string) {
-    const { teacher, plainPassword } = await this.officeService.resetTeacherCredentials(id);
+    const { teacher, plainPassword } =
+      await this.officeService.resetTeacherCredentials(id);
     const pdf = await this.pdfService.generateCredentialsPdf([
-      { username: teacher.teacherId, password: plainPassword, name: teacher.fullName ?? teacher.teacherId },
+      {
+        username: teacher.teacherId,
+        password: plainPassword,
+        name: teacher.fullName ?? teacher.teacherId,
+      },
     ]);
-    return { teacher, credentials: { username: teacher.teacherId, password: plainPassword }, credentialsPdf: pdf };
+    return {
+      teacher,
+      credentials: { username: teacher.teacherId, password: plainPassword },
+      credentialsPdf: pdf,
+    };
   }
 
   @Delete('teachers/:id')
@@ -66,18 +99,30 @@ export class OfficeController {
   }
 
   @Patch('users/:userId/toggle-active')
-  toggleActive(@Param('userId') userId: string, @Body('isActive') isActive: boolean) {
+  toggleActive(
+    @Param('userId') userId: string,
+    @Body('isActive') isActive: boolean,
+  ) {
     return this.officeService.toggleUserActive(userId, isActive);
   }
 
   // ── Students ─────────────────────────────────────────────
   @Post('students')
   async createStudent(@Body() dto: CreateStudentDto) {
-    const { student, plainPassword } = await this.officeService.createStudent(dto);
+    const { student, plainPassword } =
+      await this.officeService.createStudent(dto);
     const pdf = await this.pdfService.generateCredentialsPdf([
-      { username: student.studentId, password: plainPassword, name: student.fullName ?? `Student ${student.studentId}` },
+      {
+        username: student.studentId,
+        password: plainPassword,
+        name: student.fullName ?? `Student ${student.studentId}`,
+      },
     ]);
-    return { student, credentials: { username: student.studentId, password: plainPassword }, credentialsPdf: pdf };
+    return {
+      student,
+      credentials: { username: student.studentId, password: plainPassword },
+      credentialsPdf: pdf,
+    };
   }
 
   @Post('students/bulk')
@@ -88,19 +133,32 @@ export class OfficeController {
   ) {
     if (file) {
       if (!dto?.batchYear) {
-        throw new BadRequestException('batchYear is required for CSV bulk import');
+        throw new BadRequestException(
+          'batchYear is required for CSV bulk import',
+        );
       }
-      const result = await this.officeService.createStudentsBulkFromCsv(file.buffer, dto.batchYear);
-      const credentialsPdf = await this.pdfService.generateCredentialsPdf(result.credentials);
+      const result = await this.officeService.createStudentsBulkFromCsv(
+        file.buffer,
+        dto.batchYear,
+      );
+      const credentialsPdf = await this.pdfService.generateCredentialsPdf(
+        result.credentials,
+      );
       return { ...result, credentialsPdf };
     }
 
     if (!dto?.fromStudentId || !dto?.toStudentId || !dto?.batchYear) {
-      throw new BadRequestException('Provide a CSV file or a valid student ID range payload');
+      throw new BadRequestException(
+        'Provide a CSV file or a valid student ID range payload',
+      );
     }
 
-    const result = await this.officeService.createStudentsBulk(dto as CreateStudentsBulkDto);
-    const credentialsPdf = await this.pdfService.generateCredentialsPdf(result.credentials);
+    const result = await this.officeService.createStudentsBulk(
+      dto as CreateStudentsBulkDto,
+    );
+    const credentialsPdf = await this.pdfService.generateCredentialsPdf(
+      result.credentials,
+    );
     return { ...result, credentialsPdf };
   }
 
@@ -111,11 +169,20 @@ export class OfficeController {
 
   @Post('students/:id/credentials/reset')
   async resetStudentCredentials(@Param('id') id: string) {
-    const { student, plainPassword } = await this.officeService.resetStudentCredentials(id);
+    const { student, plainPassword } =
+      await this.officeService.resetStudentCredentials(id);
     const pdf = await this.pdfService.generateCredentialsPdf([
-      { username: student.studentId, password: plainPassword, name: student.fullName ?? `Student ${student.studentId}` },
+      {
+        username: student.studentId,
+        password: plainPassword,
+        name: student.fullName ?? `Student ${student.studentId}`,
+      },
     ]);
-    return { student, credentials: { username: student.studentId, password: plainPassword }, credentialsPdf: pdf };
+    return {
+      student,
+      credentials: { username: student.studentId, password: plainPassword },
+      credentialsPdf: pdf,
+    };
   }
 
   @Delete('students/:id')
@@ -132,9 +199,14 @@ export class OfficeController {
   // ── PDF credential generation ─────────────────────────────
   @Post('credentials/pdf')
   async generateCredentialsPdf(
-    @Body() body: { credentials: { username: string; password: string; name: string }[] },
+    @Body()
+    body: {
+      credentials: { username: string; password: string; name: string }[];
+    },
   ) {
-    const base64Pdf = await this.pdfService.generateCredentialsPdf(body.credentials);
+    const base64Pdf = await this.pdfService.generateCredentialsPdf(
+      body.credentials,
+    );
     return { pdf: base64Pdf };
   }
 
@@ -144,11 +216,22 @@ export class OfficeController {
     @Body() dto: CreateTempJudgeDto,
     @CurrentUser() user: { id: string },
   ) {
-    const { judge, plainPassword } = await this.officeService.createTempJudge(dto, user.id);
+    const { judge, plainPassword } = await this.officeService.createTempJudge(
+      dto,
+      user.id,
+    );
     const pdf = await this.pdfService.generateCredentialsPdf([
-      { username: judge.judgeId, password: plainPassword, name: judge.fullName ?? judge.judgeId },
+      {
+        username: judge.judgeId,
+        password: plainPassword,
+        name: judge.fullName ?? judge.judgeId,
+      },
     ]);
-    return { judge, credentials: { username: judge.judgeId, password: plainPassword }, credentialsPdf: pdf };
+    return {
+      judge,
+      credentials: { username: judge.judgeId, password: plainPassword },
+      credentialsPdf: pdf,
+    };
   }
 
   @Get('judges')
@@ -163,9 +246,14 @@ export class OfficeController {
 
   @Get('judges/:id/credentials')
   async downloadJudgeCredentials(@Param('id') id: string) {
-    const { judge, plainPassword } = await this.officeService.getTempJudgeCredentials(id);
+    const { judge, plainPassword } =
+      await this.officeService.getTempJudgeCredentials(id);
     const pdf = await this.pdfService.generateCredentialsPdf([
-      { username: judge.judgeId, password: plainPassword, name: judge.fullName ?? judge.judgeId },
+      {
+        username: judge.judgeId,
+        password: plainPassword,
+        name: judge.fullName ?? judge.judgeId,
+      },
     ]);
     return {
       judge,
@@ -176,11 +264,20 @@ export class OfficeController {
 
   @Post('judges/:id/credentials/reset')
   async resetJudgeCredentials(@Param('id') id: string) {
-    const { judge, plainPassword } = await this.officeService.resetTempJudgeCredentials(id);
+    const { judge, plainPassword } =
+      await this.officeService.resetTempJudgeCredentials(id);
     const pdf = await this.pdfService.generateCredentialsPdf([
-      { username: judge.judgeId, password: plainPassword, name: judge.fullName ?? judge.judgeId },
+      {
+        username: judge.judgeId,
+        password: plainPassword,
+        name: judge.fullName ?? judge.judgeId,
+      },
     ]);
-    return { judge, credentials: { username: judge.judgeId, password: plainPassword }, credentialsPdf: pdf };
+    return {
+      judge,
+      credentials: { username: judge.judgeId, password: plainPassword },
+      credentialsPdf: pdf,
+    };
   }
 
   // ── Semesters ─────────────────────────────────────────────
@@ -190,7 +287,10 @@ export class OfficeController {
   }
 
   @Patch('semesters/:id')
-  updateSemester(@Param('id') id: string, @Body() dto: Partial<CreateSemesterDto>) {
+  updateSemester(
+    @Param('id') id: string,
+    @Body() dto: Partial<CreateSemesterDto>,
+  ) {
     return this.officeService.updateSemester(id, dto);
   }
 

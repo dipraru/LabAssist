@@ -42,7 +42,11 @@ export class ContestClarification {
   @Column({ type: 'varchar', nullable: true })
   answeredById: string | null;
 
-  @Column({ type: 'enum', enum: ClarificationStatus, default: ClarificationStatus.OPEN })
+  @Column({
+    type: 'enum',
+    enum: ClarificationStatus,
+    default: ClarificationStatus.OPEN,
+  })
   status: ClarificationStatus;
 
   // Which problem it relates to (nullable = general question)

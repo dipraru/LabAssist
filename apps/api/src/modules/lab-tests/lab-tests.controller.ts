@@ -1,6 +1,13 @@
 import {
-  Body, Controller, Get, Param, Patch, Post, UploadedFile,
-  UseGuards, UseInterceptors,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -10,7 +17,12 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/role.enum';
 import { LabTestsService } from './lab-tests.service';
-import { CreateLabTestDto, JudgeResultCallbackDto, ManualGradeDto, SubmitLabCodeDto } from './dto/lab-tests.dto';
+import {
+  CreateLabTestDto,
+  JudgeResultCallbackDto,
+  ManualGradeDto,
+  SubmitLabCodeDto,
+} from './dto/lab-tests.dto';
 import { LabTestStatus } from './entities/lab-test.entity';
 import { SubmissionStatus } from '../../common/enums';
 
@@ -51,13 +63,20 @@ export class LabTestsController {
 
   @Roles(UserRole.TEACHER)
   @Get('problems/:problemId/submissions')
-  getSubmissionsForProblem(@Param('problemId') pId: string, @CurrentUser() user: any) {
+  getSubmissionsForProblem(
+    @Param('problemId') pId: string,
+    @CurrentUser() user: any,
+  ) {
     return this.svc.getSubmissionsForProblem(pId, user.userId);
   }
 
   @Roles(UserRole.TEACHER)
   @Patch('submissions/:id/grade')
-  grade(@Param('id') id: string, @Body() dto: ManualGradeDto, @CurrentUser() user: any) {
+  grade(
+    @Param('id') id: string,
+    @Body() dto: ManualGradeDto,
+    @CurrentUser() user: any,
+  ) {
     return this.svc.gradeSubmission(id, dto, user.userId);
   }
 
@@ -103,7 +122,10 @@ export class LabTestsController {
 
   /** Called by automated judge — no auth guard on purpose (token-based via judgeToken) */
   @Patch('submissions/:id/result')
-  async judgeResult(@Param('id') id: string, @Body() body: JudgeResultCallbackDto) {
+  async judgeResult(
+    @Param('id') id: string,
+    @Body() body: JudgeResultCallbackDto,
+  ) {
     return this.svc.receiveJudgeResult(
       id,
       body.verdict as unknown as SubmissionStatus,

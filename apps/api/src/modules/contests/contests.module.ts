@@ -15,8 +15,15 @@ import { ContestsController } from './contests.controller';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      Contest, Problem, ContestProblem, ContestSubmission,
-      ContestAnnouncement, ContestClarification, User, TempJudge, TempParticipant,
+      Contest,
+      Problem,
+      ContestProblem,
+      ContestSubmission,
+      ContestAnnouncement,
+      ContestClarification,
+      User,
+      TempJudge,
+      TempParticipant,
     ]),
   ],
   providers: [ContestsService],

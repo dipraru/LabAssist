@@ -1,5 +1,12 @@
 import {
-  Controller, Get, Post, Delete, Body, Param, Query, UseGuards,
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
   Patch,
 } from '@nestjs/common';
 import { CoursesService } from './courses.service';
@@ -9,8 +16,13 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/role.enum';
 import {
-  CreateCourseDto, UpdateCourseDto, EnrollStudentsDto, AddTeacherToCourseDto,
-  CreateScheduleDto, CreateLectureSheetDto, UpdateLectureSheetDto,
+  CreateCourseDto,
+  UpdateCourseDto,
+  EnrollStudentsDto,
+  AddTeacherToCourseDto,
+  CreateScheduleDto,
+  CreateLectureSheetDto,
+  UpdateLectureSheetDto,
 } from './dto/courses.dto';
 
 @UseGuards(JwtAuthGuard)
@@ -32,8 +44,10 @@ export class CoursesController {
 
   @Get('my')
   getMyCourses(@CurrentUser() user: { id: string; role: string }) {
-    if (user.role === UserRole.TEACHER) return this.coursesService.getCoursesByTeacher(user.id);
-    if (user.role === UserRole.STUDENT) return this.coursesService.getCoursesByStudent(user.id);
+    if (user.role === UserRole.TEACHER)
+      return this.coursesService.getCoursesByTeacher(user.id);
+    if (user.role === UserRole.STUDENT)
+      return this.coursesService.getCoursesByStudent(user.id);
     return this.coursesService.getAllCourses();
   }
 
@@ -50,14 +64,20 @@ export class CoursesController {
   @UseGuards(RolesGuard)
   @Roles(UserRole.OFFICE)
   @Post('enroll')
-  enrollStudents(@Body() dto: EnrollStudentsDto, @CurrentUser() user: { id: string }) {
+  enrollStudents(
+    @Body() dto: EnrollStudentsDto,
+    @CurrentUser() user: { id: string },
+  ) {
     return this.coursesService.enrollStudents(dto, user.id);
   }
 
   @UseGuards(RolesGuard)
   @Roles(UserRole.OFFICE)
   @Delete(':courseId/students/:studentUserId')
-  removeStudent(@Param('courseId') courseId: string, @Param('studentUserId') studentUserId: string) {
+  removeStudent(
+    @Param('courseId') courseId: string,
+    @Param('studentUserId') studentUserId: string,
+  ) {
     return this.coursesService.removeEnrollment(courseId, studentUserId);
   }
 
@@ -71,7 +91,10 @@ export class CoursesController {
   @UseGuards(RolesGuard)
   @Roles(UserRole.OFFICE)
   @Delete(':courseId/teachers/:teacherId')
-  removeTeacher(@Param('courseId') courseId: string, @Param('teacherId') teacherId: string) {
+  removeTeacher(
+    @Param('courseId') courseId: string,
+    @Param('teacherId') teacherId: string,
+  ) {
     return this.coursesService.removeTeacherFromCourse(courseId, teacherId);
   }
 
@@ -84,7 +107,10 @@ export class CoursesController {
   }
 
   @Get('schedules/all')
-  getSchedules(@Query('courseId') courseId?: string, @Query('batch') batchYear?: string) {
+  getSchedules(
+    @Query('courseId') courseId?: string,
+    @Query('batch') batchYear?: string,
+  ) {
     return this.coursesService.getSchedules(courseId, batchYear);
   }
 
@@ -99,7 +125,10 @@ export class CoursesController {
   @UseGuards(RolesGuard)
   @Roles(UserRole.TEACHER)
   @Post('lecture-sheets')
-  createLectureSheet(@Body() dto: CreateLectureSheetDto, @CurrentUser() user: { id: string }) {
+  createLectureSheet(
+    @Body() dto: CreateLectureSheetDto,
+    @CurrentUser() user: { id: string },
+  ) {
     return this.coursesService.createLectureSheet(dto, user.id);
   }
 
@@ -122,7 +151,10 @@ export class CoursesController {
   @UseGuards(RolesGuard)
   @Roles(UserRole.TEACHER)
   @Delete('lecture-sheets/:id')
-  deleteLectureSheet(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+  deleteLectureSheet(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ) {
     return this.coursesService.deleteLectureSheet(id, user.id);
   }
 

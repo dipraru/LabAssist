@@ -1,6 +1,14 @@
 import {
-  Controller, Get, Post, Patch, Param, Body, Query, UseGuards,
-  UseInterceptors, UploadedFile,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AssignmentsService } from './assignments.service';
@@ -9,7 +17,11 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/role.enum';
-import { CreateAssignmentDto, UpdateAssignmentDto, GradeSubmissionDto } from './dto/assignments.dto';
+import {
+  CreateAssignmentDto,
+  UpdateAssignmentDto,
+  GradeSubmissionDto,
+} from './dto/assignments.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('assignments')
@@ -19,7 +31,10 @@ export class AssignmentsController {
   @UseGuards(RolesGuard)
   @Roles(UserRole.TEACHER)
   @Post()
-  create(@Body() dto: CreateAssignmentDto, @CurrentUser() user: { id: string }) {
+  create(
+    @Body() dto: CreateAssignmentDto,
+    @CurrentUser() user: { id: string },
+  ) {
     return this.assignmentsService.createAssignment(dto, user.id);
   }
 
@@ -67,7 +82,10 @@ export class AssignmentsController {
   @UseGuards(RolesGuard)
   @Roles(UserRole.STUDENT)
   @Get(':id/my-submission')
-  getMySubmission(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+  getMySubmission(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ) {
     return this.assignmentsService.getMySubmission(id, user.id);
   }
 

@@ -1,5 +1,13 @@
 import {
-  IsString, IsEnum, IsOptional, IsNumber, IsUUID, IsBoolean, IsArray, ValidateNested, IsDateString,
+  IsString,
+  IsEnum,
+  IsOptional,
+  IsNumber,
+  IsUUID,
+  IsBoolean,
+  IsArray,
+  ValidateNested,
+  IsDateString,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CourseType } from '../entities/course.entity';

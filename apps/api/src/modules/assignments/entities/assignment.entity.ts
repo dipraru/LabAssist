@@ -25,7 +25,11 @@ export class Assignment {
   @Column({ type: 'text', nullable: true })
   caption: string | null;
 
-  @Column({ type: 'enum', enum: AssignmentStatus, default: AssignmentStatus.DRAFT })
+  @Column({
+    type: 'enum',
+    enum: AssignmentStatus,
+    default: AssignmentStatus.DRAFT,
+  })
   status: AssignmentStatus;
 
   @Column({ type: 'timestamptz', nullable: true })
@@ -51,7 +55,10 @@ export class Assignment {
   @Column({ type: 'varchar', nullable: true })
   createdById: string | null;
 
-  @OneToMany(() => AssignmentLink, (l) => l.assignment, { cascade: true, eager: true })
+  @OneToMany(() => AssignmentLink, (l) => l.assignment, {
+    cascade: true,
+    eager: true,
+  })
   links: AssignmentLink[];
 
   @OneToMany(() => AssignmentSubmission, (s) => s.assignment)

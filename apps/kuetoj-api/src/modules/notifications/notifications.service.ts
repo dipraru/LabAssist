@@ -11,7 +11,12 @@ export class NotificationsService {
 
   async createBulk(
     recipientUserIds: string[],
-    payload: { type: NotificationType; title: string; body: string; referenceId?: string },
+    payload: {
+      type: NotificationType;
+      title: string;
+      body: string;
+      referenceId?: string;
+    },
   ): Promise<void> {
     if (!recipientUserIds.length) return;
 
@@ -31,7 +36,10 @@ export class NotificationsService {
     }
   }
 
-  async getForUser(userId: string, onlyUnread = false): Promise<Notification[]> {
+  async getForUser(
+    userId: string,
+    onlyUnread = false,
+  ): Promise<Notification[]> {
     const query = this.notifRepo
       .createQueryBuilder('n')
       .where('n.recipientUserId = :userId', { userId })
@@ -52,10 +60,15 @@ export class NotificationsService {
   }
 
   async markAllRead(userId: string): Promise<void> {
-    await this.notifRepo.update({ recipientUserId: userId, isRead: false }, { isRead: true });
+    await this.notifRepo.update(
+      { recipientUserId: userId, isRead: false },
+      { isRead: true },
+    );
   }
 
   async getUnreadCount(userId: string): Promise<number> {
-    return this.notifRepo.count({ where: { recipientUserId: userId, isRead: false } });
+    return this.notifRepo.count({
+      where: { recipientUserId: userId, isRead: false },
+    });
   }
 }

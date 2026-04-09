@@ -1,5 +1,11 @@
 import {
-  Controller, Post, Body, UseGuards, Get, Patch, Request,
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Get,
+  Patch,
+  Request,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto, ChangePasswordDto } from './dto/auth.dto';
@@ -12,13 +18,19 @@ export class AuthController {
 
   @Post('login')
   async login(@Body() dto: LoginDto) {
-    const user = await this.authService.validateUser(dto.username, dto.password);
+    const user = await this.authService.validateUser(
+      dto.username,
+      dto.password,
+    );
     return this.authService.login(user);
   }
 
   @Post('validate-local-user')
   async validateLocalUserForBridge(@Body() dto: LoginDto) {
-    return this.authService.validateTempUserForBridge(dto.username, dto.password);
+    return this.authService.validateTempUserForBridge(
+      dto.username,
+      dto.password,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -29,8 +41,15 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Patch('change-password')
-  async changePassword(@CurrentUser() user: { id: string }, @Body() dto: ChangePasswordDto) {
-    return this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
+  async changePassword(
+    @CurrentUser() user: { id: string },
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(
+      user.id,
+      dto.currentPassword,
+      dto.newPassword,
+    );
   }
 
   @UseGuards(JwtAuthGuard)

@@ -1,6 +1,13 @@
 import {
-  IsString, IsOptional, IsUUID, IsEnum, IsNumber, IsArray, ValidateNested,
-  IsDateString, IsInt,
+  IsString,
+  IsOptional,
+  IsUUID,
+  IsEnum,
+  IsNumber,
+  IsArray,
+  ValidateNested,
+  IsDateString,
+  IsInt,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { LabTestType } from '../../../common/enums';
@@ -18,7 +25,10 @@ class CreateProblemDto {
   @IsOptional() @IsNumber() marks?: number;
   @IsOptional() @IsInt() timeLimitMs?: number;
   @IsOptional() @IsInt() memoryLimitKb?: number;
-  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => SampleTestCaseDto)
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SampleTestCaseDto)
   sampleTestCases?: SampleTestCaseDto[];
 }
 
@@ -30,7 +40,9 @@ export class CreateLabTestDto {
   @IsDateString() startTime: string;
   @IsDateString() endTime: string;
   @IsOptional() @IsNumber() totalMarks?: number;
-  @IsArray() @ValidateNested({ each: true }) @Type(() => CreateProblemDto)
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateProblemDto)
   problems: CreateProblemDto[];
 }
 
@@ -48,7 +60,14 @@ export class ManualGradeDto {
 // Future judge callback contract: POST /api/submissions/:id/result
 export class JudgeResultCallbackDto {
   @IsString() judgeToken: string;
-  @IsEnum(['accepted','wrong_answer','time_limit_exceeded','memory_limit_exceeded','runtime_error','compilation_error'])
+  @IsEnum([
+    'accepted',
+    'wrong_answer',
+    'time_limit_exceeded',
+    'memory_limit_exceeded',
+    'runtime_error',
+    'compilation_error',
+  ])
   verdict: string;
   @IsOptional() @IsInt() executionTimeMs?: number;
   @IsOptional() @IsInt() memoryUsedKb?: number;

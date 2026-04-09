@@ -5,7 +5,7 @@ import { join, extname } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface StoredFile {
-  url: string;      // public URL path e.g. /uploads/submissions/abc.cpp
+  url: string; // public URL path e.g. /uploads/submissions/abc.cpp
   filePath: string; // absolute disk path
   fileName: string; // original name
   size: number;
@@ -16,7 +16,10 @@ export class StorageService {
   private readonly uploadRoot: string;
 
   constructor(private readonly config: ConfigService) {
-    this.uploadRoot = join(process.cwd(), config.get<string>('UPLOAD_DEST') ?? 'uploads');
+    this.uploadRoot = join(
+      process.cwd(),
+      config.get<string>('UPLOAD_DEST') ?? 'uploads',
+    );
     this.ensureDir(this.uploadRoot);
     this.ensureDir(join(this.uploadRoot, 'profiles'));
     this.ensureDir(join(this.uploadRoot, 'submissions'));

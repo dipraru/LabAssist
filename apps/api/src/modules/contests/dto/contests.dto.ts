@@ -1,6 +1,14 @@
 import {
-  IsString, IsOptional, IsUUID, IsEnum, IsNumber, IsArray, ValidateNested,
-  IsDateString, IsBoolean, IsInt,
+  IsString,
+  IsOptional,
+  IsUUID,
+  IsEnum,
+  IsNumber,
+  IsArray,
+  ValidateNested,
+  IsDateString,
+  IsBoolean,
+  IsInt,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ContestType, ProgrammingLanguage } from '../../../common/enums';
@@ -18,7 +26,10 @@ export class CreateProblemDto {
   @IsString() statement: string;
   @IsOptional() @IsInt() timeLimitMs?: number;
   @IsOptional() @IsInt() memoryLimitKb?: number;
-  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => SampleTestCaseDto)
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SampleTestCaseDto)
   sampleTestCases?: SampleTestCaseDto[];
 }
 
@@ -26,9 +37,9 @@ export class CreateProblemDto {
 
 export class AddContestProblemDto {
   @IsUUID() problemId: string;
-  @IsString() label: string;        // A, B, C …
+  @IsString() label: string; // A, B, C …
   @IsInt() orderIndex: number;
-  @IsOptional() @IsNumber() score?: number;   // for score_based
+  @IsOptional() @IsNumber() score?: number; // for score_based
 }
 
 // ─── Contest ─────────────────────────────────────────────────────────────────
@@ -40,7 +51,10 @@ export class CreateContestDto {
   @IsDateString() startTime: string;
   @IsDateString() endTime: string;
   @IsOptional() @IsDateString() freezeTime?: string;
-  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => AddContestProblemDto)
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AddContestProblemDto)
   problems?: AddContestProblemDto[];
 }
 
@@ -55,8 +69,15 @@ export class ContestSubmitDto {
 // ─── Grade ────────────────────────────────────────────────────────────────────
 
 export class GradeContestSubmissionDto {
-  @IsEnum(['accepted','wrong_answer','time_limit_exceeded','memory_limit_exceeded',
-           'runtime_error','compilation_error','presentation_error'])
+  @IsEnum([
+    'accepted',
+    'wrong_answer',
+    'time_limit_exceeded',
+    'memory_limit_exceeded',
+    'runtime_error',
+    'compilation_error',
+    'presentation_error',
+  ])
   verdict: string;
   @IsOptional() @IsNumber() score?: number;
 }
@@ -92,8 +113,14 @@ export class CreateTempParticipantsDto {
 
 export class ContestJudgeResultDto {
   @IsString() judgeToken: string;
-  @IsEnum(['accepted','wrong_answer','time_limit_exceeded','memory_limit_exceeded',
-           'runtime_error','compilation_error'])
+  @IsEnum([
+    'accepted',
+    'wrong_answer',
+    'time_limit_exceeded',
+    'memory_limit_exceeded',
+    'runtime_error',
+    'compilation_error',
+  ])
   verdict: string;
   @IsOptional() @IsInt() executionTimeMs?: number;
   @IsOptional() @IsInt() memoryUsedKb?: number;

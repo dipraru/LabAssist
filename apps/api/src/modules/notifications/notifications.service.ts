@@ -19,7 +19,12 @@ export class NotificationsService {
 
   async createBulk(
     recipientUserIds: string[],
-    payload: { type: NotificationType; title: string; body: string; referenceId?: string },
+    payload: {
+      type: NotificationType;
+      title: string;
+      body: string;
+      referenceId?: string;
+    },
   ): Promise<void> {
     if (!recipientUserIds.length) return;
 
@@ -39,22 +44,37 @@ export class NotificationsService {
       payload.type === NotificationType.ASSIGNMENT_POSTED ||
       payload.type === NotificationType.LECTURE_SHEET_POSTED
     ) {
-      this.sendEmailsForNotifications(recipientUserIds, payload.title, payload.body).catch(() => {});
+      this.sendEmailsForNotifications(
+        recipientUserIds,
+        payload.title,
+        payload.body,
+      ).catch(() => {});
     }
   }
 
-  private async sendEmailsForNotifications(userIds: string[], subject: string, body: string) {
+  private async sendEmailsForNotifications(
+    userIds: string[],
+    subject: string,
+    body: string,
+  ) {
     const students = await this.studentRepo.find({
       where: { userId: In(userIds) },
       select: ['email', 'fullName'],
     });
-    const emails = students.filter((s) => !!s.email).map((s) => s.email as string);
+    const emails = students
+      .filter((s) => !!s.email)
+      .map((s) => s.email as string);
     for (const email of emails) {
-      await this.mailService.sendMail({ to: email, subject, body }).catch(() => {});
+      await this.mailService
+        .sendMail({ to: email, subject, body })
+        .catch(() => {});
     }
   }
 
-  async getForUser(userId: string, onlyUnread = false): Promise<Notification[]> {
+  async getForUser(
+    userId: string,
+    onlyUnread = false,
+  ): Promise<Notification[]> {
     const query = this.notifRepo
       .createQueryBuilder('n')
       .where('n.recipientUserId = :userId', { userId })
@@ -75,10 +95,15 @@ export class NotificationsService {
   }
 
   async markAllRead(userId: string): Promise<void> {
-    await this.notifRepo.update({ recipientUserId: userId, isRead: false }, { isRead: true });
+    await this.notifRepo.update(
+      { recipientUserId: userId, isRead: false },
+      { isRead: true },
+    );
   }
 
   async getUnreadCount(userId: string): Promise<number> {
-    return this.notifRepo.count({ where: { recipientUserId: userId, isRead: false } });
+    return this.notifRepo.count({
+      where: { recipientUserId: userId, isRead: false },
+    });
   }
 }

@@ -10,12 +10,17 @@ async function bootstrap() {
 
   const config = app.get(ConfigService);
   const port = config.get<number>('PORT') ?? 3000;
-  const frontendUrl = config.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';
+  const frontendUrl =
+    config.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';
 
   app.enableCors({ origin: frontendUrl, credentials: true });
 
   app.useGlobalPipes(
-    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
   );
 
   app.setGlobalPrefix('api');

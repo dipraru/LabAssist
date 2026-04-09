@@ -23,19 +23,26 @@ export class CredentialsPdfService {
       const colWidth = (pageWidth - margin * 2 - 10) / 2;
       const cardHeight = 80;
       const cardPadding = 8;
-      const rowsPerPage = Math.floor((doc.page.height - margin * 2) / (cardHeight + 8));
+      const rowsPerPage = Math.floor(
+        (doc.page.height - margin * 2) / (cardHeight + 8),
+      );
 
       doc
         .fontSize(14)
         .font('Helvetica-Bold')
-        .text('KUETOJ — Temporary Participant Credentials', { align: 'center' });
+        .text('KUETOJ — Temporary Participant Credentials', {
+          align: 'center',
+        });
       doc.moveDown(0.5);
       doc
         .fontSize(9)
         .font('Helvetica')
-        .text(`Generated: ${new Date().toLocaleString()}  |  Total accounts: ${credentials.length}`, {
-          align: 'center',
-        });
+        .text(
+          `Generated: ${new Date().toLocaleString()}  |  Total accounts: ${credentials.length}`,
+          {
+            align: 'center',
+          },
+        );
       doc.moveDown(1);
 
       let col = 0;
@@ -53,10 +60,7 @@ export class CredentialsPdfService {
         firstCard = false;
 
         doc.rect(x, y, colWidth, cardHeight).stroke('#555555');
-        doc
-          .fillColor('#0f172a')
-          .rect(x, y, colWidth, 20)
-          .fill();
+        doc.fillColor('#0f172a').rect(x, y, colWidth, 20).fill();
 
         doc
           .fillColor('#ffffff')
@@ -94,9 +98,14 @@ export class CredentialsPdfService {
           .fontSize(6.5)
           .font('Helvetica-Oblique')
           .fillColor('#555')
-          .text('* Keep this card private during contest', x + cardPadding, y + 64, {
-            width: colWidth - cardPadding * 2,
-          });
+          .text(
+            '* Keep this card private during contest',
+            x + cardPadding,
+            y + 64,
+            {
+              width: colWidth - cardPadding * 2,
+            },
+          );
 
         doc.fillColor('#000');
 

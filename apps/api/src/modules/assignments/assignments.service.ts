@@ -1,11 +1,17 @@
 import {
-  Injectable, NotFoundException, ForbiddenException, BadRequestException,
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Assignment } from './entities/assignment.entity';
 import { AssignmentLink } from './entities/assignment-link.entity';
-import { AssignmentSubmission, AssignmentSubmissionStatus } from './entities/assignment-submission.entity';
+import {
+  AssignmentSubmission,
+  AssignmentSubmissionStatus,
+} from './entities/assignment-submission.entity';
 import { Enrollment } from '../courses/entities/enrollment.entity';
 import { Student } from '../users/entities/student.entity';
 import { Teacher } from '../users/entities/teacher.entity';
@@ -13,23 +19,36 @@ import { AssignmentStatus } from '../../common/enums';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { StorageService } from '../storage/storage.service';
-import { CreateAssignmentDto, UpdateAssignmentDto, GradeSubmissionDto } from './dto/assignments.dto';
+import {
+  CreateAssignmentDto,
+  UpdateAssignmentDto,
+  GradeSubmissionDto,
+} from './dto/assignments.dto';
 
 @Injectable()
 export class AssignmentsService {
   constructor(
-    @InjectRepository(Assignment) private assignmentRepo: Repository<Assignment>,
-    @InjectRepository(AssignmentLink) private linkRepo: Repository<AssignmentLink>,
-    @InjectRepository(AssignmentSubmission) private submissionRepo: Repository<AssignmentSubmission>,
-    @InjectRepository(Enrollment) private enrollmentRepo: Repository<Enrollment>,
+    @InjectRepository(Assignment)
+    private assignmentRepo: Repository<Assignment>,
+    @InjectRepository(AssignmentLink)
+    private linkRepo: Repository<AssignmentLink>,
+    @InjectRepository(AssignmentSubmission)
+    private submissionRepo: Repository<AssignmentSubmission>,
+    @InjectRepository(Enrollment)
+    private enrollmentRepo: Repository<Enrollment>,
     @InjectRepository(Student) private studentRepo: Repository<Student>,
     @InjectRepository(Teacher) private teacherRepo: Repository<Teacher>,
     private readonly notificationsService: NotificationsService,
     private readonly storageService: StorageService,
   ) {}
 
-  async createAssignment(dto: CreateAssignmentDto, teacherUserId: string): Promise<Assignment> {
-    const teacher = await this.teacherRepo.findOne({ where: { userId: teacherUserId } });
+  async createAssignment(
+    dto: CreateAssignmentDto,
+    teacherUserId: string,
+  ): Promise<Assignment> {
+    const teacher = await this.teacherRepo.findOne({
+      where: { userId: teacherUserId },
+    });
     const assignment = this.assignmentRepo.create({
       courseId: dto.courseId,
       title: dto.title,
@@ -44,7 +63,11 @@ export class AssignmentsService {
 
     if (dto.links?.length) {
       const links = dto.links.map((l) =>
-        this.linkRepo.create({ assignmentId: saved.id, url: l.url, label: l.label ?? null }),
+        this.linkRepo.create({
+          assignmentId: saved.id,
+          url: l.url,
+          label: l.label ?? null,
+        }),
       );
       await this.linkRepo.save(links);
     }
@@ -66,7 +89,10 @@ export class AssignmentsService {
   }
 
   async getAssignmentById(id: string): Promise<Assignment> {
-    const a = await this.assignmentRepo.findOne({ where: { id }, relations: ['links', 'course', 'createdBy'] });
+    const a = await this.assignmentRepo.findOne({
+      where: { id },
+      relations: ['links', 'course', 'createdBy'],
+    });
     if (!a) throw new NotFoundException('Assignment not found');
     return a;
   }
@@ -79,8 +105,15 @@ export class AssignmentsService {
     });
   }
 
-  async updateAssignment(id: string, dto: UpdateAssignmentDto, teacherUserId: string): Promise<Assignment> {
-    const assignment = await this.assignmentRepo.findOne({ where: { id }, relations: ['createdBy'] });
+  async updateAssignment(
+    id: string,
+    dto: UpdateAssignmentDto,
+    teacherUserId: string,
+  ): Promise<Assignment> {
+    const assignment = await this.assignmentRepo.findOne({
+      where: { id },
+      relations: ['createdBy'],
+    });
     if (!assignment) throw new NotFoundException('Assignment not found');
     Object.assign(assignment, dto);
     if (dto.deadline) assignment.deadline = new Date(dto.deadline);
@@ -94,16 +127,25 @@ export class AssignmentsService {
     file: Express.Multer.File,
     notes?: string,
   ): Promise<AssignmentSubmission> {
-    const assignment = await this.assignmentRepo.findOne({ where: { id: assignmentId } });
+    const assignment = await this.assignmentRepo.findOne({
+      where: { id: assignmentId },
+    });
     if (!assignment) throw new NotFoundException('Assignment not found');
-    if (assignment.status !== AssignmentStatus.PUBLISHED) throw new ForbiddenException('Assignment is closed');
+    if (assignment.status !== AssignmentStatus.PUBLISHED)
+      throw new ForbiddenException('Assignment is closed');
 
-    const isLate = assignment.deadline ? new Date() > assignment.deadline : false;
+    const isLate = assignment.deadline
+      ? new Date() > assignment.deadline
+      : false;
     if (isLate && !assignment.allowLateSubmission) {
-      throw new ForbiddenException('Late submission is not allowed for this assignment');
+      throw new ForbiddenException(
+        'Late submission is not allowed for this assignment',
+      );
     }
 
-    const student = await this.studentRepo.findOne({ where: { userId: studentUserId } });
+    const student = await this.studentRepo.findOne({
+      where: { userId: studentUserId },
+    });
     if (!student) throw new NotFoundException('Student not found');
 
     // Save file
@@ -139,14 +181,22 @@ export class AssignmentsService {
         fileUrl: stored.url,
         fileName: stored.fileName,
         notes: notes ?? null,
-        status: isLate ? AssignmentSubmissionStatus.LATE : AssignmentSubmissionStatus.SUBMITTED,
+        status: isLate
+          ? AssignmentSubmissionStatus.LATE
+          : AssignmentSubmissionStatus.SUBMITTED,
       });
     }
     return this.submissionRepo.save(submission);
   }
 
-  async gradeSubmission(submissionId: string, dto: GradeSubmissionDto, teacherUserId: string): Promise<AssignmentSubmission> {
-    const submission = await this.submissionRepo.findOne({ where: { id: submissionId } });
+  async gradeSubmission(
+    submissionId: string,
+    dto: GradeSubmissionDto,
+    teacherUserId: string,
+  ): Promise<AssignmentSubmission> {
+    const submission = await this.submissionRepo.findOne({
+      where: { id: submissionId },
+    });
     if (!submission) throw new NotFoundException('Submission not found');
     submission.score = dto.score;
     submission.feedback = dto.feedback ?? null;
@@ -165,7 +215,9 @@ export class AssignmentsService {
   }
 
   async getMySubmission(assignmentId: string, studentUserId: string) {
-    const student = await this.studentRepo.findOne({ where: { userId: studentUserId } });
+    const student = await this.studentRepo.findOne({
+      where: { userId: studentUserId },
+    });
     if (!student) throw new NotFoundException('Student not found');
     return this.submissionRepo.findOne({
       where: { assignmentId, studentId: student.id },

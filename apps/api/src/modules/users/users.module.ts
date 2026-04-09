@@ -9,7 +9,15 @@ import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Student, Teacher, TempJudge, TempParticipant])],
+  imports: [
+    TypeOrmModule.forFeature([
+      User,
+      Student,
+      Teacher,
+      TempJudge,
+      TempParticipant,
+    ]),
+  ],
   providers: [UsersService],
   controllers: [UsersController],
   exports: [UsersService, TypeOrmModule],

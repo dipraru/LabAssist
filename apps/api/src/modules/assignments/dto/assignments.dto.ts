@@ -1,5 +1,12 @@
 import {
-  IsString, IsOptional, IsUUID, IsBoolean, IsNumber, IsDateString, IsArray, ValidateNested,
+  IsString,
+  IsOptional,
+  IsUUID,
+  IsBoolean,
+  IsNumber,
+  IsDateString,
+  IsArray,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { AssignmentStatus } from '../../../common/enums';
@@ -7,7 +14,8 @@ import { AssignmentStatus } from '../../../common/enums';
 class LinkDto {
   @IsString()
   url: string;
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   label?: string;
 }
 
@@ -16,13 +24,17 @@ export class CreateAssignmentDto {
   courseId: string;
   @IsString()
   title: string;
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   caption?: string;
-  @IsOptional() @IsDateString()
+  @IsOptional()
+  @IsDateString()
   deadline?: string;
-  @IsOptional() @IsBoolean()
+  @IsOptional()
+  @IsBoolean()
   allowLateSubmission?: boolean;
-  @IsOptional() @IsNumber()
+  @IsOptional()
+  @IsNumber()
   totalMarks?: number;
   @IsArray()
   @ValidateNested({ each: true })
@@ -31,15 +43,20 @@ export class CreateAssignmentDto {
 }
 
 export class UpdateAssignmentDto {
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   title?: string;
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   caption?: string;
-  @IsOptional() @IsDateString()
+  @IsOptional()
+  @IsDateString()
   deadline?: string;
-  @IsOptional() @IsBoolean()
+  @IsOptional()
+  @IsBoolean()
   allowLateSubmission?: boolean;
-  @IsOptional() @IsNumber()
+  @IsOptional()
+  @IsNumber()
   totalMarks?: number;
   @IsOptional()
   status?: AssignmentStatus;
@@ -48,6 +65,7 @@ export class UpdateAssignmentDto {
 export class GradeSubmissionDto {
   @IsNumber()
   score: number;
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   feedback?: string;
 }

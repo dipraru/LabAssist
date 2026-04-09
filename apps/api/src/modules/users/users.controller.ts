@@ -1,6 +1,12 @@
 import {
-  Body, Controller, Get, Patch, Post, UploadedFile,
-  UseGuards, UseInterceptors,
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Post,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -39,7 +45,10 @@ export class UsersController {
   }
 
   @Patch('profile')
-  async updateProfile(@CurrentUser() user: any, @Body() dto: UpdateStudentProfileDto) {
+  async updateProfile(
+    @CurrentUser() user: any,
+    @Body() dto: UpdateStudentProfileDto,
+  ) {
     const student = await this.users.findStudentByUserId(user.id);
     if (student) {
       const updated = await this.users.updateStudent(user.id, {
@@ -72,7 +81,10 @@ export class UsersController {
 
   @Post('profile/photo')
   @UseInterceptors(FileInterceptor('photo', { storage: memoryStorage() }))
-  async uploadPhoto(@CurrentUser() user: any, @UploadedFile() file: Express.Multer.File) {
+  async uploadPhoto(
+    @CurrentUser() user: any,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
     if (!file) return { message: 'No file provided' };
     const saved = await this.storage.saveBuffer(
       file.buffer,

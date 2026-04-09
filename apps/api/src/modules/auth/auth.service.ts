@@ -25,7 +25,10 @@ export class AuthService {
     private readonly config: ConfigService,
   ) {}
 
-  private async validateLocalUser(username: string, password: string): Promise<User> {
+  private async validateLocalUser(
+    username: string,
+    password: string,
+  ): Promise<User> {
     const user = await this.usersService.findUserByUsername(username);
     if (!user) throw new UnauthorizedException('Username does not exist');
     if (!user.isActive) throw new UnauthorizedException('Account is inactive');
@@ -41,10 +44,15 @@ export class AuthService {
     return user;
   }
 
-  async validateUser(username: string, password: string): Promise<User | BridgeUser> {
+  async validateUser(
+    username: string,
+    password: string,
+  ): Promise<User | BridgeUser> {
     const user = await this.usersService.findUserByUsername(username);
     if (!user) {
-      const configuredBridgeUrl = this.config.get<string>('KUETOJ_AUTH_BRIDGE_URL');
+      const configuredBridgeUrl = this.config.get<string>(
+        'KUETOJ_AUTH_BRIDGE_URL',
+      );
       const bridgeUrls = [
         configuredBridgeUrl,
         'http://localhost:3100/api/auth/validate-user',
@@ -60,18 +68,22 @@ export class AuthService {
           });
           if (!response.ok) {
             if (response.status === 401) {
-              const payload = await response.json().catch(() => null) as { message?: string } | null;
+              const payload = (await response.json().catch(() => null)) as {
+                message?: string;
+              } | null;
               const reason = payload?.message ?? 'Authentication failed';
               throw new UnauthorizedException(reason);
             }
             continue;
           }
 
-          const bridgeUser = await response.json() as BridgeUser;
+          const bridgeUser = (await response.json()) as BridgeUser;
           if (
-            !bridgeUser?.id
-            || !bridgeUser?.username
-            || ![UserRole.TEMP_JUDGE, UserRole.TEMP_PARTICIPANT].includes(bridgeUser.role)
+            !bridgeUser?.id ||
+            !bridgeUser?.username ||
+            ![UserRole.TEMP_JUDGE, UserRole.TEMP_PARTICIPANT].includes(
+              bridgeUser.role,
+            )
           ) {
             continue;
           }
@@ -91,7 +103,9 @@ export class AuthService {
   async validateTempUserForBridge(username: string, password: string) {
     const user = await this.validateLocalUser(username, password);
     if (![UserRole.TEMP_JUDGE, UserRole.TEMP_PARTICIPANT].includes(user.role)) {
-      throw new UnauthorizedException('This account is not a temporary judge/participant account');
+      throw new UnauthorizedException(
+        'This account is not a temporary judge/participant account',
+      );
     }
 
     return {
@@ -107,7 +121,10 @@ export class AuthService {
     const payload = { sub: user.id, username: user.username, role: user.role };
     const token = this.jwtService.sign(payload);
 
-    const shouldLoadProfile = ![UserRole.TEMP_JUDGE, UserRole.TEMP_PARTICIPANT].includes(user.role);
+    const shouldLoadProfile = ![
+      UserRole.TEMP_JUDGE,
+      UserRole.TEMP_PARTICIPANT,
+    ].includes(user.role);
     const profile = shouldLoadProfile
       ? await this.usersService.getProfileByUserId(user.id, user.role)
       : null;
@@ -125,7 +142,11 @@ export class AuthService {
     };
   }
 
-  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ) {
     const user = await this.userRepo.findOne({
       where: { id: userId },
       select: ['id', 'password'],
@@ -133,7 +154,8 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('User not found');
 
     const valid = await bcrypt.compare(currentPassword, user.password);
-    if (!valid) throw new UnauthorizedException('Current password is incorrect');
+    if (!valid)
+      throw new UnauthorizedException('Current password is incorrect');
 
     user.password = await bcrypt.hash(newPassword, 12);
     user.passwordChangeSuggested = false;

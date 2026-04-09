@@ -43,7 +43,10 @@ export class Course {
   @Column({ default: true })
   isActive: boolean;
 
-  @ManyToOne(() => Semester, (semester) => semester.courses, { eager: true, nullable: false })
+  @ManyToOne(() => Semester, (semester) => semester.courses, {
+    eager: true,
+    nullable: false,
+  })
   @JoinColumn()
   semester: Semester;
 

@@ -11,7 +11,14 @@ import { Teacher } from '../users/entities/teacher.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Assignment, AssignmentLink, AssignmentSubmission, Enrollment, Student, Teacher]),
+    TypeOrmModule.forFeature([
+      Assignment,
+      AssignmentLink,
+      AssignmentSubmission,
+      Enrollment,
+      Student,
+      Teacher,
+    ]),
   ],
   controllers: [AssignmentsController],
   providers: [AssignmentsService],

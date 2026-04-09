@@ -1,5 +1,8 @@
 import {
-  Injectable, NotFoundException, ForbiddenException, BadRequestException,
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -8,7 +11,10 @@ import { Problem } from './entities/problem.entity';
 import { ContestProblem } from './entities/contest-problem.entity';
 import { ContestSubmission } from './entities/contest-submission.entity';
 import { ContestAnnouncement } from './entities/contest-announcement.entity';
-import { ContestClarification, ClarificationStatus } from './entities/contest-clarification.entity';
+import {
+  ContestClarification,
+  ClarificationStatus,
+} from './entities/contest-clarification.entity';
 import { User } from '../users/entities/user.entity';
 import { TempJudge } from '../users/entities/temp-judge.entity';
 import { TempParticipant } from '../users/entities/temp-participant.entity';
@@ -29,7 +35,10 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import {
-  ContestStatus, ContestType, ManualVerdict, SubmissionStatus,
+  ContestStatus,
+  ContestType,
+  ManualVerdict,
+  SubmissionStatus,
 } from '../../common/enums';
 import { UserRole } from '../../common/enums/role.enum';
 import { v4 as uuidv4 } from 'uuid';
@@ -42,13 +51,18 @@ export class ContestsService {
   constructor(
     @InjectRepository(Contest) private contestRepo: Repository<Contest>,
     @InjectRepository(Problem) private problemRepo: Repository<Problem>,
-    @InjectRepository(ContestProblem) private cpRepo: Repository<ContestProblem>,
-    @InjectRepository(ContestSubmission) private subRepo: Repository<ContestSubmission>,
-    @InjectRepository(ContestAnnouncement) private announcementRepo: Repository<ContestAnnouncement>,
-    @InjectRepository(ContestClarification) private clarRepo: Repository<ContestClarification>,
+    @InjectRepository(ContestProblem)
+    private cpRepo: Repository<ContestProblem>,
+    @InjectRepository(ContestSubmission)
+    private subRepo: Repository<ContestSubmission>,
+    @InjectRepository(ContestAnnouncement)
+    private announcementRepo: Repository<ContestAnnouncement>,
+    @InjectRepository(ContestClarification)
+    private clarRepo: Repository<ContestClarification>,
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(TempJudge) private tjRepo: Repository<TempJudge>,
-    @InjectRepository(TempParticipant) private tpRepo: Repository<TempParticipant>,
+    @InjectRepository(TempParticipant)
+    private tpRepo: Repository<TempParticipant>,
     private dataSource: DataSource,
     private storage: StorageService,
     private notifications: NotificationsService,
@@ -56,7 +70,9 @@ export class ContestsService {
   ) {}
 
   private async getJudgeProfileId(judgeUserId: string): Promise<string> {
-    const judgeProfile = await this.tjRepo.findOne({ where: { userId: judgeUserId } });
+    const judgeProfile = await this.tjRepo.findOne({
+      where: { userId: judgeUserId },
+    });
     if (!judgeProfile) {
       throw new ForbiddenException('Temporary judge profile not found');
     }
@@ -65,7 +81,10 @@ export class ContestsService {
 
   // ─── PROBLEM BANK ────────────────────────────────────────────────────────────
 
-  async createProblem(dto: CreateProblemDto, judgeUserId: string): Promise<Problem> {
+  async createProblem(
+    dto: CreateProblemDto,
+    judgeUserId: string,
+  ): Promise<Problem> {
     const p = this.problemRepo.create({
       title: dto.title,
       statement: dto.statement,
@@ -87,7 +106,11 @@ export class ContestsService {
     return p;
   }
 
-  async updateProblem(id: string, dto: Partial<CreateProblemDto>, judgeUserId: string) {
+  async updateProblem(
+    id: string,
+    dto: Partial<CreateProblemDto>,
+    judgeUserId: string,
+  ) {
     const p = await this.getProblemById(id);
     if (p.authorId !== judgeUserId) throw new ForbiddenException();
     Object.assign(p, dto);
@@ -103,11 +126,21 @@ export class ContestsService {
     const p = await this.getProblemById(problemId);
     if (p.authorId !== judgeUserId) throw new ForbiddenException();
     if (inputFile) {
-      const saved = await this.storage.saveBuffer(inputFile.buffer, `${uuidv4()}_${inputFile.originalname}`, 'problems', 10 * 1024 * 1024);
+      const saved = await this.storage.saveBuffer(
+        inputFile.buffer,
+        `${uuidv4()}_${inputFile.originalname}`,
+        'problems',
+        10 * 1024 * 1024,
+      );
       p.inputFile = saved.url;
     }
     if (outputFile) {
-      const saved = await this.storage.saveBuffer(outputFile.buffer, `${uuidv4()}_${outputFile.originalname}`, 'problems', 10 * 1024 * 1024);
+      const saved = await this.storage.saveBuffer(
+        outputFile.buffer,
+        `${uuidv4()}_${outputFile.originalname}`,
+        'problems',
+        10 * 1024 * 1024,
+      );
       p.outputFile = saved.url;
     }
     return this.problemRepo.save(p);
@@ -115,7 +148,10 @@ export class ContestsService {
 
   // ─── CONTEST CRUD ────────────────────────────────────────────────────────────
 
-  async createContest(dto: CreateContestDto, judgeUserId: string): Promise<Contest> {
+  async createContest(
+    dto: CreateContestDto,
+    judgeUserId: string,
+  ): Promise<Contest> {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
@@ -136,8 +172,11 @@ export class ContestsService {
 
       if (dto.problems?.length) {
         for (const cp of dto.problems) {
-          const exists = await qr.manager.findOneBy(Problem, { id: cp.problemId });
-          if (!exists) throw new NotFoundException(`Problem ${cp.problemId} not found`);
+          const exists = await qr.manager.findOneBy(Problem, {
+            id: cp.problemId,
+          });
+          if (!exists)
+            throw new NotFoundException(`Problem ${cp.problemId} not found`);
           const cpEntity = qr.manager.create(ContestProblem, {
             contestId: contest.id,
             problemId: cp.problemId,
@@ -171,7 +210,11 @@ export class ContestsService {
     return this.contestRepo.find({ order: { startTime: 'DESC' } });
   }
 
-  async updateContestStatus(contestId: string, status: ContestStatus, judgeUserId: string) {
+  async updateContestStatus(
+    contestId: string,
+    status: ContestStatus,
+    judgeUserId: string,
+  ) {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const c = await this.contestRepo.findOneBy({ id: contestId });
     if (!c) throw new NotFoundException();
@@ -180,12 +223,17 @@ export class ContestsService {
     return this.contestRepo.save(c);
   }
 
-  async addProblemToContest(contestId: string, dto: AddContestProblemDto, judgeUserId: string) {
+  async addProblemToContest(
+    contestId: string,
+    dto: AddContestProblemDto,
+    judgeUserId: string,
+  ) {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const c = await this.contestRepo.findOneBy({ id: contestId });
     if (!c) throw new NotFoundException();
     if (c.createdById !== judgeProfileId) throw new ForbiddenException();
-    if (c.status !== ContestStatus.DRAFT) throw new BadRequestException('Contest already started');
+    if (c.status !== ContestStatus.DRAFT)
+      throw new BadRequestException('Contest already started');
 
     const cp = this.cpRepo.create({
       contestId,
@@ -216,17 +264,29 @@ export class ContestsService {
       order: { submittedAt: 'ASC' },
     });
 
-    const cutoff = contest.freezeTime && showFrozen ? new Date(contest.freezeTime) : null;
+    const cutoff =
+      contest.freezeTime && showFrozen ? new Date(contest.freezeTime) : null;
 
     // Group by participant
-    const participantMap = new Map<string, {
-      participantId: string;
-      participantName: string;
-      solved: number;
-      penalty: number;
-      scores: number;
-      problemStatus: Record<string, { accepted: boolean; tries: number; acceptedAt?: Date; score?: number }>;
-    }>();
+    const participantMap = new Map<
+      string,
+      {
+        participantId: string;
+        participantName: string;
+        solved: number;
+        penalty: number;
+        scores: number;
+        problemStatus: Record<
+          string,
+          {
+            accepted: boolean;
+            tries: number;
+            acceptedAt?: Date;
+            score?: number;
+          }
+        >;
+      }
+    >();
 
     for (const sub of subs) {
       // Skip submissions after freeze for public view
@@ -243,7 +303,8 @@ export class ContestsService {
         });
       }
       const entry = participantMap.get(sub.participantId)!;
-      const pLabel = problems.find(p => p.id === sub.contestProblemId)?.label ?? '?';
+      const pLabel =
+        problems.find((p) => p.id === sub.contestProblemId)?.label ?? '?';
 
       if (!entry.problemStatus[pLabel]) {
         entry.problemStatus[pLabel] = { accepted: false, tries: 0 };
@@ -252,12 +313,15 @@ export class ContestsService {
       if (ps.accepted) continue; // already accepted
 
       if (contest.type === ContestType.ICPC) {
-        if (sub.manualVerdict === ManualVerdict.ACCEPTED ||
-            sub.submissionStatus === SubmissionStatus.ACCEPTED) {
+        if (
+          sub.manualVerdict === ManualVerdict.ACCEPTED ||
+          sub.submissionStatus === SubmissionStatus.ACCEPTED
+        ) {
           ps.accepted = true;
           ps.acceptedAt = sub.submittedAt;
-          const minutesFromStart =
-            Math.floor((sub.submittedAt.getTime() - contest.startTime.getTime()) / 60000);
+          const minutesFromStart = Math.floor(
+            (sub.submittedAt.getTime() - contest.startTime.getTime()) / 60000,
+          );
           entry.solved += 1;
           entry.penalty += minutesFromStart + ps.tries * ICPC_WRONG_PENALTY;
         } else {
@@ -267,8 +331,10 @@ export class ContestsService {
         // score_based
         if (sub.score != null && sub.score > (ps.score ?? 0)) {
           ps.score = sub.score;
-          entry.scores = Object.values(entry.problemStatus)
-            .reduce((acc, p) => acc + (p.score ?? 0), 0);
+          entry.scores = Object.values(entry.problemStatus).reduce(
+            (acc, p) => acc + (p.score ?? 0),
+            0,
+          );
         }
       }
     }
@@ -285,12 +351,19 @@ export class ContestsService {
       contestId,
       type: contest.type,
       isFrozen: contest.isStandingFrozen,
-      problems: problems.map(p => ({ label: p.label, problemId: p.problemId })),
+      problems: problems.map((p) => ({
+        label: p.label,
+        problemId: p.problemId,
+      })),
       rows: rows.map((r, idx) => ({ rank: idx + 1, ...r })),
     };
   }
 
-  async freezeStandings(contestId: string, frozen: boolean, judgeUserId: string) {
+  async freezeStandings(
+    contestId: string,
+    frozen: boolean,
+    judgeUserId: string,
+  ) {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const c = await this.contestRepo.findOneBy({ id: contestId });
     if (!c) throw new NotFoundException();
@@ -319,20 +392,28 @@ export class ContestsService {
     if (now < contest.startTime || now > contest.endTime)
       throw new ForbiddenException('Contest window closed');
 
-    const cp = await this.cpRepo.findOneBy({ id: dto.contestProblemId, contestId });
+    const cp = await this.cpRepo.findOneBy({
+      id: dto.contestProblemId,
+      contestId,
+    });
     if (!cp) throw new NotFoundException('Problem not in this contest');
 
     let fileUrl: string | null = null;
     let fileName: string | null = null;
     if (file) {
-      if (file.size > 256 * 1024) throw new BadRequestException('File too large (max 256KB)');
+      if (file.size > 256 * 1024)
+        throw new BadRequestException('File too large (max 256KB)');
       const saved = await this.storage.saveBuffer(
-        file.buffer, `${uuidv4()}_${file.originalname}`, 'submissions', 256 * 1024,
+        file.buffer,
+        `${uuidv4()}_${file.originalname}`,
+        'submissions',
+        256 * 1024,
       );
       fileUrl = saved.url;
       fileName = file.originalname;
     }
-    if (!dto.code && !fileUrl) throw new BadRequestException('Code or file required');
+    if (!dto.code && !fileUrl)
+      throw new BadRequestException('Code or file required');
 
     const sub = this.subRepo.create({
       contestId,
@@ -367,25 +448,35 @@ export class ContestsService {
     });
   }
 
-  async gradeSubmission(subId: string, dto: GradeContestSubmissionDto, judgeUserId: string) {
+  async gradeSubmission(
+    subId: string,
+    dto: GradeContestSubmissionDto,
+    judgeUserId: string,
+  ) {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const sub = await this.subRepo.findOne({
       where: { id: subId },
       relations: ['contest'],
     });
     if (!sub) throw new NotFoundException();
-    if (sub.contest.createdById !== judgeProfileId) throw new ForbiddenException();
+    if (sub.contest.createdById !== judgeProfileId)
+      throw new ForbiddenException();
 
-    const verdictUpper = (dto.verdict.toUpperCase().replace(/-/g, '_')) as ManualVerdict;
+    const verdictUpper = dto.verdict
+      .toUpperCase()
+      .replace(/-/g, '_') as ManualVerdict;
     sub.manualVerdict = verdictUpper;
     sub.submissionStatus = SubmissionStatus.MANUAL_REVIEW;
     sub.score = dto.score ?? null;
 
     // ICPC: compute penalty immediately
-    if (sub.contest.type === ContestType.ICPC &&
-        verdictUpper === ManualVerdict.ACCEPTED) {
-      const minutesFromStart =
-        Math.floor((new Date().getTime() - sub.contest.startTime.getTime()) / 60000);
+    if (
+      sub.contest.type === ContestType.ICPC &&
+      verdictUpper === ManualVerdict.ACCEPTED
+    ) {
+      const minutesFromStart = Math.floor(
+        (new Date().getTime() - sub.contest.startTime.getTime()) / 60000,
+      );
       sub.penaltyMinutes = minutesFromStart;
     }
 
@@ -434,10 +525,10 @@ export class ContestsService {
     const participants = await this.tpRepo.find({ where: { contestId } });
     if (participants.length) {
       const recipientUserIds = await Promise.all(
-        participants.map(async tp => {
+        participants.map(async (tp) => {
           const u = await this.userRepo.findOne({ where: { id: tp.userId } });
           return u?.id;
-        })
+        }),
       );
       const validIds = recipientUserIds.filter(Boolean) as string[];
       if (validIds.length) {
@@ -462,7 +553,11 @@ export class ContestsService {
 
   // ─── CLARIFICATIONS ───────────────────────────────────────────────────────────
 
-  async askClarification(contestId: string, dto: AskClarificationDto, participantUserId: string) {
+  async askClarification(
+    contestId: string,
+    dto: AskClarificationDto,
+    participantUserId: string,
+  ) {
     const c = await this.contestRepo.findOneBy({ id: contestId });
     if (!c) throw new NotFoundException();
 
@@ -498,7 +593,8 @@ export class ContestsService {
       relations: ['contest'],
     });
     if (!clar) throw new NotFoundException();
-    if (clar.contest.createdById !== judgeProfileId) throw new ForbiddenException();
+    if (clar.contest.createdById !== judgeProfileId)
+      throw new ForbiddenException();
 
     clar.answer = dto.answer;
     clar.status = ClarificationStatus.ANSWERED;
@@ -533,7 +629,10 @@ export class ContestsService {
 
   // ─── TEMP PARTICIPANTS ────────────────────────────────────────────────────────
 
-  async createTempParticipants(dto: CreateTempParticipantsDto, judgeUserId: string) {
+  async createTempParticipants(
+    dto: CreateTempParticipantsDto,
+    judgeUserId: string,
+  ) {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const contest = await this.contestRepo.findOneBy({ id: dto.contestId });
     if (!contest) throw new NotFoundException('Contest not found');
@@ -545,17 +644,26 @@ export class ContestsService {
     await qr.connect();
     await qr.startTransaction();
     try {
-      const results: { username: string; password: string; participantId: string }[] = [];
+      const results: {
+        username: string;
+        password: string;
+        participantId: string;
+      }[] = [];
 
       // Find the highest existing TP number for this contest
-      const existing = await qr.manager.find(TempParticipant, { where: { contestId: dto.contestId } });
+      const existing = await qr.manager.find(TempParticipant, {
+        where: { contestId: dto.contestId },
+      });
       let counter = existing.length;
 
       for (let i = 0; i < dto.count; i++) {
         counter++;
         const participantId = `TP-${String(counter).padStart(3, '0')}`;
         const username = `tp_${dto.contestId.slice(0, 8)}_${String(counter).padStart(3, '0')}`;
-        const plainPassword = Math.random().toString(36).slice(-8).toUpperCase();
+        const plainPassword = Math.random()
+          .toString(36)
+          .slice(-8)
+          .toUpperCase();
 
         const user = qr.manager.create(User, {
           username,
@@ -596,7 +704,8 @@ export class ContestsService {
   async receiveJudgeResult(subId: string, dto: ContestJudgeResultDto) {
     const sub = await this.subRepo.findOneBy({ id: subId });
     if (!sub) throw new NotFoundException();
-    sub.submissionStatus = dto.verdict.toUpperCase() as unknown as SubmissionStatus;
+    sub.submissionStatus =
+      dto.verdict.toUpperCase() as unknown as SubmissionStatus;
     sub.executionTimeMs = dto.executionTimeMs ?? null;
     sub.memoryUsedKb = dto.memoryUsedKb ?? null;
     const saved = await this.subRepo.save(sub);

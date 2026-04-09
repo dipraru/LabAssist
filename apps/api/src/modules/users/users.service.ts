@@ -15,11 +15,24 @@ export class UsersService {
     @InjectRepository(Student) private studentRepo: Repository<Student>,
     @InjectRepository(Teacher) private teacherRepo: Repository<Teacher>,
     @InjectRepository(TempJudge) private judgeRepo: Repository<TempJudge>,
-    @InjectRepository(TempParticipant) private participantRepo: Repository<TempParticipant>,
+    @InjectRepository(TempParticipant)
+    private participantRepo: Repository<TempParticipant>,
   ) {}
 
   async findUserByUsername(username: string): Promise<User | null> {
-    return this.userRepo.findOne({ where: { username }, select: ['id', 'username', 'password', 'role', 'isActive', 'isFirstLogin', 'expiresAt', 'passwordChangeSuggested'] });
+    return this.userRepo.findOne({
+      where: { username },
+      select: [
+        'id',
+        'username',
+        'password',
+        'role',
+        'isActive',
+        'isFirstLogin',
+        'expiresAt',
+        'passwordChangeSuggested',
+      ],
+    });
   }
 
   async findUserById(id: string): Promise<User | null> {
@@ -38,20 +51,34 @@ export class UsersService {
     return this.judgeRepo.findOne({ where: { userId } });
   }
 
-  async findParticipantByUserId(userId: string): Promise<TempParticipant | null> {
+  async findParticipantByUserId(
+    userId: string,
+  ): Promise<TempParticipant | null> {
     return this.participantRepo.findOne({ where: { userId } });
   }
 
   async getProfileByUserId(userId: string, role: UserRole) {
     switch (role) {
       case UserRole.STUDENT:
-        return this.studentRepo.findOne({ where: { userId }, relations: ['user'] });
+        return this.studentRepo.findOne({
+          where: { userId },
+          relations: ['user'],
+        });
       case UserRole.TEACHER:
-        return this.teacherRepo.findOne({ where: { userId }, relations: ['user'] });
+        return this.teacherRepo.findOne({
+          where: { userId },
+          relations: ['user'],
+        });
       case UserRole.TEMP_JUDGE:
-        return this.judgeRepo.findOne({ where: { userId }, relations: ['user'] });
+        return this.judgeRepo.findOne({
+          where: { userId },
+          relations: ['user'],
+        });
       case UserRole.TEMP_PARTICIPANT:
-        return this.participantRepo.findOne({ where: { userId }, relations: ['user'] });
+        return this.participantRepo.findOne({
+          where: { userId },
+          relations: ['user'],
+        });
       default:
         return null;
     }
@@ -64,14 +91,20 @@ export class UsersService {
     return user;
   }
 
-  async updateStudent(userId: string, updates: Partial<Student>): Promise<Student> {
+  async updateStudent(
+    userId: string,
+    updates: Partial<Student>,
+  ): Promise<Student> {
     const student = await this.studentRepo.findOne({ where: { userId } });
     if (!student) throw new NotFoundException('Student not found');
     Object.assign(student, updates);
     return this.studentRepo.save(student);
   }
 
-  async updateTeacher(userId: string, updates: Partial<Teacher>): Promise<Teacher> {
+  async updateTeacher(
+    userId: string,
+    updates: Partial<Teacher>,
+  ): Promise<Teacher> {
     const teacher = await this.teacherRepo.findOne({ where: { userId } });
     if (!teacher) throw new NotFoundException('Teacher not found');
     Object.assign(teacher, updates);

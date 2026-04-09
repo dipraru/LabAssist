@@ -20,7 +20,10 @@ export class ContestProblem {
   @Column()
   contestId: string;
 
-  @ManyToOne(() => Problem, (p) => p.contestProblems, { eager: true, onDelete: 'CASCADE' })
+  @ManyToOne(() => Problem, (p) => p.contestProblems, {
+    eager: true,
+    onDelete: 'CASCADE',
+  })
   @JoinColumn()
   problem: Problem;
 

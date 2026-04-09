@@ -14,7 +14,13 @@ import { NotificationsModule } from '../notifications/notifications.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      Course, Semester, Enrollment, LabSchedule, LectureSheet, Student, Teacher,
+      Course,
+      Semester,
+      Enrollment,
+      LabSchedule,
+      LectureSheet,
+      Student,
+      Teacher,
     ]),
     NotificationsModule,
   ],

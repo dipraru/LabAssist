@@ -23,7 +23,9 @@ export class PdfService {
       const colWidth = (pageWidth - margin * 2 - 10) / 2;
       const cardHeight = 80;
       const cardPadding = 8;
-      const rowsPerPage = Math.floor((doc.page.height - margin * 2) / (cardHeight + 8));
+      const rowsPerPage = Math.floor(
+        (doc.page.height - margin * 2) / (cardHeight + 8),
+      );
 
       doc
         .fontSize(14)
@@ -33,9 +35,12 @@ export class PdfService {
       doc
         .fontSize(9)
         .font('Helvetica')
-        .text(`Generated: ${new Date().toLocaleString()}  |  Total accounts: ${credentials.length}`, {
-          align: 'center',
-        });
+        .text(
+          `Generated: ${new Date().toLocaleString()}  |  Total accounts: ${credentials.length}`,
+          {
+            align: 'center',
+          },
+        );
       doc.moveDown(1);
 
       let col = 0;
@@ -57,10 +62,7 @@ export class PdfService {
         doc.rect(x, y, colWidth, cardHeight).stroke('#555555');
 
         // Card header
-        doc
-          .fillColor('#1a1a2e')
-          .rect(x, y, colWidth, 20)
-          .fill();
+        doc.fillColor('#1a1a2e').rect(x, y, colWidth, 20).fill();
 
         doc
           .fillColor('#ffffff')
@@ -102,9 +104,14 @@ export class PdfService {
           .fontSize(6.5)
           .font('Helvetica-Oblique')
           .fillColor('#555')
-          .text('* Change your password on first login', x + cardPadding, y + 64, {
-            width: colWidth - cardPadding * 2,
-          });
+          .text(
+            '* Change your password on first login',
+            x + cardPadding,
+            y + 64,
+            {
+              width: colWidth - cardPadding * 2,
+            },
+          );
 
         doc.fillColor('#000');
 

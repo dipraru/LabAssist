@@ -1,8 +1,19 @@
 import {
-  Body, Controller, Get, Param, Patch, Post, UploadedFiles,
-  UseGuards, UseInterceptors, UploadedFile,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UploadedFiles,
+  UseGuards,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
-import { FileInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
+import {
+  FileInterceptor,
+  FileFieldsInterceptor,
+} from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -11,9 +22,15 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/role.enum';
 import { ContestsService } from './contests.service';
 import {
-  AddContestProblemDto, AnswerClarificationDto, AskClarificationDto,
-  ContestJudgeResultDto, ContestSubmitDto, CreateAnnouncementDto,
-  CreateContestDto, CreateProblemDto, CreateTempParticipantsDto,
+  AddContestProblemDto,
+  AnswerClarificationDto,
+  AskClarificationDto,
+  ContestJudgeResultDto,
+  ContestSubmitDto,
+  CreateAnnouncementDto,
+  CreateContestDto,
+  CreateProblemDto,
+  CreateTempParticipantsDto,
   GradeContestSubmissionDto,
 } from './dto/contests.dto';
 import { ContestStatus } from '../../common/enums';
@@ -26,10 +43,14 @@ export class ContestsController {
   // ─── PUBLIC / ALL ROLES ──────────────────────────────────────────────────────
 
   @Get()
-  listContests() { return this.svc.listContests(); }
+  listContests() {
+    return this.svc.listContests();
+  }
 
   @Get(':id')
-  getById(@Param('id') id: string) { return this.svc.getContestById(id); }
+  getById(@Param('id') id: string) {
+    return this.svc.getContestById(id);
+  }
 
   @Get(':id/standings')
   standings(@Param('id') id: string, @CurrentUser() user: any) {
@@ -38,7 +59,9 @@ export class ContestsController {
   }
 
   @Get(':id/announcements')
-  announcements(@Param('id') id: string) { return this.svc.getAnnouncements(id); }
+  announcements(@Param('id') id: string) {
+    return this.svc.getAnnouncements(id);
+  }
 
   // ─── JUDGE: PROBLEM BANK ─────────────────────────────────────────────────────
 
@@ -62,24 +85,39 @@ export class ContestsController {
 
   @Roles(UserRole.TEMP_JUDGE)
   @Patch('problems/:id')
-  updateProblem(@Param('id') id: string, @Body() dto: Partial<CreateProblemDto>, @CurrentUser() user: any) {
+  updateProblem(
+    @Param('id') id: string,
+    @Body() dto: Partial<CreateProblemDto>,
+    @CurrentUser() user: any,
+  ) {
     return this.svc.updateProblem(id, dto, user.id);
   }
 
   @Roles(UserRole.TEMP_JUDGE)
   @Post('problems/:id/files')
-  @UseInterceptors(FileFieldsInterceptor(
-    [{ name: 'inputFile', maxCount: 1 }, { name: 'outputFile', maxCount: 1 }],
-    { storage: memoryStorage() },
-  ))
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'inputFile', maxCount: 1 },
+        { name: 'outputFile', maxCount: 1 },
+      ],
+      { storage: memoryStorage() },
+    ),
+  )
   uploadProblemFiles(
     @Param('id') id: string,
-    @UploadedFiles() files: { inputFile?: Express.Multer.File[]; outputFile?: Express.Multer.File[] },
+    @UploadedFiles()
+    files: {
+      inputFile?: Express.Multer.File[];
+      outputFile?: Express.Multer.File[];
+    },
     @CurrentUser() user: any,
   ) {
     return this.svc.uploadProblemFile(
-      id, user.id,
-      files.inputFile?.[0], files.outputFile?.[0],
+      id,
+      user.id,
+      files.inputFile?.[0],
+      files.outputFile?.[0],
     );
   }
 
@@ -129,7 +167,11 @@ export class ContestsController {
 
   @Roles(UserRole.TEMP_JUDGE)
   @Patch('submissions/:id/grade')
-  grade(@Param('id') id: string, @Body() dto: GradeContestSubmissionDto, @CurrentUser() user: any) {
+  grade(
+    @Param('id') id: string,
+    @Body() dto: GradeContestSubmissionDto,
+    @CurrentUser() user: any,
+  ) {
     return this.svc.gradeSubmission(id, dto, user.id);
   }
 
@@ -151,13 +193,20 @@ export class ContestsController {
 
   @Roles(UserRole.TEMP_JUDGE)
   @Patch('clarifications/:id/answer')
-  answerClar(@Param('id') id: string, @Body() dto: AnswerClarificationDto, @CurrentUser() user: any) {
+  answerClar(
+    @Param('id') id: string,
+    @Body() dto: AnswerClarificationDto,
+    @CurrentUser() user: any,
+  ) {
     return this.svc.answerClarification(id, dto, user.id);
   }
 
   @Roles(UserRole.TEMP_JUDGE)
   @Post('participants/bulk')
-  createParticipants(@Body() dto: CreateTempParticipantsDto, @CurrentUser() user: any) {
+  createParticipants(
+    @Body() dto: CreateTempParticipantsDto,
+    @CurrentUser() user: any,
+  ) {
     return this.svc.createTempParticipants(dto, user.id);
   }
 
@@ -173,7 +222,11 @@ export class ContestsController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     return this.svc.submitSolution(
-      contestId, dto, user.id, user.username, file,
+      contestId,
+      dto,
+      user.id,
+      user.username,
+      file,
     );
   }
 

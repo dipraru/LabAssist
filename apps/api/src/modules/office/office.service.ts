@@ -1,8 +1,11 @@
 import {
-  Injectable, BadRequestException, NotFoundException, ConflictException,
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, EntityManager, In } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import * as bcrypt from 'bcryptjs';
 import { User } from '../users/entities/user.entity';
@@ -10,21 +13,36 @@ import { Student } from '../users/entities/student.entity';
 import { Teacher } from '../users/entities/teacher.entity';
 import { TempJudge } from '../users/entities/temp-judge.entity';
 import { Semester } from '../courses/entities/semester.entity';
+import { Course } from '../courses/entities/course.entity';
+import { Enrollment } from '../courses/entities/enrollment.entity';
 import { UserRole } from '../../common/enums/role.enum';
 import {
-  CreateTeacherDto, CreateStudentsBulkDto, CreateTempJudgeDto,
-  ExtendTempJudgeDto, CorrectStudentDto, CorrectTeacherDto, CreateStudentDto,
+  CreateTeacherDto,
+  CreateStudentsBulkDto,
+  CreateTempJudgeDto,
+  ExtendTempJudgeDto,
+  CorrectStudentDto,
+  CorrectTeacherDto,
+  CreateStudentDto,
 } from './dto/office.dto';
 
 function generatePassword(length = 10): string {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#$';
-  return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  return Array.from(
+    { length },
+    () => chars[Math.floor(Math.random() * chars.length)],
+  ).join('');
 }
 
-function parseStudentId(id: string): { batchYear: string; deptCode: string; rollNumber: string } {
+function parseStudentId(id: string): {
+  batchYear: string;
+  deptCode: string;
+  rollNumber: string;
+} {
   // Format: 2107070 → batch=21, dept=07, roll=070
   const str = id.trim();
-  if (str.length !== 7) throw new BadRequestException(`Invalid student ID format: ${id}`);
+  if (str.length !== 7)
+    throw new BadRequestException(`Invalid student ID format: ${id}`);
   return {
     batchYear: str.substring(0, 2),
     deptCode: str.substring(2, 4),
@@ -45,12 +63,16 @@ function normalizeBatchYear(batchYear: string): string {
   } else if (digitsOnly.length === 4) {
     year = parseInt(digitsOnly, 10);
   } else {
-    throw new BadRequestException('Batch year must be a valid year (e.g. 2021)');
+    throw new BadRequestException(
+      'Batch year must be a valid year (e.g. 2021)',
+    );
   }
 
   const currentYear = new Date().getFullYear();
   if (year < 2000 || year > currentYear + 1) {
-    throw new BadRequestException(`Batch year must be between 2000 and ${currentYear + 1}`);
+    throw new BadRequestException(
+      `Batch year must be between 2000 and ${currentYear + 1}`,
+    );
   }
 
   return String(year);
@@ -58,6 +80,13 @@ function normalizeBatchYear(batchYear: string): string {
 
 function getTwoDigitBatchFromYear(year: string): string {
   return year.slice(-2);
+}
+
+function batchYearVariants(batchYear: string): string[] {
+  const digits = batchYear.replace(/\D/g, '');
+  if (digits.length === 4) return [digits, digits.slice(2)];
+  if (digits.length === 2) return [digits, `20${digits}`];
+  return [batchYear];
 }
 
 function parseCsvLine(line: string): string[] {
@@ -91,7 +120,9 @@ function parseCsvLine(line: string): string[] {
   return result;
 }
 
-function parseStudentsCsv(csvText: string): { studentId: string; fullName?: string }[] {
+function parseStudentsCsv(
+  csvText: string,
+): { studentId: string; fullName?: string }[] {
   const normalized = csvText.replace(/^\uFEFF/, '');
   const lines = normalized
     .split(/\r?\n/)
@@ -103,8 +134,9 @@ function parseStudentsCsv(csvText: string): { studentId: string; fullName?: stri
   }
 
   const firstRowColumns = parseCsvLine(lines[0]);
-  const normalizedHeaders = firstRowColumns
-    .map((header) => header.toLowerCase().replace(/\s+/g, ''));
+  const normalizedHeaders = firstRowColumns.map((header) =>
+    header.toLowerCase().replace(/\s+/g, ''),
+  );
   const studentIdIndexFromHeader = normalizedHeaders.findIndex((header) =>
     ['studentid', 'student_id', 'id'].includes(header),
   );
@@ -118,7 +150,9 @@ function parseStudentsCsv(csvText: string): { studentId: string; fullName?: stri
   const fullNameIndex = hasHeader ? fullNameIndexFromHeader : 1;
 
   if (hasHeader && lines.length < 2) {
-    throw new BadRequestException('CSV includes header but no student rows were found');
+    throw new BadRequestException(
+      'CSV includes header but no student rows were found',
+    );
   }
 
   const rows: { studentId: string; fullName?: string }[] = [];
@@ -128,18 +162,23 @@ function parseStudentsCsv(csvText: string): { studentId: string; fullName?: stri
     const rowNumber = lineIndex + 1;
     const columns = parseCsvLine(lines[lineIndex]);
     const studentId = (columns[studentIdIndex] ?? '').trim();
-    const fullName = fullNameIndex >= 0 ? (columns[fullNameIndex] ?? '').trim() : '';
+    const fullName =
+      fullNameIndex >= 0 ? (columns[fullNameIndex] ?? '').trim() : '';
 
     if (!studentId) {
       throw new BadRequestException(`Missing studentId at row ${rowNumber}`);
     }
 
     if (!/^\d{7}$/.test(studentId)) {
-      throw new BadRequestException(`Invalid studentId '${studentId}' at row ${rowNumber}. Expected 7 digits.`);
+      throw new BadRequestException(
+        `Invalid studentId '${studentId}' at row ${rowNumber}. Expected 7 digits.`,
+      );
     }
 
     if (seenStudentIds.has(studentId)) {
-      throw new BadRequestException(`Duplicate studentId '${studentId}' in CSV at row ${rowNumber}`);
+      throw new BadRequestException(
+        `Duplicate studentId '${studentId}' in CSV at row ${rowNumber}`,
+      );
     }
 
     seenStudentIds.add(studentId);
@@ -154,7 +193,9 @@ function parseStudentsCsv(csvText: string): { studentId: string; fullName?: stri
   }
 
   if (rows.length > 200) {
-    throw new BadRequestException('Cannot import more than 200 students at once');
+    throw new BadRequestException(
+      'Cannot import more than 200 students at once',
+    );
   }
 
   return rows;
@@ -171,13 +212,75 @@ export class OfficeService {
     private readonly dataSource: DataSource,
   ) {}
 
+  private async autoEnrollStudentIntoCurrentCourses(
+    manager: EntityManager,
+    student: Student,
+  ): Promise<void> {
+    const currentSemesters = await manager.find(Semester, {
+      where: {
+        batchYear: In(batchYearVariants(student.batchYear)),
+        isCurrent: true,
+      },
+      select: ['id'],
+    });
+
+    if (!currentSemesters.length) {
+      return;
+    }
+
+    const courses = await manager.find(Course, {
+      where: {
+        semesterId: In(currentSemesters.map((semester) => semester.id)),
+        isActive: true,
+      },
+      select: ['id'],
+    });
+
+    if (!courses.length) {
+      return;
+    }
+
+    const existingEnrollments = await manager.find(Enrollment, {
+      where: {
+        studentId: student.id,
+        courseId: In(courses.map((course) => course.id)),
+      },
+      select: ['courseId'],
+    });
+
+    const enrolledCourseIds = new Set(
+      existingEnrollments.map((enrollment) => enrollment.courseId),
+    );
+
+    const newEnrollments = courses
+      .filter((course) => !enrolledCourseIds.has(course.id))
+      .map((course) =>
+        manager.create(Enrollment, {
+          courseId: course.id,
+          studentId: student.id,
+          isActive: true,
+        }),
+      );
+
+    if (!newEnrollments.length) {
+      return;
+    }
+
+    await manager.save(Enrollment, newEnrollments);
+  }
+
   // ────────────────────────────────────────────────────────
   // TEACHER MANAGEMENT
   // ────────────────────────────────────────────────────────
 
-  async createTeacher(dto: CreateTeacherDto): Promise<{ teacher: Teacher; plainPassword: string }> {
-    const existing = await this.userRepo.findOne({ where: { username: dto.teacherId } });
-    if (existing) throw new ConflictException(`Teacher ID ${dto.teacherId} already exists`);
+  async createTeacher(
+    dto: CreateTeacherDto,
+  ): Promise<{ teacher: Teacher; plainPassword: string }> {
+    const existing = await this.userRepo.findOne({
+      where: { username: dto.teacherId },
+    });
+    if (existing)
+      throw new ConflictException(`Teacher ID ${dto.teacherId} already exists`);
 
     const plainPassword = generatePassword();
     const hashedPassword = await bcrypt.hash(plainPassword, 12);
@@ -220,14 +323,21 @@ export class OfficeService {
   // STUDENT BULK CREATION
   // ────────────────────────────────────────────────────────
 
-  async createStudent(dto: CreateStudentDto): Promise<{ student: Student; plainPassword: string }> {
-    const existing = await this.userRepo.findOne({ where: { username: dto.studentId } });
-    if (existing) throw new ConflictException(`Student ID ${dto.studentId} already exists`);
+  async createStudent(
+    dto: CreateStudentDto,
+  ): Promise<{ student: Student; plainPassword: string }> {
+    const existing = await this.userRepo.findOne({
+      where: { username: dto.studentId },
+    });
+    if (existing)
+      throw new ConflictException(`Student ID ${dto.studentId} already exists`);
 
     const parsed = parseStudentId(dto.studentId);
     const normalizedBatchYear = normalizeBatchYear(dto.batchYear);
     if (parsed.batchYear !== getTwoDigitBatchFromYear(normalizedBatchYear)) {
-      throw new BadRequestException(`Student ID batch (${parsed.batchYear}) does not match provided batch (${normalizedBatchYear})`);
+      throw new BadRequestException(
+        `Student ID batch (${parsed.batchYear}) does not match provided batch (${normalizedBatchYear})`,
+      );
     }
     const plainPassword = generatePassword();
     const hashedPassword = await bcrypt.hash(plainPassword, 12);
@@ -257,6 +367,10 @@ export class OfficeService {
         userId: savedUser.id,
       });
       const savedStudent = await queryRunner.manager.save(student);
+      await this.autoEnrollStudentIntoCurrentCourses(
+        queryRunner.manager,
+        savedStudent,
+      );
       await queryRunner.commitTransaction();
       return { student: savedStudent, plainPassword };
     } catch (e) {
@@ -267,10 +381,14 @@ export class OfficeService {
     }
   }
 
-  async createStudentsBulk(dto: CreateStudentsBulkDto): Promise<{ credentials: { username: string; password: string; name: string }[] }> {
+  async createStudentsBulk(dto: CreateStudentsBulkDto): Promise<{
+    credentials: { username: string; password: string; name: string }[];
+  }> {
     const normalizedBatchYear = normalizeBatchYear(dto.batchYear);
     if (!dto.fromStudentId || !dto.toStudentId) {
-      throw new BadRequestException('fromStudentId and toStudentId are required for range import');
+      throw new BadRequestException(
+        'fromStudentId and toStudentId are required for range import',
+      );
     }
     const from = parseInt(dto.fromStudentId, 10);
     const to = parseInt(dto.toStudentId, 10);
@@ -278,10 +396,13 @@ export class OfficeService {
       throw new BadRequestException('Invalid student ID range');
     }
     if (to - from > 200) {
-      throw new BadRequestException('Cannot create more than 200 students at once');
+      throw new BadRequestException(
+        'Cannot create more than 200 students at once',
+      );
     }
 
-    const credentials: { username: string; password: string; name: string }[] = [];
+    const credentials: { username: string; password: string; name: string }[] =
+      [];
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -290,12 +411,18 @@ export class OfficeService {
       for (let idNum = from; idNum <= to; idNum++) {
         const studentId = idNum.toString().padStart(7, '0');
         // Skip if already exists
-        const exists = await queryRunner.manager.findOne(User, { where: { username: studentId } });
+        const exists = await queryRunner.manager.findOne(User, {
+          where: { username: studentId },
+        });
         if (exists) continue;
 
         const parsed = parseStudentId(studentId);
-        if (parsed.batchYear !== getTwoDigitBatchFromYear(normalizedBatchYear)) {
-          throw new BadRequestException(`Student ID ${studentId} does not match batch ${normalizedBatchYear}`);
+        if (
+          parsed.batchYear !== getTwoDigitBatchFromYear(normalizedBatchYear)
+        ) {
+          throw new BadRequestException(
+            `Student ID ${studentId} does not match batch ${normalizedBatchYear}`,
+          );
         }
         const plainPassword = generatePassword();
         const hashedPassword = await bcrypt.hash(plainPassword, 12);
@@ -318,8 +445,16 @@ export class OfficeService {
           profileCompleted: false,
           userId: savedUser.id,
         });
-        await queryRunner.manager.save(student);
-        credentials.push({ username: studentId, password: plainPassword, name: `Student ${studentId}` });
+        const savedStudent = await queryRunner.manager.save(student);
+        await this.autoEnrollStudentIntoCurrentCourses(
+          queryRunner.manager,
+          savedStudent,
+        );
+        credentials.push({
+          username: studentId,
+          password: plainPassword,
+          name: `Student ${studentId}`,
+        });
       }
       await queryRunner.commitTransaction();
       return { credentials };
@@ -331,7 +466,10 @@ export class OfficeService {
     }
   }
 
-  async createStudentsBulkFromCsv(csvBuffer: Buffer, batchYear: string): Promise<{
+  async createStudentsBulkFromCsv(
+    csvBuffer: Buffer,
+    batchYear: string,
+  ): Promise<{
     credentials: { username: string; password: string; name: string }[];
     totalRows: number;
     createdCount: number;
@@ -339,7 +477,8 @@ export class OfficeService {
   }> {
     const normalizedBatchYear = normalizeBatchYear(batchYear);
     const students = parseStudentsCsv(csvBuffer.toString('utf8'));
-    const credentials: { username: string; password: string; name: string }[] = [];
+    const credentials: { username: string; password: string; name: string }[] =
+      [];
     let createdCount = 0;
     let skippedCount = 0;
 
@@ -349,15 +488,21 @@ export class OfficeService {
 
     try {
       for (const row of students) {
-        const exists = await queryRunner.manager.findOne(User, { where: { username: row.studentId } });
+        const exists = await queryRunner.manager.findOne(User, {
+          where: { username: row.studentId },
+        });
         if (exists) {
           skippedCount += 1;
           continue;
         }
 
         const parsed = parseStudentId(row.studentId);
-        if (parsed.batchYear !== getTwoDigitBatchFromYear(normalizedBatchYear)) {
-          throw new BadRequestException(`Student ID ${row.studentId} does not match batch ${normalizedBatchYear}`);
+        if (
+          parsed.batchYear !== getTwoDigitBatchFromYear(normalizedBatchYear)
+        ) {
+          throw new BadRequestException(
+            `Student ID ${row.studentId} does not match batch ${normalizedBatchYear}`,
+          );
         }
         const plainPassword = generatePassword();
         const hashedPassword = await bcrypt.hash(plainPassword, 12);
@@ -381,7 +526,11 @@ export class OfficeService {
           profileCompleted: false,
           userId: savedUser.id,
         });
-        await queryRunner.manager.save(student);
+        const savedStudent = await queryRunner.manager.save(student);
+        await this.autoEnrollStudentIntoCurrentCourses(
+          queryRunner.manager,
+          savedStudent,
+        );
 
         createdCount += 1;
         credentials.push({
@@ -410,7 +559,10 @@ export class OfficeService {
   // TEMP JUDGE MANAGEMENT
   // ────────────────────────────────────────────────────────
 
-  async createTempJudge(dto: CreateTempJudgeDto, officeUserId: string): Promise<{ judge: TempJudge; plainPassword: string }> {
+  async createTempJudge(
+    dto: CreateTempJudgeDto,
+    officeUserId: string,
+  ): Promise<{ judge: TempJudge; plainPassword: string }> {
     const count = await this.judgeRepo.count();
     const judgeId = `TJ-${new Date().getFullYear()}-${String(count + 1).padStart(3, '0')}`;
 
@@ -462,7 +614,10 @@ export class OfficeService {
     }
   }
 
-  async extendTempJudge(judgeId: string, dto: ExtendTempJudgeDto): Promise<TempJudge> {
+  async extendTempJudge(
+    judgeId: string,
+    dto: ExtendTempJudgeDto,
+  ): Promise<TempJudge> {
     const judge = await this.judgeRepo.findOne({ where: { id: judgeId } });
     if (!judge) throw new NotFoundException('Judge not found');
 
@@ -471,15 +626,22 @@ export class OfficeService {
       throw new BadRequestException('Invalid extension date');
     }
     if (nextUntil <= new Date()) {
-      throw new BadRequestException('New access deadline must be in the future');
+      throw new BadRequestException(
+        'New access deadline must be in the future',
+      );
     }
 
     judge.accessUntil = nextUntil;
-    await this.userRepo.update(judge.userId, { expiresAt: nextUntil, isActive: true });
+    await this.userRepo.update(judge.userId, {
+      expiresAt: nextUntil,
+      isActive: true,
+    });
     return this.judgeRepo.save(judge);
   }
 
-  async resetTempJudgeCredentials(judgeId: string): Promise<{ judge: TempJudge; plainPassword: string }> {
+  async resetTempJudgeCredentials(
+    judgeId: string,
+  ): Promise<{ judge: TempJudge; plainPassword: string }> {
     const judge = await this.judgeRepo.findOne({ where: { id: judgeId } });
     if (!judge) throw new NotFoundException('Judge not found');
 
@@ -499,11 +661,15 @@ export class OfficeService {
     return { judge, plainPassword };
   }
 
-  async getTempJudgeCredentials(judgeId: string): Promise<{ judge: TempJudge; plainPassword: string }> {
+  async getTempJudgeCredentials(
+    judgeId: string,
+  ): Promise<{ judge: TempJudge; plainPassword: string }> {
     const judge = await this.judgeRepo.findOne({ where: { id: judgeId } });
     if (!judge) throw new NotFoundException('Judge not found');
     if (!judge.latestIssuedPassword) {
-      throw new NotFoundException('No credential snapshot found. Regenerate credentials first.');
+      throw new NotFoundException(
+        'No credential snapshot found. Regenerate credentials first.',
+      );
     }
 
     return { judge, plainPassword: judge.latestIssuedPassword };
@@ -518,7 +684,9 @@ export class OfficeService {
   // ────────────────────────────────────────────────────────
 
   async correctStudentInfo(dto: CorrectStudentDto): Promise<Student> {
-    const student = await this.studentRepo.findOne({ where: { userId: dto.studentUserId } });
+    const student = await this.studentRepo.findOne({
+      where: { userId: dto.studentUserId },
+    });
     if (!student) throw new NotFoundException('Student not found');
 
     if (dto.fullName) student.fullName = dto.fullName;
@@ -528,7 +696,9 @@ export class OfficeService {
   }
 
   async correctTeacherInfo(dto: CorrectTeacherDto): Promise<Teacher> {
-    const teacher = await this.teacherRepo.findOne({ where: { userId: dto.teacherUserId } });
+    const teacher = await this.teacherRepo.findOne({
+      where: { userId: dto.teacherUserId },
+    });
     if (!teacher) throw new NotFoundException('Teacher not found');
 
     if (dto.fullName) teacher.fullName = dto.fullName;
@@ -554,7 +724,9 @@ export class OfficeService {
   }
 
   async getAllTeachers(): Promise<Teacher[]> {
-    return this.teacherRepo.find({ order: { designation: 'ASC', fullName: 'ASC' } });
+    return this.teacherRepo.find({
+      order: { designation: 'ASC', fullName: 'ASC' },
+    });
   }
 
   async getAllStudents(batchYear?: string): Promise<Student[]> {
@@ -567,7 +739,8 @@ export class OfficeService {
     const existing = await this.semesterRepo.findOne({
       where: { name: dto.name, batchYear: normalizedBatchYear },
     });
-    if (existing) throw new ConflictException('Semester already exists for this batch');
+    if (existing)
+      throw new ConflictException('Semester already exists for this batch');
 
     const semester = this.semesterRepo.create({
       name: dto.name,
@@ -579,11 +752,17 @@ export class OfficeService {
   }
 
   async getAllSemesters() {
-    return this.semesterRepo.find({ order: { batchYear: 'DESC', name: 'ASC' } });
+    return this.semesterRepo.find({
+      order: { batchYear: 'DESC', name: 'ASC' },
+    });
   }
 
-  async resetTeacherCredentials(teacherId: string): Promise<{ teacher: Teacher; plainPassword: string }> {
-    const teacher = await this.teacherRepo.findOne({ where: { id: teacherId } });
+  async resetTeacherCredentials(
+    teacherId: string,
+  ): Promise<{ teacher: Teacher; plainPassword: string }> {
+    const teacher = await this.teacherRepo.findOne({
+      where: { id: teacherId },
+    });
     if (!teacher) throw new NotFoundException('Teacher not found');
 
     const plainPassword = generatePassword();
@@ -596,8 +775,12 @@ export class OfficeService {
     return { teacher, plainPassword };
   }
 
-  async resetStudentCredentials(studentId: string): Promise<{ student: Student; plainPassword: string }> {
-    const student = await this.studentRepo.findOne({ where: { id: studentId } });
+  async resetStudentCredentials(
+    studentId: string,
+  ): Promise<{ student: Student; plainPassword: string }> {
+    const student = await this.studentRepo.findOne({
+      where: { id: studentId },
+    });
     if (!student) throw new NotFoundException('Student not found');
 
     const plainPassword = generatePassword();
@@ -612,30 +795,39 @@ export class OfficeService {
   }
 
   async deleteTeacher(teacherId: string): Promise<void> {
-    const teacher = await this.teacherRepo.findOne({ where: { id: teacherId } });
+    const teacher = await this.teacherRepo.findOne({
+      where: { id: teacherId },
+    });
     if (!teacher) throw new NotFoundException('Teacher not found');
     await this.userRepo.delete(teacher.userId);
   }
 
   async deleteStudent(studentId: string): Promise<void> {
-    const student = await this.studentRepo.findOne({ where: { id: studentId } });
+    const student = await this.studentRepo.findOne({
+      where: { id: studentId },
+    });
     if (!student) throw new NotFoundException('Student not found');
     await this.userRepo.delete(student.userId);
   }
 
-  async updateSemester(id: string, dto: {
-    name?: string;
-    batchYear?: string;
-    startDate?: string;
-    endDate?: string;
-  }): Promise<Semester> {
+  async updateSemester(
+    id: string,
+    dto: {
+      name?: string;
+      batchYear?: string;
+      startDate?: string;
+      endDate?: string;
+    },
+  ): Promise<Semester> {
     const semester = await this.semesterRepo.findOne({ where: { id } });
     if (!semester) throw new NotFoundException('Semester not found');
 
     if (dto.name) semester.name = dto.name as Semester['name'];
     if (dto.batchYear) semester.batchYear = normalizeBatchYear(dto.batchYear);
-    if (dto.startDate !== undefined) semester.startDate = dto.startDate ? new Date(dto.startDate) : null;
-    if (dto.endDate !== undefined) semester.endDate = dto.endDate ? new Date(dto.endDate) : null;
+    if (dto.startDate !== undefined)
+      semester.startDate = dto.startDate ? new Date(dto.startDate) : null;
+    if (dto.endDate !== undefined)
+      semester.endDate = dto.endDate ? new Date(dto.endDate) : null;
 
     return this.semesterRepo.save(semester);
   }
@@ -644,7 +836,8 @@ export class OfficeService {
     const semester = await this.semesterRepo.findOne({ where: { id } });
     if (!semester) throw new NotFoundException('Semester not found');
 
-    await this.semesterRepo.createQueryBuilder()
+    await this.semesterRepo
+      .createQueryBuilder()
       .update(Semester)
       .set({ isCurrent: false })
       .execute();
@@ -654,10 +847,15 @@ export class OfficeService {
   }
 
   async deleteSemester(id: string): Promise<void> {
-    const semester = await this.semesterRepo.findOne({ where: { id }, relations: ['courses'] });
+    const semester = await this.semesterRepo.findOne({
+      where: { id },
+      relations: ['courses'],
+    });
     if (!semester) throw new NotFoundException('Semester not found');
     if (semester.courses?.length) {
-      throw new BadRequestException('Cannot delete semester with existing courses');
+      throw new BadRequestException(
+        'Cannot delete semester with existing courses',
+      );
     }
     await this.semesterRepo.delete(id);
   }

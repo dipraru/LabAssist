@@ -1,5 +1,8 @@
 import {
-  Injectable, NotFoundException, ForbiddenException, BadRequestException,
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -7,24 +10,37 @@ import { LabTest } from './entities/lab-test.entity';
 import { LabTestStatus } from './entities/lab-test.entity';
 import { LabTestProblem } from './entities/lab-test-problem.entity';
 import { LabSubmission } from './entities/lab-submission.entity';
-import { CreateLabTestDto, ManualGradeDto, SubmitLabCodeDto } from './dto/lab-tests.dto';
+import {
+  CreateLabTestDto,
+  ManualGradeDto,
+  SubmitLabCodeDto,
+} from './dto/lab-tests.dto';
 import { StorageService } from '../storage/storage.service';
-import { LabTestType, ManualVerdict, SubmissionStatus } from '../../common/enums';
+import {
+  LabTestType,
+  ManualVerdict,
+  SubmissionStatus,
+} from '../../common/enums';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class LabTestsService {
   constructor(
     @InjectRepository(LabTest) private labTestRepo: Repository<LabTest>,
-    @InjectRepository(LabTestProblem) private problemRepo: Repository<LabTestProblem>,
-    @InjectRepository(LabSubmission) private submissionRepo: Repository<LabSubmission>,
+    @InjectRepository(LabTestProblem)
+    private problemRepo: Repository<LabTestProblem>,
+    @InjectRepository(LabSubmission)
+    private submissionRepo: Repository<LabSubmission>,
     private dataSource: DataSource,
     private storage: StorageService,
   ) {}
 
   // ─── TEACHER ────────────────────────────────────────────────────────────────
 
-  async createLabTest(dto: CreateLabTestDto, teacherUserId: string): Promise<LabTest> {
+  async createLabTest(
+    dto: CreateLabTestDto,
+    teacherUserId: string,
+  ): Promise<LabTest> {
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
     await qr.startTransaction();
@@ -61,7 +77,11 @@ export class LabTestsService {
     }
   }
 
-  async updateLabTestStatus(labTestId: string, status: LabTestStatus, teacherUserId: string) {
+  async updateLabTestStatus(
+    labTestId: string,
+    status: LabTestStatus,
+    teacherUserId: string,
+  ) {
     const labTest = await this.labTestRepo.findOneBy({ id: labTestId });
     if (!labTest) throw new NotFoundException('Lab test not found');
     labTest.status = status;
@@ -103,7 +123,7 @@ export class LabTestsService {
     if (!labTest) throw new NotFoundException();
 
     const problems = await this.problemRepo.findBy({ labTestId });
-    const problemIds = problems.map(p => p.id);
+    const problemIds = problems.map((p) => p.id);
     if (!problemIds.length) return [];
 
     return this.dataSource
@@ -114,7 +134,11 @@ export class LabTestsService {
       .getMany();
   }
 
-  async gradeSubmission(submissionId: string, dto: ManualGradeDto, teacherUserId: string) {
+  async gradeSubmission(
+    submissionId: string,
+    dto: ManualGradeDto,
+    teacherUserId: string,
+  ) {
     const sub = await this.submissionRepo.findOne({
       where: { id: submissionId },
       relations: ['problem', 'problem.labTest'],
@@ -132,7 +156,9 @@ export class LabTestsService {
 
   // ─── STUDENT ────────────────────────────────────────────────────────────────
 
-  async getRunningLabTestsForStudent(studentUserId: string): Promise<LabTest[]> {
+  async getRunningLabTestsForStudent(
+    studentUserId: string,
+  ): Promise<LabTest[]> {
     // Returns lab tests for courses the student is enrolled in (relies on enrollment check via courses)
     // Simple: fetch all RUNNING tests for now; course-scope enforced at enrollment level
     const now = new Date();
@@ -148,7 +174,8 @@ export class LabTestsService {
   async getProblemsForStudent(labTestId: string): Promise<LabTestProblem[]> {
     const labTest = await this.labTestRepo.findOneBy({ id: labTestId });
     if (!labTest) throw new NotFoundException();
-    if (labTest.status === LabTestStatus.DRAFT) throw new ForbiddenException('Lab test not started');
+    if (labTest.status === LabTestStatus.DRAFT)
+      throw new ForbiddenException('Lab test not started');
 
     return this.problemRepo.find({
       where: { labTestId },
@@ -179,7 +206,8 @@ export class LabTestsService {
     let fileName: string | null = null;
 
     if (file) {
-      if (file.size > 256 * 1024) throw new BadRequestException('File too large (max 256KB)');
+      if (file.size > 256 * 1024)
+        throw new BadRequestException('File too large (max 256KB)');
       const saved = await this.storage.saveBuffer(
         file.buffer,
         `${uuidv4()}_${file.originalname}`,
@@ -190,7 +218,8 @@ export class LabTestsService {
       fileName = file.originalname;
     }
 
-    if (!dto.code && !fileUrl) throw new BadRequestException('Code or file is required');
+    if (!dto.code && !fileUrl)
+      throw new BadRequestException('Code or file is required');
 
     const sub = this.submissionRepo.create({
       problemId,

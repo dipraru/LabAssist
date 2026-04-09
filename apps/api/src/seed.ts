@@ -47,12 +47,28 @@ async function seed() {
     database: process.env.DB_DATABASE ?? 'labassist',
     synchronize: true,
     entities: [
-      User, Student, Teacher, TempJudge, TempParticipant,
-      Semester, Course, Enrollment, LabSchedule, LectureSheet,
-      Assignment, AssignmentLink, AssignmentSubmission,
-      LabTest, LabTestProblem, LabSubmission,
-      Contest, Problem, ContestProblem, ContestSubmission,
-      ContestAnnouncement, ContestClarification,
+      User,
+      Student,
+      Teacher,
+      TempJudge,
+      TempParticipant,
+      Semester,
+      Course,
+      Enrollment,
+      LabSchedule,
+      LectureSheet,
+      Assignment,
+      AssignmentLink,
+      AssignmentSubmission,
+      LabTest,
+      LabTestProblem,
+      LabSubmission,
+      Contest,
+      Problem,
+      ContestProblem,
+      ContestSubmission,
+      ContestAnnouncement,
+      ContestClarification,
       Notification,
     ],
   });
@@ -100,7 +116,7 @@ async function seed() {
   await ds.destroy();
 }
 
-seed().catch(err => {
+seed().catch((err) => {
   console.error('Seed failed:', err);
   process.exit(1);
 });

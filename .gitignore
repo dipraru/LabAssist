@@ -87,6 +87,7 @@ apps/api/uploads/
 
 # ─── Local text notes ─────────────────────────────────────────
 *.txt
+.codex
 
 # Local developer tools (do not commit local DB GUI)
 tools/db-gui/

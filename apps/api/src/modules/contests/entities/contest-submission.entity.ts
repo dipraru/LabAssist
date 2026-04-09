@@ -10,7 +10,11 @@ import {
 } from 'typeorm';
 import { Contest } from './contest.entity';
 import { ContestProblem } from './contest-problem.entity';
-import { SubmissionStatus, ManualVerdict, ProgrammingLanguage } from '../../../common/enums';
+import {
+  SubmissionStatus,
+  ManualVerdict,
+  ProgrammingLanguage,
+} from '../../../common/enums';
 
 @Entity('contest_submissions')
 export class ContestSubmission {
@@ -63,7 +67,12 @@ export class ContestSubmission {
   submissionStatus: SubmissionStatus;
 
   // manual_verdict: judge manually sets this (MVP)
-  @Column({ type: 'enum', enum: ManualVerdict, default: ManualVerdict.PENDING, nullable: true })
+  @Column({
+    type: 'enum',
+    enum: ManualVerdict,
+    default: ManualVerdict.PENDING,
+    nullable: true,
+  })
   manualVerdict: ManualVerdict | null;
 
   @Column({ type: 'float', nullable: true })

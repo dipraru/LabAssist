@@ -10,7 +10,9 @@ import { TempJudge } from '../users/entities/temp-judge.entity';
 import { Semester } from '../courses/entities/semester.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Student, Teacher, TempJudge, Semester])],
+  imports: [
+    TypeOrmModule.forFeature([User, Student, Teacher, TempJudge, Semester]),
+  ],
   controllers: [OfficeController],
   providers: [OfficeService, PdfService],
   exports: [OfficeService],

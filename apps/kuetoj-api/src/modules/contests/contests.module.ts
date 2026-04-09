@@ -10,14 +10,24 @@ import { User } from '../users/entities/user.entity';
 import { TempJudge } from '../users/entities/temp-judge.entity';
 import { TempParticipant } from '../users/entities/temp-participant.entity';
 import { ContestsService } from './contests.service';
-import { ContestsController, ContestsPublicController } from './contests.controller';
+import {
+  ContestsController,
+  ContestsPublicController,
+} from './contests.controller';
 import { CredentialsPdfService } from './credentials-pdf.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      Contest, Problem, ContestProblem, ContestSubmission,
-      ContestAnnouncement, ContestClarification, User, TempJudge, TempParticipant,
+      Contest,
+      Problem,
+      ContestProblem,
+      ContestSubmission,
+      ContestAnnouncement,
+      ContestClarification,
+      User,
+      TempJudge,
+      TempParticipant,
     ]),
   ],
   providers: [ContestsService, CredentialsPdfService],

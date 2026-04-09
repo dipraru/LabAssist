@@ -18,7 +18,9 @@ export class NotificationsController {
 
   @Get('unread-count')
   getUnreadCount(@CurrentUser() user: { id: string }) {
-    return this.notificationsService.getUnreadCount(user.id).then((count) => ({ count }));
+    return this.notificationsService
+      .getUnreadCount(user.id)
+      .then((count) => ({ count }));
   }
 
   @Patch('mark-read')
