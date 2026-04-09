@@ -11,8 +11,11 @@ import { Semester } from './entities/semester.entity';
 import { Enrollment } from './entities/enrollment.entity';
 import { LabSchedule } from './entities/lab-schedule.entity';
 import { LectureSheet } from './entities/lecture-sheet.entity';
+import { CoursePost, CoursePostType } from './entities/course-post.entity';
+import { CoursePostComment } from './entities/course-post-comment.entity';
 import { Student } from '../users/entities/student.entity';
 import { Teacher } from '../users/entities/teacher.entity';
+import { UserRole } from '../../common/enums/role.enum';
 import {
   CreateCourseDto,
   UpdateCourseDto,
@@ -21,6 +24,8 @@ import {
   CreateScheduleDto,
   CreateLectureSheetDto,
   UpdateLectureSheetDto,
+  CreateCoursePostDto,
+  CreateCoursePostCommentDto,
 } from './dto/courses.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
@@ -43,6 +48,10 @@ export class CoursesService {
     private scheduleRepo: Repository<LabSchedule>,
     @InjectRepository(LectureSheet)
     private lectureSheetRepo: Repository<LectureSheet>,
+    @InjectRepository(CoursePost)
+    private coursePostRepo: Repository<CoursePost>,
+    @InjectRepository(CoursePostComment)
+    private coursePostCommentRepo: Repository<CoursePostComment>,
     @InjectRepository(Student) private studentRepo: Repository<Student>,
     @InjectRepository(Teacher) private teacherRepo: Repository<Teacher>,
     private readonly notificationsService: NotificationsService,
@@ -293,6 +302,98 @@ export class CoursesService {
     return saved;
   }
 
+  async getCoursePosts(
+    courseId: string,
+    user: { id: string; role: UserRole },
+  ): Promise<CoursePost[]> {
+    await this.resolveCourseActor(courseId, user);
+
+    const posts = await this.coursePostRepo.find({
+      where: { courseId },
+      relations: ['comments'],
+      order: { createdAt: 'DESC' },
+    });
+
+    return posts.map((post) => ({
+      ...post,
+      comments: [...(post.comments ?? [])].sort(
+        (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+      ),
+    }));
+  }
+
+  async createCoursePost(
+    courseId: string,
+    dto: CreateCoursePostDto,
+    user: { id: string; role: UserRole },
+  ): Promise<CoursePost> {
+    const actor = await this.resolveCourseActor(courseId, user);
+
+    let type =
+      dto.type ??
+      (actor.role === UserRole.TEACHER
+        ? CoursePostType.ANNOUNCEMENT
+        : CoursePostType.QUESTION);
+
+    if (
+      actor.role === UserRole.STUDENT &&
+      type === CoursePostType.ANNOUNCEMENT
+    ) {
+      type = CoursePostType.QUESTION;
+    }
+
+    const post = this.coursePostRepo.create({
+      courseId,
+      type,
+      title: dto.title?.trim() || null,
+      body: dto.body.trim(),
+      postedByUserId: actor.userId,
+      postedByRole: actor.role,
+      postedByName: actor.displayName,
+    });
+
+    const saved = await this.coursePostRepo.save(post);
+
+    await this.notifyUsersAboutCoursePost(saved, actor);
+
+    return this.coursePostRepo.findOneOrFail({
+      where: { id: saved.id },
+      relations: ['comments'],
+    });
+  }
+
+  async addCoursePostComment(
+    postId: string,
+    dto: CreateCoursePostCommentDto,
+    user: { id: string; role: UserRole },
+  ): Promise<CoursePostComment> {
+    const post = await this.coursePostRepo.findOne({ where: { id: postId } });
+    if (!post) throw new NotFoundException('Course post not found');
+
+    const actor = await this.resolveCourseActor(post.courseId, user);
+
+    const comment = this.coursePostCommentRepo.create({
+      postId,
+      body: dto.body.trim(),
+      commentedByUserId: actor.userId,
+      commentedByRole: actor.role,
+      commentedByName: actor.displayName,
+    });
+
+    const saved = await this.coursePostCommentRepo.save(comment);
+
+    if (post.postedByUserId !== actor.userId) {
+      await this.notificationsService.createBulk([post.postedByUserId], {
+        type: NotificationType.SYSTEM,
+        title: `New comment in ${post.course.courseCode ?? 'course'}`,
+        body: `${actor.displayName} commented on your course post.`,
+        referenceId: post.id,
+      });
+    }
+
+    return saved;
+  }
+
   async getLectureSheets(courseId: string): Promise<LectureSheet[]> {
     return this.lectureSheetRepo.find({
       where: { courseId },
@@ -395,5 +496,104 @@ export class CoursesService {
       where: { courseId, isActive: true },
       relations: ['student'],
     });
+  }
+
+  private async resolveCourseActor(
+    courseId: string,
+    user: { id: string; role: UserRole },
+  ): Promise<{
+    userId: string;
+    role: UserRole;
+    displayName: string;
+    course: Course;
+  }> {
+    const course = await this.courseRepo.findOne({
+      where: { id: courseId, isActive: true },
+      relations: ['teachers', 'semester', 'schedules'],
+    });
+    if (!course) throw new NotFoundException('Course not found');
+
+    if (user.role === UserRole.TEACHER) {
+      const teacher = await this.teacherRepo.findOne({
+        where: { userId: user.id },
+      });
+      if (!teacher) throw new NotFoundException('Teacher not found');
+
+      const isAssigned = course.teachers.some((item) => item.id === teacher.id);
+      if (!isAssigned) {
+        throw new ForbiddenException('You are not assigned to this course');
+      }
+
+      return {
+        userId: user.id,
+        role: user.role,
+        displayName: teacher.fullName || teacher.teacherId,
+        course,
+      };
+    }
+
+    if (user.role === UserRole.STUDENT) {
+      const student = await this.studentRepo.findOne({
+        where: { userId: user.id },
+      });
+      if (!student) throw new NotFoundException('Student not found');
+
+      const enrollment = await this.enrollmentRepo.findOne({
+        where: { courseId, studentId: student.id, isActive: true },
+      });
+      if (!enrollment) {
+        throw new ForbiddenException('You are not enrolled in this course');
+      }
+
+      return {
+        userId: user.id,
+        role: user.role,
+        displayName: student.fullName || student.studentId,
+        course,
+      };
+    }
+
+    throw new ForbiddenException('Only teachers and students can access the course stream');
+  }
+
+  private async notifyUsersAboutCoursePost(
+    post: CoursePost,
+    actor: {
+      userId: string;
+      role: UserRole;
+      displayName: string;
+      course: Course;
+    },
+  ) {
+    if (actor.role === UserRole.TEACHER) {
+      const enrollments = await this.enrollmentRepo.find({
+        where: { courseId: post.courseId, isActive: true },
+        relations: ['student'],
+      });
+      const recipientUserIds = enrollments
+        .map((enrollment) => enrollment.student?.userId)
+        .filter((userId): userId is string => Boolean(userId));
+
+      await this.notificationsService.createBulk(recipientUserIds, {
+        type: NotificationType.SYSTEM,
+        title: `${actor.course.courseCode}: ${post.title || 'New class post'}`,
+        body: `${actor.displayName} posted an update in ${actor.course.title}.`,
+        referenceId: post.id,
+      });
+      return;
+    }
+
+    if (actor.role === UserRole.STUDENT) {
+      const teacherUserIds = actor.course.teachers
+        .map((teacher) => teacher.userId)
+        .filter((userId): userId is string => Boolean(userId));
+
+      await this.notificationsService.createBulk(teacherUserIds, {
+        type: NotificationType.SYSTEM,
+        title: `${actor.course.courseCode}: new student question`,
+        body: `${actor.displayName} posted in ${actor.course.title}.`,
+        referenceId: post.id,
+      });
+    }
   }
 }

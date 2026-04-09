@@ -11,6 +11,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CourseType } from '../entities/course.entity';
+import { CoursePostType } from '../entities/course-post.entity';
 import { DayOfWeek } from '../entities/lab-schedule.entity';
 
 export class CreateCourseDto {
@@ -147,4 +148,22 @@ export class UpdateLectureSheetDto {
   @ValidateNested({ each: true })
   @Type(() => LinkDto)
   links?: LinkDto[];
+}
+
+export class CreateCoursePostDto {
+  @IsOptional()
+  @IsEnum(CoursePostType)
+  type?: CoursePostType;
+
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsString()
+  body: string;
+}
+
+export class CreateCoursePostCommentDto {
+  @IsString()
+  body: string;
 }

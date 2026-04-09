@@ -22,6 +22,8 @@ import { Course } from './modules/courses/entities/course.entity';
 import { Enrollment } from './modules/courses/entities/enrollment.entity';
 import { LabSchedule } from './modules/courses/entities/lab-schedule.entity';
 import { LectureSheet } from './modules/courses/entities/lecture-sheet.entity';
+import { CoursePost } from './modules/courses/entities/course-post.entity';
+import { CoursePostComment } from './modules/courses/entities/course-post-comment.entity';
 import { Assignment } from './modules/assignments/entities/assignment.entity';
 import { AssignmentLink } from './modules/assignments/entities/assignment-link.entity';
 import { AssignmentSubmission } from './modules/assignments/entities/assignment-submission.entity';
@@ -57,6 +59,8 @@ async function seed() {
       Enrollment,
       LabSchedule,
       LectureSheet,
+      CoursePost,
+      CoursePostComment,
       Assignment,
       AssignmentLink,
       AssignmentSubmission,

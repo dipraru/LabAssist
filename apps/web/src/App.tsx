@@ -79,6 +79,7 @@ export default function App() {
       <Route element={<ProtectedRoute allowedRoles={['teacher']} />}>
         <Route path="/teacher" element={<TeacherDashboard />} />
         <Route path="/teacher/courses" element={<TeacherCourses />} />
+        <Route path="/teacher/courses/:courseId" element={<TeacherCourses />} />
         <Route path="/teacher/assignments" element={<AssignmentManage />} />
         <Route path="/teacher/lab-tests" element={<LabTestManage />} />
         <Route path="/teacher/lecture-sheets" element={<LectureSheets />} />
@@ -89,6 +90,7 @@ export default function App() {
       <Route element={<ProtectedRoute allowedRoles={['student']} />}>
         <Route path="/student" element={<StudentDashboard />} />
         <Route path="/student/courses" element={<StudentCourses />} />
+        <Route path="/student/courses/:courseId" element={<StudentCourses />} />
         <Route path="/student/assignments" element={<StudentAssignments />} />
         <Route path="/student/lab-tests" element={<StudentLabTests />} />
         <Route path="/student/profile" element={<StudentProfile />} />
