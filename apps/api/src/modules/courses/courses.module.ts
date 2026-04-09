@@ -7,6 +7,8 @@ import { Semester } from './entities/semester.entity';
 import { Enrollment } from './entities/enrollment.entity';
 import { LabSchedule } from './entities/lab-schedule.entity';
 import { LectureSheet } from './entities/lecture-sheet.entity';
+import { CoursePost } from './entities/course-post.entity';
+import { CoursePostComment } from './entities/course-post-comment.entity';
 import { Student } from '../users/entities/student.entity';
 import { Teacher } from '../users/entities/teacher.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -19,6 +21,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
       Enrollment,
       LabSchedule,
       LectureSheet,
+      CoursePost,
+      CoursePostComment,
       Student,
       Teacher,
     ]),

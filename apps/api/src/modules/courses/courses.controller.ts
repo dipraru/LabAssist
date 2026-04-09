@@ -23,6 +23,8 @@ import {
   CreateScheduleDto,
   CreateLectureSheetDto,
   UpdateLectureSheetDto,
+  CreateCoursePostDto,
+  CreateCoursePostCommentDto,
 } from './dto/courses.dto';
 
 @UseGuards(JwtAuthGuard)
@@ -54,6 +56,36 @@ export class CoursesController {
   @Get(':id')
   getCourse(@Param('id') id: string) {
     return this.coursesService.getCourseById(id);
+  }
+
+  @Get(':id/posts')
+  getCoursePosts(
+    @Param('id') courseId: string,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.coursesService.getCoursePosts(courseId, user);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.TEACHER, UserRole.STUDENT)
+  @Post(':id/posts')
+  createCoursePost(
+    @Param('id') courseId: string,
+    @Body() dto: CreateCoursePostDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.coursesService.createCoursePost(courseId, dto, user);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.TEACHER, UserRole.STUDENT)
+  @Post('posts/:postId/comments')
+  addCoursePostComment(
+    @Param('postId') postId: string,
+    @Body() dto: CreateCoursePostCommentDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.coursesService.addCoursePostComment(postId, dto, user);
   }
 
   @Get(':id/enrollments')
