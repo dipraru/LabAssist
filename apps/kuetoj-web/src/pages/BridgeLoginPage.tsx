@@ -4,6 +4,13 @@ import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { useAuthStore } from '../store/auth.store';
 
+const LABASSIST_WEB_URL = import.meta.env.VITE_LABASSIST_WEB_URL ?? 'http://localhost:5173';
+
+function redirectToLabassistLogout() {
+  const base = LABASSIST_WEB_URL.replace(/\/$/, '');
+  window.location.replace(`${base}/login?logout=1&reason=bridge_failed`);
+}
+
 export function BridgeLoginPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -12,7 +19,7 @@ export function BridgeLoginPage() {
   useEffect(() => {
     const token = params.get('token');
     if (!token) {
-      navigate('/login', { replace: true });
+      redirectToLabassistLogout();
       return;
     }
 
@@ -37,7 +44,7 @@ export function BridgeLoginPage() {
         navigate(user.role === 'temp_judge' ? '/contests' : '/contest', { replace: true });
       } catch {
         toast.error('Bridge login failed. Please sign in again.');
-        navigate('/login', { replace: true });
+        redirectToLabassistLogout();
       }
     };
 
