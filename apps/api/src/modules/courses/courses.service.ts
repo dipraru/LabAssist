@@ -16,6 +16,7 @@ import { CoursePost, CoursePostType } from './entities/course-post.entity';
 import { CoursePostComment } from './entities/course-post-comment.entity';
 import { Student } from '../users/entities/student.entity';
 import { Teacher } from '../users/entities/teacher.entity';
+import { Batch } from '../office/entities/batch.entity';
 import { UserRole } from '../../common/enums/role.enum';
 import {
   CreateCourseDto,
@@ -38,6 +39,10 @@ function batchYearVariants(batchYear: string): string[] {
   return [batchYear];
 }
 
+function isValidTimeRange(startTime: string, endTime: string): boolean {
+  return startTime < endTime;
+}
+
 @Injectable()
 export class CoursesService {
   constructor(
@@ -55,8 +60,80 @@ export class CoursesService {
     private coursePostCommentRepo: Repository<CoursePostComment>,
     @InjectRepository(Student) private studentRepo: Repository<Student>,
     @InjectRepository(Teacher) private teacherRepo: Repository<Teacher>,
+    @InjectRepository(Batch) private batchRepo: Repository<Batch>,
     private readonly notificationsService: NotificationsService,
   ) {}
+
+  private async validateCourseSetup(
+    semester: Semester,
+    schedules: CreateCourseDto['schedules'] | UpdateCourseDto['schedules'],
+    excludedStudentIds: string[] = [],
+  ) {
+    const batch = await this.batchRepo.findOne({
+      where: { year: semester.batchYear },
+    });
+    if (!batch) {
+      throw new NotFoundException('Batch not found for the selected semester');
+    }
+
+    const expectedSections =
+      batch.sectionCount > 1
+        ? batch.sections.map((section) => section.name)
+        : [batch.sections[0]?.name ?? 'All Students'];
+
+    if (!schedules || schedules.length !== expectedSections.length) {
+      throw new BadRequestException(
+        `Expected schedule entries for ${expectedSections.length} section(s)`,
+      );
+    }
+
+    const scheduleNames = new Set<string>();
+    for (const schedule of schedules) {
+      if (!expectedSections.includes(schedule.sectionName)) {
+        throw new BadRequestException(
+          `Invalid section '${schedule.sectionName}' for batch ${batch.year}`,
+        );
+      }
+      if (scheduleNames.has(schedule.sectionName)) {
+        throw new BadRequestException(
+          `Duplicate schedule found for section '${schedule.sectionName}'`,
+        );
+      }
+      scheduleNames.add(schedule.sectionName);
+
+      if (!isValidTimeRange(schedule.startTime, schedule.endTime)) {
+        throw new BadRequestException(
+          `End time must be after start time for section '${schedule.sectionName}'`,
+        );
+      }
+    }
+
+    const uniqueExcludedStudentIds = Array.from(
+      new Set(excludedStudentIds.map((studentId) => studentId.trim())),
+    );
+    let excludedStudents: Student[] = [];
+    if (uniqueExcludedStudentIds.length) {
+      excludedStudents = await this.studentRepo.find({
+        where: {
+          studentId: In(uniqueExcludedStudentIds),
+          batchYear: In(batchYearVariants(semester.batchYear)),
+        },
+      });
+
+      if (excludedStudents.length !== uniqueExcludedStudentIds.length) {
+        throw new BadRequestException(
+          'Every excluded student ID must belong to the selected batch',
+        );
+      }
+    }
+
+    return {
+      batch,
+      expectedSections,
+      excludedStudents,
+      excludedStudentIds: uniqueExcludedStudentIds,
+    };
+  }
 
   async createCourse(dto: CreateCourseDto): Promise<Course> {
     const semester = await this.semesterRepo.findOne({
@@ -70,6 +147,16 @@ export class CoursesService {
     if (teachers.length !== dto.teacherIds.length) {
       throw new BadRequestException('One or more assigned teachers were not found');
     }
+
+    const { excludedStudents } = await this.validateCourseSetup(
+      semester,
+      dto.schedules,
+      dto.excludedStudentIds ?? [],
+    );
+
+    const excludedStudentIdSet = new Set(
+      excludedStudents.map((student) => student.studentId),
+    );
 
     const course = this.courseRepo.create({
       courseCode: dto.courseCode,
@@ -86,29 +173,50 @@ export class CoursesService {
       where: { batchYear: In(batchYearVariants(semester.batchYear)) },
     });
     if (students.length) {
-      const enrollments = students.map((student) =>
+      const enrollments = students
+        .filter((student) => !excludedStudentIdSet.has(student.studentId))
+        .map((student) =>
         this.enrollmentRepo.create({
           courseId: savedCourse.id,
           studentId: student.id,
           isActive: true,
         }),
-      );
-      await this.enrollmentRepo.save(enrollments);
+        );
+      if (enrollments.length) {
+        await this.enrollmentRepo.save(enrollments);
+      }
     }
+
+    const schedules = dto.schedules.map((schedule) =>
+      this.scheduleRepo.create({
+        courseId: savedCourse.id,
+        dayOfWeek: schedule.dayOfWeek,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        roomNumber: null,
+        batchYear: semester.batchYear,
+        sectionName: schedule.sectionName,
+      }),
+    );
+    await this.scheduleRepo.save(schedules);
 
     return this.getCourseById(savedCourse.id);
   }
 
   async updateCourse(id: string, dto: UpdateCourseDto): Promise<Course> {
-    const course = await this.courseRepo.findOne({ where: { id } });
+    const course = await this.courseRepo.findOne({
+      where: { id },
+      relations: ['teachers', 'semester', 'schedules'],
+    });
     if (!course) throw new NotFoundException('Course not found');
 
-    if (dto.semesterId && dto.semesterId !== course.semesterId) {
-      const semester = await this.semesterRepo.findOne({
-        where: { id: dto.semesterId },
+    let semester = course.semester;
+    if (!semester) {
+      const fallbackSemester = await this.semesterRepo.findOne({
+        where: { id: course.semesterId },
       });
-      if (!semester) throw new NotFoundException('Semester not found');
-      course.semesterId = dto.semesterId;
+      if (!fallbackSemester) throw new NotFoundException('Semester not found');
+      semester = fallbackSemester;
     }
 
     if (dto.courseCode !== undefined) course.courseCode = dto.courseCode;
@@ -130,6 +238,83 @@ export class CoursesService {
     }
 
     await this.courseRepo.save(course);
+
+    if (dto.schedules !== undefined || dto.excludedStudentIds !== undefined) {
+      const schedules = dto.schedules ?? course.schedules.map((schedule) => ({
+        sectionName: schedule.sectionName ?? 'All Students',
+        dayOfWeek: schedule.dayOfWeek,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+      }));
+      const excludedStudentIds = dto.excludedStudentIds ?? [];
+
+      const { excludedStudents } = await this.validateCourseSetup(
+        semester,
+        schedules,
+        excludedStudentIds,
+      );
+
+      await this.scheduleRepo.delete({ courseId: course.id });
+      await this.scheduleRepo.save(
+        schedules.map((schedule) =>
+          this.scheduleRepo.create({
+            courseId: course.id,
+            dayOfWeek: schedule.dayOfWeek,
+            startTime: schedule.startTime,
+            endTime: schedule.endTime,
+            roomNumber: null,
+            batchYear: semester.batchYear,
+            sectionName: schedule.sectionName,
+          }),
+        ),
+      );
+
+      const batchStudents = await this.studentRepo.find({
+        where: { batchYear: In(batchYearVariants(semester.batchYear)) },
+      });
+      const excludedStudentIdSet = new Set(
+        excludedStudents.map((student) => student.studentId),
+      );
+      const allowedStudentIds = new Set(
+        batchStudents
+          .filter((student) => !excludedStudentIdSet.has(student.studentId))
+          .map((student) => student.id),
+      );
+
+      const currentEnrollments = await this.enrollmentRepo.find({
+        where: { courseId: course.id },
+      });
+
+      const toDelete = currentEnrollments.filter(
+        (enrollment) => !allowedStudentIds.has(enrollment.studentId),
+      );
+      if (toDelete.length) {
+        await this.enrollmentRepo.remove(toDelete);
+      }
+
+      const enrolledStudentIdSet = new Set(
+        currentEnrollments
+          .filter((enrollment) => allowedStudentIds.has(enrollment.studentId))
+          .map((enrollment) => enrollment.studentId),
+      );
+      const toCreate = batchStudents
+        .filter(
+          (student) =>
+            allowedStudentIds.has(student.id) &&
+            !enrolledStudentIdSet.has(student.id),
+        )
+        .map((student) =>
+          this.enrollmentRepo.create({
+            courseId: course.id,
+            studentId: student.id,
+            isActive: true,
+          }),
+        );
+      if (toCreate.length) {
+        await this.enrollmentRepo.save(toCreate);
+      }
+    }
+
     return this.getCourseById(id);
   }
 
@@ -142,7 +327,7 @@ export class CoursesService {
   async getCourseById(id: string): Promise<Course> {
     const course = await this.courseRepo.findOne({
       where: { id },
-      relations: ['teachers', 'semester', 'schedules'],
+      relations: ['teachers', 'semester', 'schedules', 'enrollments', 'enrollments.student'],
     });
     if (!course) throw new NotFoundException('Course not found');
     return course;
@@ -504,7 +689,7 @@ export class CoursesService {
 
   async getAllCourses(): Promise<Course[]> {
     return this.courseRepo.find({
-      relations: ['semester', 'teachers', 'schedules'],
+      relations: ['semester', 'teachers', 'schedules', 'enrollments', 'enrollments.student'],
       where: { isActive: true },
       order: { createdAt: 'DESC' },
     });

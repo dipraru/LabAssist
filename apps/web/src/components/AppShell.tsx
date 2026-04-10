@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth.store';
 import {
   LayoutDashboard, BookOpen, FlaskConical, Bell,
-  LogOut, User, ChevronDown, Layers3,
+  LogOut, User, ChevronDown, Layers3, FileStack, KeyRound,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -16,6 +16,7 @@ const roleNavItems: Record<string, { label: string; href: string; icon: ReactNod
     { label: 'Courses', href: '/office/courses', icon: <BookOpen size={18} /> },
     { label: 'Semesters', href: '/office/semesters', icon: <BookOpen size={18} /> },
     { label: 'Temp Judges', href: '/office/temp-judges', icon: <User size={18} /> },
+    { label: 'Application', href: '/office/application', icon: <FileStack size={18} /> },
   ],
   teacher: [
     { label: 'Dashboard', href: '/teacher', icon: <LayoutDashboard size={18} /> },
@@ -46,20 +47,25 @@ export function AppShell({ children }: { children: ReactNode }) {
     : user?.role === 'teacher'
       ? '/teacher/notifications'
       : '#';
+  const changePasswordHref = user?.role === 'student'
+    ? '/student/change-password'
+    : user?.role === 'teacher'
+      ? '/teacher/change-password'
+      : '/office/change-password';
 
   const handleLogout = () => {
     logout();
-    localStorage.removeItem('kuetoj_token');
-    localStorage.removeItem('kuetoj_user');
+    localStorage.removeItem('labassist_token');
+    localStorage.removeItem('labassist_user');
     sessionStorage.setItem('labassist_forced_logout', '1');
     window.location.replace('/login?logout=1');
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex h-screen overflow-hidden bg-slate-50">
       {/* Sidebar */}
       <aside
-        className={`${sidebarOpen ? 'w-56' : 'w-14'} transition-all duration-200 bg-slate-900 text-white flex flex-col`}
+        className={`${sidebarOpen ? 'w-56' : 'w-14'} h-screen shrink-0 transition-all duration-200 bg-slate-900 text-white flex flex-col`}
       >
         {/* Logo */}
         <div className="flex items-center gap-2 px-4 py-5 border-b border-slate-700">
@@ -68,7 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 py-4 space-y-0.5 px-2">
+        <nav className="flex-1 overflow-y-auto py-4 space-y-0.5 px-2">
           {navItems.map((item) => {
             const isDashboardItem = item.href === '/office' || item.href === '/teacher' || item.href === '/student';
             const active = isDashboardItem
@@ -97,6 +103,13 @@ export function AppShell({ children }: { children: ReactNode }) {
               <p className="text-xs text-indigo-400">{user?.role}</p>
             </div>
           )}
+          <Link
+            to={changePasswordHref}
+            className="mb-1 flex items-center gap-2 w-full px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white text-sm transition-colors"
+          >
+            <KeyRound size={16} />
+            {sidebarOpen && 'Change Password'}
+          </Link>
           <button
             onClick={handleLogout}
             className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-slate-300 hover:bg-red-900 hover:text-white text-sm transition-colors"
@@ -108,7 +121,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main */}
-      <main className="flex-1 flex flex-col min-w-0">
+      <main className="flex-1 flex min-h-0 flex-col min-w-0">
         {/* Topbar */}
         <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
           <button
@@ -124,7 +137,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <div className="flex-1 p-6 overflow-auto">
+        <div className="flex-1 overflow-auto p-6">
           {children}
         </div>
       </main>

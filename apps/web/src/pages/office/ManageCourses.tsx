@@ -3,11 +3,22 @@ import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, FlaskConical, Pencil, Plus, Trash2, UserRound } from 'lucide-react';
+import {
+  BookOpen,
+  CalendarClock,
+  FlaskConical,
+  Pencil,
+  Plus,
+  Trash2,
+  UserRound,
+  UsersRound,
+  X,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
+import { WheelTimeInput } from '../../components/WheelTimeInput';
 import {
   getCourseEligibleSemesters,
   inputClass,
@@ -16,19 +27,83 @@ import {
 } from './officeAdmin.shared';
 import type { BatchRecord, SemesterRecord } from './officeAdmin.shared';
 
-const createCourseSchema = z.object({
-  batchYear: z.string().min(1, 'Batch is required'),
-  semesterId: z.string().uuid('Semester is required'),
-  title: z.string().trim().min(2, 'Course title is required'),
-  courseCode: z.string().trim().min(2, 'Course code is required'),
-  teacherIds: z.array(z.string().uuid()).min(1, 'Assign at least one teacher'),
-});
+const dayOfWeekOptions = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+] as const;
 
-const editCourseSchema = z.object({
-  title: z.string().trim().min(2, 'Course title is required'),
-  courseCode: z.string().trim().min(2, 'Course code is required'),
-  teacherIds: z.array(z.string().uuid()).min(1, 'Assign at least one teacher'),
-});
+const scheduleSchema = z
+  .object({
+    sectionName: z.string().min(1),
+    dayOfWeek: z.enum(dayOfWeekOptions),
+    startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Start time is required'),
+    endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'End time is required'),
+  })
+  .refine((value) => value.endTime > value.startTime, {
+    message: 'End time must be after start time',
+    path: ['endTime'],
+  });
+
+const createCourseSchema = z
+  .object({
+    batchYear: z.string().min(1, 'Batch is required'),
+    semesterId: z.string().uuid('Semester is required'),
+    title: z.string().trim().min(2, 'Course title is required'),
+    courseCode: z.string().trim().min(2, 'Course code is required'),
+    teacherIds: z.array(z.string().uuid()).min(1, 'Assign at least one teacher'),
+    schedules: z.array(scheduleSchema).min(1, 'Schedule is required'),
+    excludedStudentIds: z.array(z.string().regex(/^\d{7}$/, 'Student ID must be 7 digits')),
+  })
+  .superRefine((value, ctx) => {
+    const seen = new Set<string>();
+    const batchPrefix = value.batchYear ? value.batchYear.slice(-2) : '';
+
+    value.excludedStudentIds.forEach((studentId, index) => {
+      if (seen.has(studentId)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['excludedStudentIds', index],
+          message: 'Duplicate student ID',
+        });
+      }
+      seen.add(studentId);
+
+      if (batchPrefix && !studentId.startsWith(batchPrefix)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['excludedStudentIds', index],
+          message: `Student ID must belong to batch ${value.batchYear}`,
+        });
+      }
+    });
+  });
+
+const editCourseSchema = z
+  .object({
+    title: z.string().trim().min(2, 'Course title is required'),
+    courseCode: z.string().trim().min(2, 'Course code is required'),
+    teacherIds: z.array(z.string().uuid()).min(1, 'Assign at least one teacher'),
+    schedules: z.array(scheduleSchema).min(1, 'Schedule is required'),
+    excludedStudentIds: z.array(z.string().regex(/^\d{7}$/, 'Student ID must be 7 digits')),
+  })
+  .superRefine((value, ctx) => {
+    const seen = new Set<string>();
+    value.excludedStudentIds.forEach((studentId, index) => {
+      if (seen.has(studentId)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['excludedStudentIds', index],
+          message: 'Duplicate student ID',
+        });
+      }
+      seen.add(studentId);
+    });
+  });
 
 type CreateCourseForm = z.infer<typeof createCourseSchema>;
 type EditCourseForm = z.infer<typeof editCourseSchema>;
@@ -39,6 +114,14 @@ type TeacherRecord = {
   teacherId: string;
 };
 
+type CourseScheduleRecord = {
+  id: string;
+  sectionName?: string | null;
+  dayOfWeek: (typeof dayOfWeekOptions)[number];
+  startTime: string;
+  endTime: string;
+};
+
 type CourseRecord = {
   id: string;
   title: string;
@@ -47,8 +130,13 @@ type CourseRecord = {
   semesterId: string;
   semester?: SemesterRecord;
   teachers?: TeacherRecord[];
-  enrollments?: { id: string }[];
+  enrollments?: { id: string; student?: { studentId: string } }[];
+  schedules?: CourseScheduleRecord[];
 };
+
+function normalizeTimeValue(value: string) {
+  return value.length >= 5 ? value.slice(0, 5) : value;
+}
 
 function FixedField({ label, value }: { label: string; value: string }) {
   return (
@@ -125,14 +213,224 @@ function TeacherChecklist({
   );
 }
 
+function ExcludedStudentsInput({
+  control,
+  batchYear,
+}: {
+  control: any;
+  batchYear: string;
+}) {
+  const [draft, setDraft] = useState('');
+
+  return (
+    <Controller
+      control={control}
+      name="excludedStudentIds"
+      render={({ field, fieldState }) => {
+        const values = Array.isArray(field.value) ? field.value : [];
+
+        const commitDraft = () => {
+          const tokens = draft
+            .split(/[,\s]+/)
+            .map((token) => token.trim())
+            .filter(Boolean);
+
+          if (!tokens.length) return;
+
+          const nextValues = Array.from(new Set([...values, ...tokens]));
+          field.onChange(nextValues);
+          setDraft('');
+        };
+
+        return (
+          <div>
+            <label className={labelClass}>Except Students</label>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="mb-3 flex flex-wrap gap-2">
+                {values.map((studentId: string) => (
+                  <span
+                    key={studentId}
+                    className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-sm font-medium text-slate-700 ring-1 ring-slate-200"
+                  >
+                    {studentId}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        field.onChange(values.filter((value: string) => value !== studentId))
+                      }
+                      className="text-slate-400 transition-colors hover:text-red-500"
+                    >
+                      <X size={14} />
+                    </button>
+                  </span>
+                ))}
+                {!values.length && (
+                  <p className="text-sm text-slate-400">
+                    Add student IDs that should not be enrolled in this course.
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-3 flex gap-3">
+                <input
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ',') {
+                      event.preventDefault();
+                      commitDraft();
+                    }
+                  }}
+                  className={`${inputClass} flex-1`}
+                  placeholder={batchYear ? `Example: ${batchYear.slice(-2)}07001` : 'Select a batch first'}
+                  disabled={!batchYear}
+                />
+                <button
+                  type="button"
+                  onClick={commitDraft}
+                  disabled={!batchYear || !draft.trim()}
+                  className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+            {fieldState.error && (
+              <p className="mt-1.5 text-xs text-red-500">{fieldState.error.message}</p>
+            )}
+          </div>
+        );
+      }}
+    />
+  );
+}
+
+function buildScheduleRows(batch?: BatchRecord) {
+  if (!batch) return [];
+
+  const sections =
+    batch.sectionCount > 1 && batch.sections.length
+      ? batch.sections.map((section) => section.name)
+      : [batch.sections[0]?.name ?? 'All Students'];
+
+  return sections.map((sectionName) => ({
+    sectionName,
+    dayOfWeek: 'Sunday' as const,
+    startTime: '08:00',
+    endTime: '09:00',
+  }));
+}
+
+function SchedulePlanner({
+  control,
+  schedules,
+  errors,
+}: {
+  control: any;
+  schedules: CreateCourseForm['schedules'];
+  errors?: any;
+}) {
+  if (!schedules.length) return null;
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className={labelClass}>Section Schedules</label>
+        <p className="text-sm text-slate-500">
+          Set the lab schedule separately for each section of the selected batch.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        {schedules.map((schedule, index) => (
+          <div
+            key={`${schedule.sectionName}-${index}`}
+            className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-black/5"
+          >
+            <div className="mb-4 flex items-center gap-3">
+              <div className="rounded-2xl bg-indigo-50 p-2.5 text-indigo-600">
+                <CalendarClock size={16} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-900">{schedule.sectionName}</p>
+                <p className="text-xs text-slate-500">Dedicated schedule entry</p>
+              </div>
+            </div>
+
+            <div className="grid gap-5 lg:grid-cols-3">
+              <div>
+                <label className={labelClass}>Day</label>
+                <Controller
+                  control={control}
+                  name={`schedules.${index}.dayOfWeek`}
+                  render={({ field }) => (
+                    <select {...field} className={inputClass}>
+                      {dayOfWeekOptions.map((day) => (
+                        <option key={day} value={day}>
+                          {day}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                />
+                {errors?.[index]?.dayOfWeek && (
+                  <p className="mt-1.5 text-xs text-red-500">
+                    {errors[index].dayOfWeek.message}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className={labelClass}>Start Time</label>
+                <Controller
+                  control={control}
+                  name={`schedules.${index}.startTime`}
+                  render={({ field }) => (
+                    <WheelTimeInput value={field.value} onChange={field.onChange} />
+                  )}
+                />
+                {errors?.[index]?.startTime && (
+                  <p className="mt-1.5 text-xs text-red-500">
+                    {errors[index].startTime.message}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className={labelClass}>End Time</label>
+                <Controller
+                  control={control}
+                  name={`schedules.${index}.endTime`}
+                  render={({ field }) => (
+                    <WheelTimeInput value={field.value} onChange={field.onChange} />
+                  )}
+                />
+                {errors?.[index]?.endTime && (
+                  <p className="mt-1.5 text-xs text-red-500">
+                    {errors[index].endTime.message}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function EditCourseModal({
   course,
+  batch,
+  students,
   teachers,
   onClose,
   onSubmit,
   isPending,
 }: {
   course: CourseRecord;
+  batch?: BatchRecord;
+  students: Array<{ studentId: string; batchYear: string }>;
   teachers: TeacherRecord[];
   onClose: () => void;
   onSubmit: (data: EditCourseForm) => void;
@@ -144,8 +442,26 @@ function EditCourseModal({
       title: course.title,
       courseCode: course.courseCode,
       teacherIds: course.teachers?.map((teacher) => teacher.id) ?? [],
+      schedules:
+        course.schedules?.map((schedule) => ({
+          sectionName: schedule.sectionName ?? 'All Students',
+          dayOfWeek: schedule.dayOfWeek,
+          startTime: normalizeTimeValue(schedule.startTime),
+          endTime: normalizeTimeValue(schedule.endTime),
+        })) ?? buildScheduleRows(batch),
+      excludedStudentIds: students
+        .filter(
+          (student) =>
+            student.batchYear === course.semester?.batchYear &&
+            !course.enrollments?.some(
+              (enrollment) => enrollment.student?.studentId === student.studentId,
+            ),
+        )
+        .map((student) => student.studentId),
     },
   });
+
+  const scheduleRows = form.watch('schedules');
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
@@ -154,7 +470,9 @@ function EditCourseModal({
         <FixedField
           label="Semester"
           value={
-            course.semester?.name ? semesterLabels[course.semester.name] ?? course.semester.name : 'Unavailable'
+            course.semester?.name
+              ? semesterLabels[course.semester.name] ?? course.semester.name
+              : 'Unavailable'
           }
         />
       </div>
@@ -182,6 +500,17 @@ function EditCourseModal({
       </div>
 
       <TeacherChecklist teachers={teachers} control={form.control} name="teacherIds" />
+
+      <SchedulePlanner
+        control={form.control}
+        schedules={scheduleRows}
+        errors={form.formState.errors.schedules}
+      />
+
+      <ExcludedStudentsInput
+        control={form.control}
+        batchYear={course.semester?.batchYear ?? ''}
+      />
 
       <div className="flex gap-3 border-t border-slate-100 pt-2">
         <button
@@ -224,6 +553,10 @@ export function ManageCourses() {
     queryKey: ['batches'],
     queryFn: () => api.get('/office/batches').then((response) => response.data),
   });
+  const { data: students = [] } = useQuery<Array<{ studentId: string; batchYear: string }>>({
+    queryKey: ['students'],
+    queryFn: () => api.get('/office/students').then((response) => response.data),
+  });
 
   const createForm = useForm<CreateCourseForm>({
     resolver: zodResolver(createCourseSchema),
@@ -233,17 +566,25 @@ export function ManageCourses() {
       title: '',
       courseCode: '',
       teacherIds: [],
+      schedules: [],
+      excludedStudentIds: [],
     },
   });
 
   const selectedBatchYear = createForm.watch('batchYear');
+  const selectedBatch = batches.find((batch) => batch.year === selectedBatchYear);
   const availableSemesters = selectedBatchYear
     ? getCourseEligibleSemesters(semesters, selectedBatchYear)
     : [];
+  const scheduleRows = createForm.watch('schedules');
 
   useEffect(() => {
     createForm.setValue('semesterId', '');
-  }, [createForm, selectedBatchYear]);
+    createForm.setValue('excludedStudentIds', []);
+    createForm.setValue('schedules', buildScheduleRows(selectedBatch), {
+      shouldValidate: true,
+    });
+  }, [createForm, selectedBatch]);
 
   const createMutation = useMutation({
     mutationFn: (data: CreateCourseForm) =>
@@ -253,6 +594,8 @@ export function ManageCourses() {
         title: data.title,
         type: 'lab',
         teacherIds: data.teacherIds,
+        schedules: data.schedules,
+        excludedStudentIds: data.excludedStudentIds,
       }),
     onSuccess: () => {
       toast.success('Course created');
@@ -263,6 +606,8 @@ export function ManageCourses() {
         title: '',
         courseCode: '',
         teacherIds: [],
+        schedules: [],
+        excludedStudentIds: [],
       });
       setShowForm(false);
     },
@@ -297,7 +642,7 @@ export function ManageCourses() {
 
   return (
     <AppShell>
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-full bg-slate-50">
         <div className="mb-8 border-b border-slate-200 bg-white px-8 py-6">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -336,7 +681,10 @@ export function ManageCourses() {
               </p>
               <p className="mt-3 text-3xl font-bold text-slate-900">
                 {semesters.filter((semester) => semester.isCurrent).length +
-                  semesters.filter((semester) => !semester.isCurrent && new Date(semester.startDate || '') > new Date()).length}
+                  semesters.filter(
+                    (semester) =>
+                      !semester.isCurrent && new Date(semester.startDate || '') > new Date(),
+                  ).length}
               </p>
             </div>
             <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
@@ -357,13 +705,16 @@ export function ManageCourses() {
                 title: '',
                 courseCode: '',
                 teacherIds: [],
+                schedules: [],
+                excludedStudentIds: [],
               });
             }}
             title="New Course"
+            maxWidthClass="max-w-6xl"
           >
             <form
               onSubmit={createForm.handleSubmit((data) => createMutation.mutate(data))}
-              className="space-y-5"
+              className="space-y-6"
             >
               <div className="grid gap-5 md:grid-cols-2">
                 <div>
@@ -450,6 +801,37 @@ export function ManageCourses() {
                 name="teacherIds"
               />
 
+              {selectedBatch && (
+                <div className="space-y-4 rounded-[2rem] border border-slate-200 bg-slate-50 p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-2xl bg-white p-3 text-slate-700 shadow-sm ring-1 ring-black/5">
+                      <UsersRound size={18} />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-semibold text-slate-900">
+                        Batch {selectedBatch.year} schedule setup
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {selectedBatch.sectionCount > 1
+                          ? 'Each section gets its own day and time slot.'
+                          : 'This batch has one shared schedule slot for all students.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <SchedulePlanner
+                    control={createForm.control}
+                    schedules={scheduleRows}
+                    errors={createForm.formState.errors.schedules}
+                  />
+
+                  <ExcludedStudentsInput
+                    control={createForm.control}
+                    batchYear={selectedBatchYear}
+                  />
+                </div>
+              )}
+
               <div className="flex gap-3 border-t border-slate-100 pt-2">
                 <button
                   type="submit"
@@ -457,7 +839,8 @@ export function ManageCourses() {
                     createForm.formState.isSubmitting ||
                     createMutation.isPending ||
                     !teachers.length ||
-                    !availableSemesters.length
+                    !availableSemesters.length ||
+                    !scheduleRows.length
                   }
                   className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white transition-all hover:bg-indigo-700 disabled:opacity-50"
                 >
@@ -475,6 +858,8 @@ export function ManageCourses() {
                       title: '',
                       courseCode: '',
                       teacherIds: [],
+                      schedules: [],
+                      excludedStudentIds: [],
                     });
                   }}
                   className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-600 transition-all hover:bg-slate-50"
@@ -494,6 +879,8 @@ export function ManageCourses() {
               <EditCourseModal
                 key={editingCourse.id}
                 course={editingCourse}
+                batch={batches.find((batch) => batch.year === editingCourse.semester?.batchYear)}
+                students={students}
                 teachers={teachers}
                 isPending={updateMutation.isPending}
                 onClose={() => setEditingCourse(null)}
@@ -508,16 +895,23 @@ export function ManageCourses() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  {['Code', 'Course Name', 'Type', 'Batch / Semester', 'Instructor', 'Enrolled', 'Actions'].map(
-                    (header) => (
-                      <th
-                        key={header}
-                        className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-400"
-                      >
-                        {header}
-                      </th>
-                    ),
-                  )}
+                  {[
+                    'Code',
+                    'Course Name',
+                    'Type',
+                    'Batch / Semester',
+                    'Schedule',
+                    'Instructor',
+                    'Enrolled',
+                    'Actions',
+                  ].map((header) => (
+                    <th
+                      key={header}
+                      className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-400"
+                    >
+                      {header}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -551,6 +945,22 @@ export function ManageCourses() {
                           ? semesterLabels[course.semester.name] ?? course.semester.name
                           : 'Unavailable'}
                       </p>
+                    </td>
+                    <td className="px-5 py-4 text-slate-500">
+                      {course.schedules?.length ? (
+                        <div className="space-y-1">
+                          {course.schedules.map((schedule) => (
+                            <div key={schedule.id} className="text-xs text-slate-600">
+                              <span className="font-semibold text-slate-700">
+                                {schedule.sectionName || 'All Students'}
+                              </span>{' '}
+                              · {schedule.dayOfWeek} · {schedule.startTime} - {schedule.endTime}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-slate-300">No schedule</span>
+                      )}
                     </td>
                     <td className="px-5 py-4 text-slate-500">
                       {course.teachers?.length ? (
@@ -600,7 +1010,7 @@ export function ManageCourses() {
 
                 {!courses.length && (
                   <tr>
-                    <td colSpan={7} className="px-5 py-16 text-center">
+                    <td colSpan={8} className="px-5 py-16 text-center">
                       <div className="flex flex-col items-center gap-2">
                         <BookOpen size={32} className="text-slate-200" />
                         <p className="text-sm text-slate-400">No courses created yet</p>
