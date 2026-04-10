@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth.store';
 import {
   LayoutDashboard, BookOpen, FlaskConical, Bell,
-  LogOut, User, ChevronDown,
+  LogOut, User, ChevronDown, Layers3,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -12,6 +12,7 @@ const roleNavItems: Record<string, { label: string; href: string; icon: ReactNod
     { label: 'Dashboard', href: '/office', icon: <LayoutDashboard size={18} /> },
     { label: 'Teachers', href: '/office/teachers', icon: <User size={18} /> },
     { label: 'Students', href: '/office/students', icon: <User size={18} /> },
+    { label: 'Batches', href: '/office/batches', icon: <Layers3 size={18} /> },
     { label: 'Courses', href: '/office/courses', icon: <BookOpen size={18} /> },
     { label: 'Semesters', href: '/office/semesters', icon: <BookOpen size={18} /> },
     { label: 'Temp Judges', href: '/office/temp-judges', icon: <User size={18} /> },

@@ -1,269 +1,595 @@
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useEffect, useState } from 'react';
+import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { BookOpen, FlaskConical, Pencil, Plus, Trash2, UserRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
-import { Pencil, Plus, Trash2, BookOpen, FlaskConical } from 'lucide-react';
+import {
+  getCourseEligibleSemesters,
+  inputClass,
+  labelClass,
+  semesterLabels,
+} from './officeAdmin.shared';
+import type { BatchRecord, SemesterRecord } from './officeAdmin.shared';
 
-const schema = z.object({
-  semesterId: z.string().uuid('Select a semester'),
-  title: z.string().min(2, 'Course title is required'),
-  courseCode: z.string().min(2, 'Course code is required'),
-  type: z.enum(['theory', 'lab']),
-  teacherIds: z.array(z.string()).optional(),
+const createCourseSchema = z.object({
+  batchYear: z.string().min(1, 'Batch is required'),
+  semesterId: z.string().uuid('Semester is required'),
+  title: z.string().trim().min(2, 'Course title is required'),
+  courseCode: z.string().trim().min(2, 'Course code is required'),
+  teacherIds: z.array(z.string().uuid()).min(1, 'Assign at least one teacher'),
 });
-type FormData = z.infer<typeof schema>;
 
-const inputClass = "w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:bg-white transition-all";
-const labelClass = "block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5";
+const editCourseSchema = z.object({
+  title: z.string().trim().min(2, 'Course title is required'),
+  courseCode: z.string().trim().min(2, 'Course code is required'),
+  teacherIds: z.array(z.string().uuid()).min(1, 'Assign at least one teacher'),
+});
+
+type CreateCourseForm = z.infer<typeof createCourseSchema>;
+type EditCourseForm = z.infer<typeof editCourseSchema>;
+
+type TeacherRecord = {
+  id: string;
+  fullName: string;
+  teacherId: string;
+};
+
+type CourseRecord = {
+  id: string;
+  title: string;
+  courseCode: string;
+  type: 'theory' | 'lab';
+  semesterId: string;
+  semester?: SemesterRecord;
+  teachers?: TeacherRecord[];
+  enrollments?: { id: string }[];
+};
+
+function FixedField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <label className={labelClass}>{label}</label>
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function TeacherChecklist({
+  teachers,
+  control,
+  name,
+}: {
+  teachers: TeacherRecord[];
+  control: any;
+  name: 'teacherIds';
+}) {
+  return (
+    <Controller
+      control={control}
+      name={name}
+      render={({ field, fieldState }) => {
+        const selectedTeacherIds = Array.isArray(field.value) ? field.value : [];
+
+        return (
+          <div>
+            <label className={labelClass}>Assign Teachers</label>
+            <div className="max-h-48 space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              {teachers.map((teacher) => {
+                const checked = selectedTeacherIds.includes(teacher.id);
+                return (
+                  <label
+                    key={teacher.id}
+                    className="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-2 text-sm text-slate-700 transition-colors hover:bg-white hover:text-slate-900"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(event) => {
+                        const next = event.target.checked
+                          ? [...selectedTeacherIds, teacher.id]
+                          : selectedTeacherIds.filter((item: string) => item !== teacher.id);
+                        field.onChange(next);
+                      }}
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span>
+                      {teacher.fullName}{' '}
+                      <span className="font-mono text-xs text-slate-400">
+                        ({teacher.teacherId})
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+
+              {!teachers.length && (
+                <p className="text-sm text-slate-400">
+                  No teachers available. Create a teacher first to open a course.
+                </p>
+              )}
+            </div>
+            {fieldState.error && (
+              <p className="mt-1.5 text-xs text-red-500">{fieldState.error.message}</p>
+            )}
+          </div>
+        );
+      }}
+    />
+  );
+}
+
+function EditCourseModal({
+  course,
+  teachers,
+  onClose,
+  onSubmit,
+  isPending,
+}: {
+  course: CourseRecord;
+  teachers: TeacherRecord[];
+  onClose: () => void;
+  onSubmit: (data: EditCourseForm) => void;
+  isPending: boolean;
+}) {
+  const form = useForm<EditCourseForm>({
+    resolver: zodResolver(editCourseSchema),
+    defaultValues: {
+      title: course.title,
+      courseCode: course.courseCode,
+      teacherIds: course.teachers?.map((teacher) => teacher.id) ?? [],
+    },
+  });
+
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+      <div className="grid gap-5 md:grid-cols-2">
+        <FixedField label="Batch" value={course.semester?.batchYear ?? 'Unavailable'} />
+        <FixedField
+          label="Semester"
+          value={
+            course.semester?.name ? semesterLabels[course.semester.name] ?? course.semester.name : 'Unavailable'
+          }
+        />
+      </div>
+
+      <FixedField label="Course Type" value={course.type === 'lab' ? 'Sessional' : 'Theory'} />
+
+      <div className="grid gap-5 md:grid-cols-2">
+        <div>
+          <label className={labelClass}>Course Title</label>
+          <input {...form.register('title')} className={inputClass} />
+          {form.formState.errors.title && (
+            <p className="mt-1.5 text-xs text-red-500">{form.formState.errors.title.message}</p>
+          )}
+        </div>
+
+        <div>
+          <label className={labelClass}>Course Code</label>
+          <input {...form.register('courseCode')} className={inputClass} />
+          {form.formState.errors.courseCode && (
+            <p className="mt-1.5 text-xs text-red-500">
+              {form.formState.errors.courseCode.message}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <TeacherChecklist teachers={teachers} control={form.control} name="teacherIds" />
+
+      <div className="flex gap-3 border-t border-slate-100 pt-2">
+        <button
+          type="submit"
+          disabled={form.formState.isSubmitting || isPending}
+          className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white transition-all hover:bg-indigo-700 disabled:opacity-50"
+        >
+          {form.formState.isSubmitting || isPending ? 'Saving...' : 'Save Changes'}
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-600 transition-all hover:bg-slate-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
 
 export function ManageCourses() {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [editingCourse, setEditingCourse] = useState<any | null>(null);
+  const [editingCourse, setEditingCourse] = useState<CourseRecord | null>(null);
 
-  const { data: courses = [] } = useQuery({
+  const { data: courses = [] } = useQuery<CourseRecord[]>({
     queryKey: ['courses-office'],
-    queryFn: () => api.get('/courses').then(r => r.data),
+    queryFn: () => api.get('/courses').then((response) => response.data),
   });
-  const { data: semesters = [] } = useQuery({
+  const { data: semesters = [] } = useQuery<SemesterRecord[]>({
     queryKey: ['semesters'],
-    queryFn: () => api.get('/office/semesters').then(r => r.data),
+    queryFn: () => api.get('/office/semesters').then((response) => response.data),
   });
-  const { data: teachers = [] } = useQuery({
+  const { data: teachers = [] } = useQuery<TeacherRecord[]>({
     queryKey: ['teachers'],
-    queryFn: () => api.get('/office/teachers').then(r => r.data),
+    queryFn: () => api.get('/office/teachers').then((response) => response.data),
+  });
+  const { data: batches = [] } = useQuery<BatchRecord[]>({
+    queryKey: ['batches'],
+    queryFn: () => api.get('/office/batches').then((response) => response.data),
   });
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormData>({
-    resolver: zodResolver(schema),
-    defaultValues: { teacherIds: [], type: 'theory' },
+  const createForm = useForm<CreateCourseForm>({
+    resolver: zodResolver(createCourseSchema),
+    defaultValues: {
+      batchYear: '',
+      semesterId: '',
+      title: '',
+      courseCode: '',
+      teacherIds: [],
+    },
   });
+
+  const selectedBatchYear = createForm.watch('batchYear');
+  const availableSemesters = selectedBatchYear
+    ? getCourseEligibleSemesters(semesters, selectedBatchYear)
+    : [];
+
+  useEffect(() => {
+    createForm.setValue('semesterId', '');
+  }, [createForm, selectedBatchYear]);
 
   const createMutation = useMutation({
-    mutationFn: async (d: FormData) => {
-      const courseRes = await api.post('/courses', {
-        semesterId: d.semesterId,
-        courseCode: d.courseCode,
-        title: d.title,
-        type: d.type,
-      });
-      if (d.teacherIds?.length) {
-        await Promise.all(d.teacherIds.map(teacherId => api.post('/courses/teachers', { courseId: courseRes.data.id, teacherId })));
-      }
-      return courseRes.data;
-    },
+    mutationFn: (data: CreateCourseForm) =>
+      api.post('/courses', {
+        semesterId: data.semesterId,
+        courseCode: data.courseCode,
+        title: data.title,
+        type: 'lab',
+        teacherIds: data.teacherIds,
+      }),
     onSuccess: () => {
-      toast.success('Course created!');
-      qc.invalidateQueries({ queryKey: ['courses-office'] });
-      reset();
+      toast.success('Course created');
+      queryClient.invalidateQueries({ queryKey: ['courses-office'] });
+      createForm.reset({
+        batchYear: '',
+        semesterId: '',
+        title: '',
+        courseCode: '',
+        teacherIds: [],
+      });
       setShowForm(false);
     },
-    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
+    onError: (error: any) =>
+      toast.error(error.response?.data?.message ?? 'Failed to create course'),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: Omit<FormData, 'teacherIds'> }) => api.patch(`/courses/${id}`, payload),
+    mutationFn: ({ id, payload }: { id: string; payload: EditCourseForm }) =>
+      api.patch(`/courses/${id}`, payload),
     onSuccess: () => {
       toast.success('Course updated');
-      qc.invalidateQueries({ queryKey: ['courses-office'] });
+      queryClient.invalidateQueries({ queryKey: ['courses-office'] });
       setEditingCourse(null);
     },
-    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to update course'),
+    onError: (error: any) =>
+      toast.error(error.response?.data?.message ?? 'Failed to update course'),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/courses/${id}`),
     onSuccess: () => {
       toast.success('Course deleted');
-      qc.invalidateQueries({ queryKey: ['courses-office'] });
+      queryClient.invalidateQueries({ queryKey: ['courses-office'] });
     },
-    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to delete course'),
+    onError: (error: any) =>
+      toast.error(error.response?.data?.message ?? 'Failed to delete course'),
   });
 
-  const labCourses = courses.filter((c: any) => c.type === 'lab');
-  const theoryCourses = courses.filter((c: any) => c.type === 'theory');
+  const totalCourses = courses.length;
+  const sessionalCourses = courses.filter((course) => course.type === 'lab').length;
 
   return (
     <AppShell>
       <div className="min-h-screen bg-slate-50">
-        {/* Page Header */}
-        <div className="bg-white border-b border-slate-200 px-8 py-6 mb-8">
-          <div className="flex items-center justify-between">
+        <div className="mb-8 border-b border-slate-200 bg-white px-8 py-6">
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-violet-50 rounded-xl">
+              <div className="rounded-2xl bg-violet-50 p-2.5">
                 <BookOpen size={18} className="text-violet-600" />
               </div>
               <div>
                 <h1 className="text-xl font-bold text-slate-900">Manage Courses</h1>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  {theoryCourses.length} theory · {labCourses.length} lab
+                <p className="mt-0.5 text-xs text-slate-400">
+                  {totalCourses} total courses · {sessionalCourses} sessional
                 </p>
               </div>
             </div>
             <button
-              onClick={() => setShowForm(!showForm)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 shadow-sm shadow-indigo-200 transition-all"
+              type="button"
+              onClick={() => setShowForm(true)}
+              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-200 transition-all hover:bg-indigo-700"
             >
-              <Plus size={16} /> New Course
+              <Plus size={16} />
+              New Course
             </button>
           </div>
         </div>
 
-        <div className="px-8 pb-10">
-          {/* Create Modal */}
-          <Modal open={showForm} onClose={() => { setShowForm(false); reset(); }} title="New Course">
-            <form onSubmit={handleSubmit(d => createMutation.mutate(d))} className="grid grid-cols-2 gap-5">
-              <div>
-                <label className={labelClass}>Semester</label>
-                <select {...register('semesterId')} className={inputClass}>
-                  <option value="">— select semester —</option>
-                  {semesters.map((s: any) => <option key={s.id} value={s.id}>{s.name} ({s.batchYear})</option>)}
-                </select>
-                {errors.semesterId && <p className="text-red-500 text-xs mt-1.5">{errors.semesterId.message}</p>}
-              </div>
-              <div>
-                <label className={labelClass}>Course Type</label>
-                <select {...register('type')} className={inputClass}>
-                  <option value="theory">Theory</option>
-                  <option value="lab">Lab</option>
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>Course Title</label>
-                <input {...register('title')} className={inputClass} placeholder="Data Structures & Algorithms" />
-                {errors.title && <p className="text-red-500 text-xs mt-1.5">{errors.title.message}</p>}
-              </div>
-              <div>
-                <label className={labelClass}>Course Code</label>
-                <input {...register('courseCode')} className={inputClass} placeholder="CSE-4111" />
-                {errors.courseCode && <p className="text-red-500 text-xs mt-1.5">{errors.courseCode.message}</p>}
+        <div className="space-y-6 px-8 pb-10">
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Available Batches
+              </p>
+              <p className="mt-3 text-3xl font-bold text-slate-900">{batches.length}</p>
+            </div>
+            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Eligible Semesters
+              </p>
+              <p className="mt-3 text-3xl font-bold text-slate-900">
+                {semesters.filter((semester) => semester.isCurrent).length +
+                  semesters.filter((semester) => !semester.isCurrent && new Date(semester.startDate || '') > new Date()).length}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Instructors Ready
+              </p>
+              <p className="mt-3 text-3xl font-bold text-slate-900">{teachers.length}</p>
+            </div>
+          </div>
+
+          <Modal
+            open={showForm}
+            onClose={() => {
+              setShowForm(false);
+              createForm.reset({
+                batchYear: '',
+                semesterId: '',
+                title: '',
+                courseCode: '',
+                teacherIds: [],
+              });
+            }}
+            title="New Course"
+          >
+            <form
+              onSubmit={createForm.handleSubmit((data) => createMutation.mutate(data))}
+              className="space-y-5"
+            >
+              <div className="grid gap-5 md:grid-cols-2">
+                <div>
+                  <label className={labelClass}>Batch</label>
+                  <select {...createForm.register('batchYear')} className={inputClass}>
+                    <option value="">Select batch</option>
+                    {batches.map((batch) => (
+                      <option key={batch.id} value={batch.year}>
+                        {batch.year}
+                      </option>
+                    ))}
+                  </select>
+                  {createForm.formState.errors.batchYear && (
+                    <p className="mt-1.5 text-xs text-red-500">
+                      {createForm.formState.errors.batchYear.message}
+                    </p>
+                  )}
+                </div>
+
+                <FixedField label="Course Type" value="Sessional" />
               </div>
 
-              <div className="col-span-2">
-                <label className={labelClass}>Assign Teachers <span className="text-slate-300 normal-case">(optional)</span></label>
-                <div className="max-h-40 overflow-auto border border-slate-200 rounded-xl p-3 bg-slate-50 space-y-2">
-                  {teachers.map((teacher: any) => (
-                    <label key={teacher.id} className="flex items-center gap-3 text-sm text-slate-700 py-1 cursor-pointer hover:text-slate-900">
-                      <input type="checkbox" value={teacher.id} {...register('teacherIds')} className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-                      <span>{teacher.fullName} <span className="text-slate-400 font-mono text-xs">({teacher.teacherId})</span></span>
-                    </label>
+              <div>
+                <label className={labelClass}>Semester</label>
+                <select
+                  {...createForm.register('semesterId')}
+                  className={inputClass}
+                  disabled={!selectedBatchYear}
+                >
+                  <option value="">
+                    {selectedBatchYear ? 'Select semester' : 'Select a batch first'}
+                  </option>
+                  {availableSemesters.map((semester) => (
+                    <option key={semester.id} value={semester.id}>
+                      {semesterLabels[semester.name] ?? semester.name}
+                    </option>
                   ))}
-                  {!teachers.length && <p className="text-sm text-slate-400">No teachers available</p>}
+                </select>
+                {createForm.formState.errors.semesterId && (
+                  <p className="mt-1.5 text-xs text-red-500">
+                    {createForm.formState.errors.semesterId.message}
+                  </p>
+                )}
+                {selectedBatchYear && !availableSemesters.length && (
+                  <p className="mt-1.5 text-xs text-amber-600">
+                    No current or upcoming semesters are available for this batch yet.
+                  </p>
+                )}
+              </div>
+
+              <div className="grid gap-5 md:grid-cols-2">
+                <div>
+                  <label className={labelClass}>Course Title</label>
+                  <input
+                    {...createForm.register('title')}
+                    className={inputClass}
+                    placeholder="Data Structures Sessional"
+                  />
+                  {createForm.formState.errors.title && (
+                    <p className="mt-1.5 text-xs text-red-500">
+                      {createForm.formState.errors.title.message}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className={labelClass}>Course Code</label>
+                  <input
+                    {...createForm.register('courseCode')}
+                    className={inputClass}
+                    placeholder="CSE-4112"
+                  />
+                  {createForm.formState.errors.courseCode && (
+                    <p className="mt-1.5 text-xs text-red-500">
+                      {createForm.formState.errors.courseCode.message}
+                    </p>
+                  )}
                 </div>
               </div>
 
-              <div className="col-span-2 flex gap-3 pt-2 border-t border-slate-100">
-                <button type="submit" disabled={isSubmitting} className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-all">
-                  {isSubmitting ? 'Creating…' : 'Create Course'}
+              <TeacherChecklist
+                teachers={teachers}
+                control={createForm.control}
+                name="teacherIds"
+              />
+
+              <div className="flex gap-3 border-t border-slate-100 pt-2">
+                <button
+                  type="submit"
+                  disabled={
+                    createForm.formState.isSubmitting ||
+                    createMutation.isPending ||
+                    !teachers.length ||
+                    !availableSemesters.length
+                  }
+                  className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white transition-all hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {createForm.formState.isSubmitting || createMutation.isPending
+                    ? 'Creating...'
+                    : 'Create Course'}
                 </button>
-                <button type="button" onClick={() => { setShowForm(false); reset(); }} className="px-5 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-50 transition-all">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForm(false);
+                    createForm.reset({
+                      batchYear: '',
+                      semesterId: '',
+                      title: '',
+                      courseCode: '',
+                      teacherIds: [],
+                    });
+                  }}
+                  className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-600 transition-all hover:bg-slate-50"
+                >
                   Cancel
                 </button>
               </div>
             </form>
           </Modal>
 
-          {/* Edit Modal */}
-          <Modal open={!!editingCourse} onClose={() => setEditingCourse(null)} title="Edit Course">
+          <Modal
+            open={Boolean(editingCourse)}
+            onClose={() => setEditingCourse(null)}
+            title="Edit Course"
+          >
             {editingCourse && (
-              <form
-                onSubmit={e => {
-                  e.preventDefault();
-                  const fd = new FormData(e.currentTarget);
-                  const payload = {
-                    semesterId: String(fd.get('semesterId') || ''),
-                    type: String(fd.get('type') || 'theory') as 'theory' | 'lab',
-                    title: String(fd.get('title') || ''),
-                    courseCode: String(fd.get('courseCode') || ''),
-                  };
-                  if (!payload.semesterId || !payload.title || !payload.courseCode) { toast.error('Semester, title and course code are required'); return; }
-                  updateMutation.mutate({ id: editingCourse.id, payload });
-                }}
-                className="grid grid-cols-2 gap-5"
-              >
-                <div>
-                  <label className={labelClass}>Semester</label>
-                  <select name="semesterId" defaultValue={editingCourse.semesterId} className={inputClass}>
-                    {semesters.map((s: any) => <option key={s.id} value={s.id}>{s.name} ({s.batchYear})</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelClass}>Course Type</label>
-                  <select name="type" defaultValue={editingCourse.type} className={inputClass}>
-                    <option value="theory">Theory</option>
-                    <option value="lab">Lab</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={labelClass}>Course Title</label>
-                  <input name="title" defaultValue={editingCourse.title} className={inputClass} />
-                </div>
-                <div>
-                  <label className={labelClass}>Course Code</label>
-                  <input name="courseCode" defaultValue={editingCourse.courseCode} className={inputClass} />
-                </div>
-                <div className="col-span-2 flex gap-3 pt-2 border-t border-slate-100">
-                  <button type="submit" className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-all">Save Changes</button>
-                  <button type="button" onClick={() => setEditingCourse(null)} className="px-5 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-50 transition-all">Cancel</button>
-                </div>
-              </form>
+              <EditCourseModal
+                key={editingCourse.id}
+                course={editingCourse}
+                teachers={teachers}
+                isPending={updateMutation.isPending}
+                onClose={() => setEditingCourse(null)}
+                onSubmit={(payload) =>
+                  updateMutation.mutate({ id: editingCourse.id, payload })
+                }
+              />
             )}
           </Modal>
 
-          {/* Table */}
-          <div className="bg-white rounded-2xl shadow-sm ring-1 ring-black/5 overflow-hidden">
+          <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  {['Code','Course Name','Type','Semester','Enrolled','Actions'].map(h => (
-                    <th key={h} className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">{h}</th>
-                  ))}
+                  {['Code', 'Course Name', 'Type', 'Batch / Semester', 'Instructor', 'Enrolled', 'Actions'].map(
+                    (header) => (
+                      <th
+                        key={header}
+                        className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-400"
+                      >
+                        {header}
+                      </th>
+                    ),
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {courses.map((c: any) => (
-                  <tr key={c.id} className="hover:bg-slate-50/70 transition-colors">
+                {courses.map((course) => (
+                  <tr key={course.id} className="transition-colors hover:bg-slate-50/70">
                     <td className="px-5 py-4">
-                      <span className="font-mono font-semibold text-slate-700">{c.courseCode}</span>
+                      <span className="font-mono font-semibold text-slate-700">
+                        {course.courseCode}
+                      </span>
                     </td>
-                    <td className="px-5 py-4 font-medium text-slate-800">{c.title}</td>
+                    <td className="px-5 py-4 font-medium text-slate-800">{course.title}</td>
                     <td className="px-5 py-4">
-                      {c.type === 'lab' ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200">
-                          <FlaskConical size={11} /> Lab
+                      {course.type === 'lab' ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
+                          <FlaskConical size={11} />
+                          Sessional
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 ring-1 ring-blue-200">
-                          <BookOpen size={11} /> Theory
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-blue-200">
+                          <BookOpen size={11} />
+                          Theory
                         </span>
                       )}
                     </td>
-                    <td className="px-5 py-4 text-slate-500">{c.semester?.name?.replace('_', ' ') ?? <span className="text-slate-300">—</span>}</td>
+                    <td className="px-5 py-4 text-slate-500">
+                      <p className="font-medium text-slate-700">
+                        Batch {course.semester?.batchYear ?? '—'}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {course.semester?.name
+                          ? semesterLabels[course.semester.name] ?? course.semester.name
+                          : 'Unavailable'}
+                      </p>
+                    </td>
+                    <td className="px-5 py-4 text-slate-500">
+                      {course.teachers?.length ? (
+                        <div className="space-y-1">
+                          {course.teachers.map((teacher) => (
+                            <div key={teacher.id} className="flex items-center gap-2">
+                              <UserRound size={12} className="text-slate-300" />
+                              <span className="text-sm text-slate-700">{teacher.fullName}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-slate-300">No instructor</span>
+                      )}
+                    </td>
                     <td className="px-5 py-4">
-                      <span className="inline-flex items-center justify-center min-w-[2rem] rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold py-0.5 px-2">
-                        {c.enrollments?.length ?? 0}
+                      <span className="inline-flex min-w-[2rem] items-center justify-center rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                        {course.enrollments?.length ?? 0}
                       </span>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => setEditingCourse(c)}
+                          onClick={() => setEditingCourse(course)}
                           title="Edit course"
-                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600 transition-all"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-all hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
                         >
                           <Pencil size={14} />
                         </button>
                         <button
                           type="button"
-                          onClick={() => { if (window.confirm(`Delete course ${c.courseCode}?`)) deleteMutation.mutate(c.id); }}
+                          onClick={() => {
+                            if (window.confirm(`Delete course ${course.courseCode}?`)) {
+                              deleteMutation.mutate(course.id);
+                            }
+                          }}
                           title="Delete course"
-                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-red-100 text-red-400 hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-all"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-100 text-red-400 transition-all hover:border-red-300 hover:bg-red-50 hover:text-red-600"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -271,9 +597,10 @@ export function ManageCourses() {
                     </td>
                   </tr>
                 ))}
+
                 {!courses.length && (
                   <tr>
-                    <td colSpan={6} className="px-5 py-16 text-center">
+                    <td colSpan={7} className="px-5 py-16 text-center">
                       <div className="flex flex-col items-center gap-2">
                         <BookOpen size={32} className="text-slate-200" />
                         <p className="text-sm text-slate-400">No courses created yet</p>

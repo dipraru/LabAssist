@@ -8,6 +8,7 @@ import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
 import { CheckSquare, Download, Pencil, Plus, Trash2, Upload, X, GraduationCap, Search } from 'lucide-react';
+import type { BatchRecord } from './officeAdmin.shared';
 
 const MAX_BATCH_YEAR = new Date().getFullYear() + 1;
 
@@ -85,6 +86,10 @@ export function ManageStudents() {
   const { data: students = [] } = useQuery({
     queryKey: ['students'],
     queryFn: () => api.get('/office/students').then(r => r.data),
+  });
+  const { data: batches = [] } = useQuery<BatchRecord[]>({
+    queryKey: ['batches'],
+    queryFn: () => api.get('/office/batches').then(r => r.data),
   });
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<SingleForm>({
@@ -229,7 +234,10 @@ export function ManageStudents() {
               </div>
               <div>
                 <label className={labelClass}>Batch Year</label>
-                <input {...register('batchYear')} className={inputClass} placeholder="2021" />
+                <select {...register('batchYear')} className={inputClass} disabled={!batches.length}>
+                  <option value="">{batches.length ? 'Select batch' : 'No batches available'}</option>
+                  {batches.map(batch => <option key={batch.id} value={batch.year}>{batch.year}</option>)}
+                </select>
                 {errors.batchYear && <p className="text-red-500 text-xs mt-1.5">{errors.batchYear.message}</p>}
               </div>
               <div>
@@ -237,7 +245,7 @@ export function ManageStudents() {
                 <input {...register('fullName')} className={inputClass} placeholder="John Doe" />
               </div>
               <div className="col-span-3 flex gap-3 pt-2 border-t border-slate-100">
-                <button type="submit" disabled={isSubmitting} className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-all">
+                <button type="submit" disabled={isSubmitting || !batches.length} className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-all">
                   {isSubmitting ? 'Creating…' : 'Create & Download Credentials'}
                 </button>
                 <button type="button" onClick={() => setMode('list')} className="px-5 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-50 transition-all">
@@ -262,12 +270,15 @@ export function ManageStudents() {
               <div className="grid grid-cols-2 gap-5">
                 <div>
                   <label className={labelClass}>Batch Year</label>
-                  <input
+                  <select
                     value={bulkBatchYear}
                     onChange={e => setBulkBatchYear(e.target.value)}
                     className={inputClass}
-                    placeholder="2021"
-                  />
+                    disabled={!batches.length}
+                  >
+                    <option value="">{batches.length ? 'Select batch' : 'No batches available'}</option>
+                    {batches.map(batch => <option key={batch.id} value={batch.year}>{batch.year}</option>)}
+                  </select>
                   {bulkBatchYear && !isValidBatchYear(bulkBatchYear) && (
                     <p className="text-red-500 text-xs mt-1.5">Must be a year between 2000 and {MAX_BATCH_YEAR}</p>
                   )}

@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
@@ -63,6 +64,13 @@ export class CoursesService {
     });
     if (!semester) throw new NotFoundException('Semester not found');
 
+    const teachers = await this.teacherRepo.find({
+      where: { id: In(dto.teacherIds) },
+    });
+    if (teachers.length !== dto.teacherIds.length) {
+      throw new BadRequestException('One or more assigned teachers were not found');
+    }
+
     const course = this.courseRepo.create({
       courseCode: dto.courseCode,
       title: dto.title,
@@ -70,7 +78,7 @@ export class CoursesService {
       creditHours: dto.creditHours ?? 3,
       description: dto.description ?? null,
       semesterId: dto.semesterId,
-      teachers: [],
+      teachers,
     });
     const savedCourse = await this.courseRepo.save(course);
 
@@ -109,6 +117,17 @@ export class CoursesService {
     if (dto.creditHours !== undefined) course.creditHours = dto.creditHours;
     if (dto.description !== undefined)
       course.description = dto.description ?? null;
+    if (dto.teacherIds !== undefined) {
+      const teachers = await this.teacherRepo.find({
+        where: { id: In(dto.teacherIds) },
+      });
+      if (teachers.length !== dto.teacherIds.length) {
+        throw new BadRequestException(
+          'One or more assigned teachers were not found',
+        );
+      }
+      course.teachers = teachers;
+    }
 
     await this.courseRepo.save(course);
     return this.getCourseById(id);

@@ -6,6 +6,7 @@ import { LoginPage } from './pages/LoginPage';
 import { OfficeDashboard } from './pages/office/OfficeDashboard';
 import { ManageTeachers } from './pages/office/ManageTeachers';
 import { ManageStudents } from './pages/office/ManageStudents';
+import { ManageBatches } from './pages/office/ManageBatches';
 import { ManageCourses } from './pages/office/ManageCourses';
 import { ManageSemesters } from './pages/office/ManageSemesters';
 import { CreateTempJudge } from './pages/office/CreateTempJudge';
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="/office" element={<OfficeDashboard />} />
         <Route path="/office/teachers" element={<ManageTeachers />} />
         <Route path="/office/students" element={<ManageStudents />} />
+        <Route path="/office/batches" element={<ManageBatches />} />
         <Route path="/office/courses" element={<ManageCourses />} />
         <Route path="/office/semesters" element={<ManageSemesters />} />
         <Route path="/office/temp-judges" element={<CreateTempJudge />} />

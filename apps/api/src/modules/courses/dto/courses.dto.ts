@@ -8,6 +8,7 @@ import {
   IsArray,
   ValidateNested,
   IsDateString,
+  ArrayMinSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CourseType } from '../entities/course.entity';
@@ -34,6 +35,11 @@ export class CreateCourseDto {
 
   @IsUUID()
   semesterId: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('4', { each: true })
+  teacherIds: string[];
 }
 
 export class UpdateCourseDto {
@@ -60,6 +66,12 @@ export class UpdateCourseDto {
   @IsOptional()
   @IsUUID()
   semesterId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('4', { each: true })
+  teacherIds?: string[];
 }
 
 export class EnrollStudentsDto {

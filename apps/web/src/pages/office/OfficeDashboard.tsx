@@ -35,9 +35,10 @@ function StatCard({
 const quickActions = [
   { label: 'Create Teacher', href: '/office/teachers', desc: 'Add faculty member' },
   { label: 'Bulk Create Students', href: '/office/students', desc: 'Import via CSV' },
+  { label: 'Add Batch', href: '/office/batches', desc: 'Configure new intake' },
   { label: 'Create Course', href: '/office/courses', desc: 'New course entry' },
   { label: 'Add Semester', href: '/office/semesters', desc: 'Open a new term' },
-  { label: 'Create Temp Judge', href: '/office/judges', desc: 'Temporary evaluator access' },
+  { label: 'Create Temp Judge', href: '/office/temp-judges', desc: 'Temporary evaluator access' },
 ];
 
 export function OfficeDashboard() {

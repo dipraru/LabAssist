@@ -15,6 +15,8 @@ import { TempJudge } from '../users/entities/temp-judge.entity';
 import { Semester } from '../courses/entities/semester.entity';
 import { Course } from '../courses/entities/course.entity';
 import { Enrollment } from '../courses/entities/enrollment.entity';
+import { Batch, BatchSection } from './entities/batch.entity';
+import { SemesterName } from '../../common/enums';
 import { UserRole } from '../../common/enums/role.enum';
 import {
   CreateTeacherDto,
@@ -24,7 +26,30 @@ import {
   CorrectStudentDto,
   CorrectTeacherDto,
   CreateStudentDto,
+  CreateBatchDto,
+  CreateSemesterDto,
+  UpdateSemesterStartDateDto,
 } from './dto/office.dto';
+
+const SEMESTER_SEQUENCE = Object.values(SemesterName);
+
+function parseDateInput(value: string): Date {
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new BadRequestException('Invalid start date');
+  }
+  return parsed;
+}
+
+function getSemesterOrder(name: string): number {
+  return SEMESTER_SEQUENCE.indexOf(name as (typeof SEMESTER_SEQUENCE)[number]);
+}
+
+function startOfUtcDay(date: Date): Date {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
+}
 
 function generatePassword(length = 10): string {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#$';
@@ -209,8 +234,178 @@ export class OfficeService {
     @InjectRepository(Teacher) private teacherRepo: Repository<Teacher>,
     @InjectRepository(TempJudge) private judgeRepo: Repository<TempJudge>,
     @InjectRepository(Semester) private semesterRepo: Repository<Semester>,
+    @InjectRepository(Course) private courseRepo: Repository<Course>,
+    @InjectRepository(Batch) private batchRepo: Repository<Batch>,
     private readonly dataSource: DataSource,
   ) {}
+
+  private normalizeBatchSections(
+    batchYear: string,
+    sectionCount: number,
+    sections: CreateBatchDto['sections'],
+  ): BatchSection[] {
+    if (sectionCount === 1) {
+      if (sections.length > 0) {
+        throw new BadRequestException(
+          'Do not submit section details when section count is 1',
+        );
+      }
+      return [];
+    }
+
+    if (sections.length !== sectionCount) {
+      throw new BadRequestException(
+        `Expected ${sectionCount} section definitions`,
+      );
+    }
+
+    const seenNames = new Set<string>();
+    const normalized = sections.map((section, index) => {
+      const name = section.name.trim();
+      if (!name) {
+        throw new BadRequestException(
+          `Section name is required for section ${index + 1}`,
+        );
+      }
+
+      const key = name.toLowerCase();
+      if (seenNames.has(key)) {
+        throw new BadRequestException(`Duplicate section name '${name}'`);
+      }
+      seenNames.add(key);
+
+      const fromStudentId = section.fromStudentId.trim();
+      const toStudentId = section.toStudentId.trim();
+      const fromParsed = parseStudentId(fromStudentId);
+      const toParsed = parseStudentId(toStudentId);
+      const expectedBatch = getTwoDigitBatchFromYear(batchYear);
+
+      if (
+        fromParsed.batchYear !== expectedBatch ||
+        toParsed.batchYear !== expectedBatch
+      ) {
+        throw new BadRequestException(
+          `Section '${name}' student IDs must belong to batch ${batchYear}`,
+        );
+      }
+
+      if (fromStudentId > toStudentId) {
+        throw new BadRequestException(
+          `Section '${name}' has an invalid student ID range`,
+        );
+      }
+
+      return { name, fromStudentId, toStudentId };
+    });
+
+    const sorted = [...normalized].sort((left, right) =>
+      left.fromStudentId.localeCompare(right.fromStudentId),
+    );
+
+    for (let index = 1; index < sorted.length; index++) {
+      const previous = sorted[index - 1];
+      const current = sorted[index];
+      if (current.fromStudentId <= previous.toStudentId) {
+        throw new BadRequestException(
+          `Sections '${previous.name}' and '${current.name}' have overlapping student ID ranges`,
+        );
+      }
+    }
+
+    return normalized;
+  }
+
+  private getExpectedSemesterName(
+    semesters: Semester[],
+  ): SemesterName | null {
+    for (const name of SEMESTER_SEQUENCE) {
+      if (!semesters.some((semester) => semester.name === name)) {
+        return name;
+      }
+    }
+    return null;
+  }
+
+  private async syncBatchCurrentSemester(batchYear: string): Promise<void> {
+    const semesters = await this.semesterRepo.find({
+      where: { batchYear },
+      order: { startDate: 'ASC', name: 'ASC' },
+    });
+
+    const today = startOfUtcDay(new Date());
+    const current = semesters
+      .filter(
+        (semester) =>
+          semester.startDate &&
+          startOfUtcDay(new Date(semester.startDate)) <= today,
+      )
+      .sort((left, right) => {
+        const leftDate = new Date(left.startDate as Date).getTime();
+        const rightDate = new Date(right.startDate as Date).getTime();
+        if (leftDate !== rightDate) return rightDate - leftDate;
+        return getSemesterOrder(right.name) - getSemesterOrder(left.name);
+      })[0];
+
+    await this.semesterRepo.update({ batchYear }, { isCurrent: false });
+    if (current) {
+      await this.semesterRepo.update(current.id, { isCurrent: true });
+    }
+  }
+
+  private validateSemesterTimeline(
+    semesters: Semester[],
+    targetName: Semester['name'],
+    startDate: Date,
+    semesterIdToIgnore?: string,
+  ) {
+    const relevantSemesters = semesters.filter(
+      (semester) => semester.id !== semesterIdToIgnore,
+    );
+    const targetOrder = getSemesterOrder(targetName);
+    if (targetOrder === -1) {
+      throw new BadRequestException('Invalid semester name');
+    }
+
+    if (targetOrder > 0) {
+      const previousName = SEMESTER_SEQUENCE[targetOrder - 1];
+      const previous = relevantSemesters.find(
+        (semester) => semester.name === previousName,
+      );
+      if (!previous) {
+        throw new BadRequestException(
+          `${previousName.replace('_', ' ')} must be created first`,
+        );
+      }
+      if (!previous.startDate) {
+        throw new BadRequestException(
+          `${previousName.replace('_', ' ')} must have a start date`,
+        );
+      }
+      if (startOfUtcDay(new Date(previous.startDate)) > startOfUtcDay(new Date())) {
+        throw new BadRequestException(
+          `${previousName.replace('_', ' ')} has not started yet`,
+        );
+      }
+      if (startOfUtcDay(startDate) < startOfUtcDay(new Date(previous.startDate))) {
+        throw new BadRequestException(
+          `Start date cannot be before ${previousName.replace('_', ' ')}`,
+        );
+      }
+    }
+
+    if (targetOrder < SEMESTER_SEQUENCE.length - 1) {
+      const nextName = SEMESTER_SEQUENCE[targetOrder + 1];
+      const next = relevantSemesters.find((semester) => semester.name === nextName);
+      if (
+        next?.startDate &&
+        startOfUtcDay(startDate) > startOfUtcDay(new Date(next.startDate))
+      ) {
+        throw new BadRequestException(
+          `Start date cannot be after ${nextName.replace('_', ' ')}`,
+        );
+      }
+    }
+  }
 
   private async autoEnrollStudentIntoCurrentCourses(
     manager: EntityManager,
@@ -304,7 +499,7 @@ export class OfficeService {
         fullName: dto.fullName,
         designation: dto.designation,
         email: dto.email,
-        phone: dto.phone ?? null,
+        phone: dto.phone.trim(),
         gender: dto.gender ?? null,
         userId: savedUser.id,
       });
@@ -734,21 +929,84 @@ export class OfficeService {
     return this.studentRepo.find({ where, order: { studentId: 'ASC' } });
   }
 
-  async createSemester(dto: any) {
+  async createBatch(dto: CreateBatchDto): Promise<Batch> {
+    const year = normalizeBatchYear(dto.year);
+    const existing = await this.batchRepo.findOne({ where: { year } });
+    if (existing) {
+      throw new ConflictException(`Batch ${year} already exists`);
+    }
+
+    const sections = this.normalizeBatchSections(
+      year,
+      dto.sectionCount,
+      dto.sections ?? [],
+    );
+
+    const batch = this.batchRepo.create({
+      year,
+      sectionCount: dto.sectionCount,
+      sections,
+    });
+    return this.batchRepo.save(batch);
+  }
+
+  async getAllBatches(): Promise<Batch[]> {
+    return this.batchRepo.find({
+      order: { year: 'DESC', createdAt: 'DESC' },
+    });
+  }
+
+  async createSemester(dto: CreateSemesterDto) {
     const normalizedBatchYear = normalizeBatchYear(dto.batchYear);
+    const batch = await this.batchRepo.findOne({
+      where: { year: normalizedBatchYear },
+    });
+    if (!batch) {
+      throw new NotFoundException(
+        `Batch ${normalizedBatchYear} must be created first`,
+      );
+    }
+
+    if (!dto.startDate) {
+      throw new BadRequestException('Start date is required');
+    }
+
+    const existingSemesters = await this.semesterRepo.find({
+      where: { batchYear: normalizedBatchYear },
+      order: { name: 'ASC' },
+    });
+    const expectedName = this.getExpectedSemesterName(existingSemesters);
+    if (!expectedName) {
+      throw new BadRequestException(
+        `All semesters have already been created for batch ${batch.year}`,
+      );
+    }
+    if (dto.name !== expectedName) {
+      throw new BadRequestException(
+        `${expectedName.replace('_', ' ')} must be created next for batch ${batch.year}`,
+      );
+    }
+
+    const semesterName = dto.name as SemesterName;
+
     const existing = await this.semesterRepo.findOne({
-      where: { name: dto.name, batchYear: normalizedBatchYear },
+      where: { name: semesterName, batchYear: normalizedBatchYear },
     });
     if (existing)
       throw new ConflictException('Semester already exists for this batch');
 
+    const startDate = parseDateInput(dto.startDate);
+    this.validateSemesterTimeline(existingSemesters, semesterName, startDate);
+
     const semester = this.semesterRepo.create({
-      name: dto.name,
+      name: semesterName,
       batchYear: normalizedBatchYear,
-      startDate: dto.startDate ? new Date(dto.startDate) : null,
-      endDate: dto.endDate ? new Date(dto.endDate) : null,
+      startDate,
+      endDate: null,
     });
-    return this.semesterRepo.save(semester);
+    const savedSemester = await this.semesterRepo.save(semester);
+    await this.syncBatchCurrentSemester(normalizedBatchYear);
+    return savedSemester;
   }
 
   async getAllSemesters() {
@@ -799,6 +1057,36 @@ export class OfficeService {
       where: { id: teacherId },
     });
     if (!teacher) throw new NotFoundException('Teacher not found');
+
+    const today = new Date().toISOString().slice(0, 10);
+    const assignedCourses = await this.courseRepo
+      .createQueryBuilder('course')
+      .innerJoinAndSelect('course.teachers', 'assignedTeacher')
+      .innerJoinAndSelect('course.semester', 'semester')
+      .where('assignedTeacher.id = :teacherId', { teacherId })
+      .andWhere('course.isActive = true')
+      .getMany();
+
+    const blockingCourses = assignedCourses.filter(
+      (course) =>
+        course.semester?.isCurrent ||
+        (course.semester?.startDate &&
+          new Date(course.semester.startDate).toISOString().slice(0, 10) > today),
+    );
+
+    if (blockingCourses.length) {
+      throw new BadRequestException(
+        'Cannot delete a teacher assigned to a current or upcoming course',
+      );
+    }
+
+    for (const course of assignedCourses) {
+      course.teachers = course.teachers.filter(
+        (assignedTeacher) => assignedTeacher.id !== teacher.id,
+      );
+      await this.courseRepo.save(course);
+    }
+
     await this.userRepo.delete(teacher.userId);
   }
 
@@ -812,34 +1100,44 @@ export class OfficeService {
 
   async updateSemester(
     id: string,
-    dto: {
-      name?: string;
-      batchYear?: string;
-      startDate?: string;
-      endDate?: string;
-    },
+    dto: UpdateSemesterStartDateDto,
   ): Promise<Semester> {
     const semester = await this.semesterRepo.findOne({ where: { id } });
     if (!semester) throw new NotFoundException('Semester not found');
 
-    if (dto.name) semester.name = dto.name as Semester['name'];
-    if (dto.batchYear) semester.batchYear = normalizeBatchYear(dto.batchYear);
-    if (dto.startDate !== undefined)
-      semester.startDate = dto.startDate ? new Date(dto.startDate) : null;
-    if (dto.endDate !== undefined)
-      semester.endDate = dto.endDate ? new Date(dto.endDate) : null;
+    const startDate = parseDateInput(dto.startDate);
+    const semesters = await this.semesterRepo.find({
+      where: { batchYear: semester.batchYear },
+      order: { name: 'ASC' },
+    });
 
-    return this.semesterRepo.save(semester);
+    this.validateSemesterTimeline(semesters, semester.name, startDate, semester.id);
+    semester.startDate = startDate;
+    semester.endDate = null;
+
+    const savedSemester = await this.semesterRepo.save(semester);
+    await this.syncBatchCurrentSemester(semester.batchYear);
+    return savedSemester;
   }
 
   async setCurrentSemester(id: string): Promise<Semester> {
     const semester = await this.semesterRepo.findOne({ where: { id } });
     if (!semester) throw new NotFoundException('Semester not found');
 
+    if (
+      !semester.startDate ||
+      startOfUtcDay(new Date(semester.startDate)) > startOfUtcDay(new Date())
+    ) {
+      throw new BadRequestException(
+        'A semester can only become active after its start date',
+      );
+    }
+
     await this.semesterRepo
       .createQueryBuilder()
       .update(Semester)
       .set({ isCurrent: false })
+      .where('batchYear = :batchYear', { batchYear: semester.batchYear })
       .execute();
 
     semester.isCurrent = true;
@@ -858,5 +1156,6 @@ export class OfficeService {
       );
     }
     await this.semesterRepo.delete(id);
+    await this.syncBatchCurrentSemester(semester.batchYear);
   }
 }

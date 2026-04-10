@@ -14,7 +14,7 @@ const schema = z.object({
   teacherId: z.string().min(1),
   designation: z.enum(['Lecturer','Senior Lecturer','Assistant Professor','Associate Professor','Professor','Head of Department']),
   email: z.string().email(),
-  phone: z.string().optional(),
+  phone: z.string().min(1, 'Phone number is required'),
   gender: z.enum(['male','female','other']).optional(),
 });
 type FormData = z.infer<typeof schema>;
@@ -124,7 +124,7 @@ export function ManageTeachers() {
                 { name: 'fullName', label: 'Full Name', type: 'text', placeholder: 'Dr. John Smith' },
                 { name: 'teacherId', label: 'Teacher ID', type: 'text', placeholder: 'T-001' },
                 { name: 'email', label: 'Email Address', type: 'email', placeholder: 'john@university.edu' },
-                { name: 'phone', label: 'Phone (optional)', type: 'text', placeholder: '+880 1XXX-XXXXXX' },
+                { name: 'phone', label: 'Phone Number', type: 'text', placeholder: '+880 1XXX-XXXXXX' },
               ].map(f => (
                 <div key={f.name}>
                   <label className={labelClass}>{f.label}</label>
