@@ -12,6 +12,7 @@ import { CoursePostComment } from './entities/course-post-comment.entity';
 import { Student } from '../users/entities/student.entity';
 import { Teacher } from '../users/entities/teacher.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { Batch } from '../office/entities/batch.entity';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       CoursePostComment,
       Student,
       Teacher,
+      Batch,
     ]),
     NotificationsModule,
   ],

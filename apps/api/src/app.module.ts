@@ -36,6 +36,7 @@ import { ContestSubmission } from './modules/contests/entities/contest-submissio
 import { ContestAnnouncement } from './modules/contests/entities/contest-announcement.entity';
 import { ContestClarification } from './modules/contests/entities/contest-clarification.entity';
 import { Notification } from './modules/notifications/entities/notification.entity';
+import { Batch } from './modules/office/entities/batch.entity';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { Notification } from './modules/notifications/entities/notification.enti
           ContestAnnouncement,
           ContestClarification,
           Notification,
+          Batch,
         ],
         synchronize: config.get('NODE_ENV') !== 'production',
         logging: config.get('NODE_ENV') === 'development',

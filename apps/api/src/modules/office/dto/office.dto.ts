@@ -4,13 +4,16 @@ import {
   IsOptional,
   IsEnum,
   IsDateString,
-  IsPhoneNumber,
   IsArray,
   IsInt,
   Min,
   Max,
   Matches,
+  ValidateNested,
+  ArrayMinSize,
+  ArrayMaxSize,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { TeacherDesignation } from '../../users/entities/teacher.entity';
 
 export class CreateTeacherDto {
@@ -26,9 +29,11 @@ export class CreateTeacherDto {
   @IsEmail()
   email: string;
 
-  @IsOptional()
   @IsString()
-  phone?: string;
+  @Matches(/\S/, {
+    message: 'phone is required',
+  })
+  phone: string;
 
   @IsOptional()
   @IsString()
@@ -133,11 +138,53 @@ export class CreateSemesterDto {
   })
   batchYear: string;
 
-  @IsOptional()
   @IsDateString()
-  startDate?: string;
+  startDate: string;
 
   @IsOptional()
   @IsDateString()
   endDate?: string;
+}
+
+export class BatchSectionDto {
+  @IsString()
+  name: string;
+
+  @IsString()
+  @Matches(/^\d{7}$/, {
+    message: 'fromStudentId must be a 7-digit student ID',
+  })
+  fromStudentId: string;
+
+  @IsString()
+  @Matches(/^\d{7}$/, {
+    message: 'toStudentId must be a 7-digit student ID',
+  })
+  toStudentId: string;
+}
+
+export class CreateBatchDto {
+  @IsString()
+  @Matches(/^\d{4}$/, {
+    message: 'year must be a 4-digit year (e.g. 2024)',
+  })
+  year: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(26)
+  sectionCount: number;
+
+  @IsArray()
+  @ArrayMinSize(0)
+  @ArrayMaxSize(26)
+  @ValidateNested({ each: true })
+  @Type(() => BatchSectionDto)
+  sections: BatchSectionDto[];
+}
+
+export class UpdateSemesterStartDateDto {
+  @IsDateString()
+  startDate: string;
 }

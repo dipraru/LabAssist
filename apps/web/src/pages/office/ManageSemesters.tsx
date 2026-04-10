@@ -1,251 +1,479 @@
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useEffect, useState } from 'react';
+import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CalendarDays, Pencil, Plus, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
-import { Plus, CheckCircle, Pencil, Trash2 } from 'lucide-react';
+import { WheelDateInput } from '../../components/WheelDateInput';
+import {
+  formatShortDate,
+  getNextSemesterName,
+  getSemesterIndex,
+  inputClass,
+  isFutureDate,
+  labelClass,
+  semesterAccent,
+  semesterLabels,
+} from './officeAdmin.shared';
+import type { BatchRecord, SemesterRecord } from './officeAdmin.shared';
 
-const MAX_BATCH_YEAR = new Date().getFullYear() + 1;
+const createSchema = z.object({
+  batchYear: z.string().min(1, 'Batch is required'),
+  name: z.string().min(1, 'Semester is required'),
+  startDate: z.string().min(1, 'Start date is required'),
+});
 
-function isValidBatchYear(value: string): boolean {
-  if (!/^\d{4}$/.test(value)) return false;
-  const year = Number(value);
-  return year >= 2000 && year <= MAX_BATCH_YEAR;
+const editSchema = z.object({
+  startDate: z.string().min(1, 'Start date is required'),
+});
+
+type CreateSemesterForm = z.infer<typeof createSchema>;
+type EditSemesterForm = z.infer<typeof editSchema>;
+
+function DeterminedField({
+  label,
+  value,
+  muted,
+}: {
+  label: string;
+  value: string;
+  muted?: boolean;
+}) {
+  return (
+    <div>
+      <label className={labelClass}>{label}</label>
+      <div
+        className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${
+          muted
+            ? 'border-dashed border-slate-200 bg-slate-50 text-slate-400'
+            : 'border-indigo-200 bg-indigo-50 text-indigo-900'
+        }`}
+      >
+        {value}
+      </div>
+    </div>
+  );
 }
 
-const schema = z.object({
-  name: z.string().min(1, 'Name required'),
-  batchYear: z.string()
-    .regex(/^\d{4}$/, 'Batch must be a 4-digit year')
-    .refine((value) => Number(value) >= 2000 && Number(value) <= MAX_BATCH_YEAR, `Batch must be between 2000 and ${MAX_BATCH_YEAR}`),
-  startDate: z.string().min(1, 'Start date required'),
-  endDate: z.string().min(1, 'End date required'),
-});
-type FormData = z.infer<typeof schema>;
+function SemesterStatusBadge({ semester }: { semester: SemesterRecord }) {
+  if (semester.isCurrent) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white">
+        <span className="h-1.5 w-1.5 rounded-full bg-white" />
+        Active
+      </span>
+    );
+  }
+
+  if (isFutureDate(semester.startDate)) {
+    return (
+      <span className="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
+        Upcoming
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+      Inactive
+    </span>
+  );
+}
 
 export function ManageSemesters() {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [editingSemester, setEditingSemester] = useState<any | null>(null);
+  const [editingSemester, setEditingSemester] = useState<SemesterRecord | null>(null);
 
-  const { data: semesters = [] } = useQuery({
+  const { data: semesters = [] } = useQuery<SemesterRecord[]>({
     queryKey: ['semesters'],
-    queryFn: () => api.get('/office/semesters').then(r => r.data),
+    queryFn: () => api.get('/office/semesters').then((response) => response.data),
+  });
+  const { data: batches = [] } = useQuery<BatchRecord[]>({
+    queryKey: ['batches'],
+    queryFn: () => api.get('/office/batches').then((response) => response.data),
   });
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormData>({
-    resolver: zodResolver(schema),
+  const createForm = useForm<CreateSemesterForm>({
+    resolver: zodResolver(createSchema),
+    defaultValues: {
+      batchYear: '',
+      name: '',
+      startDate: new Date().toISOString().slice(0, 10),
+    },
   });
+  const editForm = useForm<EditSemesterForm>({
+    resolver: zodResolver(editSchema),
+    defaultValues: {
+      startDate: new Date().toISOString().slice(0, 10),
+    },
+  });
+
+  const selectedBatchYear = createForm.watch('batchYear');
+  const nextSemesterName = selectedBatchYear
+    ? getNextSemesterName(semesters, selectedBatchYear)
+    : null;
+
+  useEffect(() => {
+    createForm.setValue('name', nextSemesterName ?? '', { shouldValidate: true });
+  }, [createForm, nextSemesterName]);
+
+  useEffect(() => {
+    if (editingSemester?.startDate) {
+      editForm.reset({ startDate: editingSemester.startDate.slice(0, 10) });
+    }
+  }, [editForm, editingSemester]);
 
   const createMutation = useMutation({
-    mutationFn: (d: FormData) => api.post('/office/semesters', d),
+    mutationFn: (data: CreateSemesterForm) => api.post('/office/semesters', data),
     onSuccess: () => {
       toast.success('Semester created');
-      qc.invalidateQueries({ queryKey: ['semesters'] });
-      reset();
+      queryClient.invalidateQueries({ queryKey: ['semesters'] });
+      queryClient.invalidateQueries({ queryKey: ['courses-office'] });
+      createForm.reset({
+        batchYear: '',
+        name: '',
+        startDate: new Date().toISOString().slice(0, 10),
+      });
       setShowForm(false);
     },
-    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
-  });
-
-  const setCurrentMutation = useMutation({
-    mutationFn: (id: string) => api.patch(`/office/semesters/${id}/set-current`),
-    onSuccess: () => {
-      toast.success('Current semester updated');
-      qc.invalidateQueries({ queryKey: ['semesters'] });
-    },
-    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
+    onError: (error: any) =>
+      toast.error(error.response?.data?.message ?? 'Failed to create semester'),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: FormData }) => api.patch(`/office/semesters/${id}`, payload),
+    mutationFn: ({ id, payload }: { id: string; payload: EditSemesterForm }) =>
+      api.patch(`/office/semesters/${id}`, payload),
     onSuccess: () => {
       toast.success('Semester updated');
-      qc.invalidateQueries({ queryKey: ['semesters'] });
+      queryClient.invalidateQueries({ queryKey: ['semesters'] });
+      queryClient.invalidateQueries({ queryKey: ['courses-office'] });
       setEditingSemester(null);
     },
-    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to update semester'),
+    onError: (error: any) =>
+      toast.error(error.response?.data?.message ?? 'Failed to update semester'),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/office/semesters/${id}`),
     onSuccess: () => {
       toast.success('Semester deleted');
-      qc.invalidateQueries({ queryKey: ['semesters'] });
+      queryClient.invalidateQueries({ queryKey: ['semesters'] });
+      queryClient.invalidateQueries({ queryKey: ['courses-office'] });
     },
-    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to delete semester'),
+    onError: (error: any) =>
+      toast.error(error.response?.data?.message ?? 'Failed to delete semester'),
   });
+
+  const closeCreateModal = () => {
+    setShowForm(false);
+    createForm.reset({
+      batchYear: '',
+      name: '',
+      startDate: new Date().toISOString().slice(0, 10),
+    });
+  };
+
+  const batchOptions = batches.map((batch) => batch.year);
 
   return (
     <AppShell>
-      <div className="max-w-3xl">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-slate-900">Semesters</h1>
-          <button onClick={() => setShowForm(!showForm)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
-            <Plus size={16} /> New Semester
-          </button>
+      <div className="min-h-screen bg-slate-50">
+        <div className="mb-8 border-b border-slate-200 bg-white px-8 py-6">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl bg-cyan-50 p-2.5">
+                <CalendarDays size={18} className="text-cyan-600" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-slate-900">Semesters</h1>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  {semesters.length} semester{semesters.length === 1 ? '' : 's'} configured
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowForm(true)}
+              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-200 transition-all hover:bg-indigo-700"
+            >
+              <Plus size={16} />
+              New Semester
+            </button>
+          </div>
         </div>
 
-        <Modal open={showForm} onClose={() => { setShowForm(false); reset(); }} title="New Semester">
-          <form onSubmit={handleSubmit(d => createMutation.mutate(d))} className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Semester Name</label>
-                <select {...register('name')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
-                  <option value="">— select —</option>
-                  {['semester_1','semester_2','semester_3','semester_4','semester_5','semester_6','semester_7','semester_8'].map(s => (
-                    <option key={s} value={s}>{s.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
-                  ))}
-                </select>
-                {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
+        <div className="space-y-6 px-8 pb-10">
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Active Semesters
+              </p>
+              <p className="mt-3 text-3xl font-bold text-slate-900">
+                {semesters.filter((semester) => semester.isCurrent).length}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Upcoming
+              </p>
+              <p className="mt-3 text-3xl font-bold text-slate-900">
+                {semesters.filter((semester) => isFutureDate(semester.startDate)).length}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Ready Batches
+              </p>
+              <p className="mt-3 text-3xl font-bold text-slate-900">{batches.length}</p>
+            </div>
+          </div>
+
+          <Modal open={showForm} onClose={closeCreateModal} title="New Semester">
+            <form
+              onSubmit={createForm.handleSubmit((data) => {
+                if (!nextSemesterName) {
+                  toast.error('No available semester slot remains for this batch');
+                  return;
+                }
+                createMutation.mutate({ ...data, name: nextSemesterName });
+              })}
+              className="space-y-5"
+            >
+              <div className="grid gap-5 md:grid-cols-2">
+                <div>
+                  <label className={labelClass}>Batch</label>
+                  <select
+                    {...createForm.register('batchYear')}
+                    className={inputClass}
+                    disabled={!batchOptions.length}
+                  >
+                    <option value="">Select batch</option>
+                    {batchOptions.map((batchYear) => (
+                      <option key={batchYear} value={batchYear}>
+                        {batchYear}
+                      </option>
+                    ))}
+                  </select>
+                  {createForm.formState.errors.batchYear && (
+                    <p className="mt-1.5 text-xs text-red-500">
+                      {createForm.formState.errors.batchYear.message}
+                    </p>
+                  )}
+                </div>
+
+                <DeterminedField
+                  label="Semester"
+                  value={
+                    selectedBatchYear
+                      ? nextSemesterName
+                        ? semesterLabels[nextSemesterName]
+                        : 'All 8 semesters already created'
+                      : 'Select a batch first'
+                  }
+                  muted={!selectedBatchYear || !nextSemesterName}
+                />
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Batch Year</label>
-                <input {...register('batchYear')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="2021" />
-                {errors.batchYear && <p className="text-red-500 text-xs mt-1">{errors.batchYear.message}</p>}
+                <label className={labelClass}>Start Date</label>
+                <Controller
+                  control={createForm.control}
+                  name="startDate"
+                  render={({ field }) => (
+                    <WheelDateInput
+                      value={field.value}
+                      onChange={field.onChange}
+                      disabled={!selectedBatchYear || !nextSemesterName}
+                    />
+                  )}
+                />
+                {createForm.formState.errors.startDate && (
+                  <p className="mt-2 text-xs text-red-500">
+                    {createForm.formState.errors.startDate.message}
+                  </p>
+                )}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Start Date</label>
-                <input type="date" {...register('startDate')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
-                {errors.startDate && <p className="text-red-500 text-xs mt-1">{errors.startDate.message}</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">End Date</label>
-                <input type="date" {...register('endDate')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
-                {errors.endDate && <p className="text-red-500 text-xs mt-1">{errors.endDate.message}</p>}
-              </div>
-              <div className="col-span-2 flex gap-3">
-                <button type="submit" disabled={isSubmitting}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
-                  Create
+
+              {!batchOptions.length && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Add a batch first. Semester creation is available only after at least one batch exists.
+                </div>
+              )}
+
+              {selectedBatchYear && !nextSemesterName && (
+                <div className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-700">
+                  All semester slots are already used for batch {selectedBatchYear}.
+                </div>
+              )}
+
+              <div className="flex gap-3 border-t border-slate-100 pt-2">
+                <button
+                  type="submit"
+                  disabled={
+                    createForm.formState.isSubmitting ||
+                    createMutation.isPending ||
+                    !selectedBatchYear ||
+                    !nextSemesterName
+                  }
+                  className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white transition-all hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {createForm.formState.isSubmitting || createMutation.isPending
+                    ? 'Creating...'
+                    : 'Create Semester'}
                 </button>
-                <button type="button" onClick={() => { setShowForm(false); reset(); }}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">
+                <button
+                  type="button"
+                  onClick={closeCreateModal}
+                  className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-600 transition-all hover:bg-slate-50"
+                >
                   Cancel
                 </button>
               </div>
-          </form>
-        </Modal>
-
-        <Modal open={!!editingSemester} onClose={() => setEditingSemester(null)} title="Edit Semester">
-          {editingSemester && (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                const formData = new FormData(event.currentTarget);
-                const payload: FormData = {
-                  name: String(formData.get('name') || ''),
-                  batchYear: String(formData.get('batchYear') || ''),
-                  startDate: String(formData.get('startDate') || ''),
-                  endDate: String(formData.get('endDate') || ''),
-                };
-                if (!isValidBatchYear(payload.batchYear)) {
-                  toast.error(`Batch must be a valid year between 2000 and ${MAX_BATCH_YEAR}`);
-                  return;
-                }
-                updateMutation.mutate({ id: editingSemester.id, payload });
-              }}
-              className="grid grid-cols-2 gap-4"
-            >
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Semester Name</label>
-                <select name="name" defaultValue={editingSemester.name} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
-                  {['semester_1','semester_2','semester_3','semester_4','semester_5','semester_6','semester_7','semester_8'].map(s => (
-                    <option key={s} value={s}>{s.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Batch Year</label>
-                <input name="batchYear" defaultValue={editingSemester.batchYear} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Start Date</label>
-                <input type="date" name="startDate" defaultValue={editingSemester.startDate?.slice(0, 10)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">End Date</label>
-                <input type="date" name="endDate" defaultValue={editingSemester.endDate?.slice(0, 10)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
-              </div>
-              <div className="col-span-2 flex gap-3">
-                <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">Save Changes</button>
-                <button type="button" onClick={() => setEditingSemester(null)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">Cancel</button>
-              </div>
             </form>
-          )}
-        </Modal>
+          </Modal>
 
-        <div className="space-y-3">
-          {semesters.map((s: any) => (
-            <div key={s.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-slate-800">{s.name?.replace('_', ' ')}</span>
-                  {s.isCurrent && <span className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full font-medium">Current</span>}
+          <Modal
+            open={Boolean(editingSemester)}
+            onClose={() => setEditingSemester(null)}
+            title="Edit Semester"
+          >
+            {editingSemester && (
+              <form
+                onSubmit={editForm.handleSubmit((payload) =>
+                  updateMutation.mutate({ id: editingSemester.id, payload }),
+                )}
+                className="space-y-5"
+              >
+                <div className="grid gap-5 md:grid-cols-2">
+                  <DeterminedField label="Batch" value={editingSemester.batchYear} />
+                  <DeterminedField
+                    label="Semester"
+                    value={semesterLabels[editingSemester.name] ?? editingSemester.name}
+                  />
                 </div>
-                <p className="text-sm text-slate-500 mt-0.5">Batch {s.batchYear} · {s.startDate?.slice(0,10)} → {s.endDate?.slice(0,10)}</p>
+
+                <div>
+                  <label className={labelClass}>Start Date</label>
+                  <Controller
+                    control={editForm.control}
+                    name="startDate"
+                    render={({ field }) => (
+                      <WheelDateInput value={field.value} onChange={field.onChange} />
+                    )}
+                  />
+                  {editForm.formState.errors.startDate && (
+                    <p className="mt-2 text-xs text-red-500">
+                      {editForm.formState.errors.startDate.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex gap-3 border-t border-slate-100 pt-2">
+                  <button
+                    type="submit"
+                    disabled={editForm.formState.isSubmitting || updateMutation.isPending}
+                    className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white transition-all hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {editForm.formState.isSubmitting || updateMutation.isPending
+                      ? 'Saving...'
+                      : 'Save Changes'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingSemester(null)}
+                    className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-600 transition-all hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+          </Modal>
+
+          <div className="space-y-3">
+            {semesters.map((semester) => {
+              const accent = semesterAccent[getSemesterIndex(semester.name) % semesterAccent.length];
+              return (
+                <div
+                  key={semester.id}
+                  className={`flex overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5 ${
+                    semester.isCurrent ? 'ring-2 ring-indigo-400' : ''
+                  }`}
+                >
+                  <div className={`w-1.5 flex-shrink-0 bg-gradient-to-b ${accent}`} />
+
+                  <div className="flex w-full items-center justify-between gap-4 px-6 py-5">
+                    <div className="flex items-center gap-5">
+                      <div
+                        className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${accent} text-lg font-bold text-white`}
+                      >
+                        {getSemesterIndex(semester.name) + 1}
+                      </div>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <span className="text-base font-bold text-slate-800">
+                            {semesterLabels[semester.name] ?? semester.name}
+                          </span>
+                          <SemesterStatusBadge semester={semester} />
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+                            Batch {semester.batchYear}
+                          </span>
+                        </div>
+                        <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-400">
+                          <CalendarDays size={11} />
+                          Starts {formatShortDate(semester.startDate)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingSemester(semester)}
+                        title="Edit semester"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition-all hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `Delete ${semesterLabels[semester.name] ?? semester.name} of batch ${semester.batchYear}?`,
+                            )
+                          ) {
+                            deleteMutation.mutate(semester.id);
+                          }
+                        }}
+                        title="Delete semester"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red-100 text-red-400 transition-all hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {!semesters.length && (
+              <div className="flex flex-col items-center gap-3 rounded-2xl bg-white py-20 text-center shadow-sm ring-1 ring-black/5">
+                <CalendarDays size={36} className="text-slate-200" />
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">No semesters configured yet</p>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Start by creating a batch, then add the next semester for that batch.
+                  </p>
+                </div>
               </div>
-              {!s.isCurrent && (
-                <div className="flex items-center gap-2">
-                  <button onClick={() => setCurrentMutation.mutate(s.id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-700">
-                    <CheckCircle size={14} /> Set Current
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditingSemester(s)}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
-                    title="Edit semester"
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (window.confirm(`Delete ${s.name} (${s.batchYear})?`)) {
-                        deleteMutation.mutate(s.id);
-                      }
-                    }}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-200 text-red-600 hover:bg-red-50"
-                    title="Delete semester"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              )}
-              {s.isCurrent && (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditingSemester(s)}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
-                    title="Edit semester"
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (window.confirm(`Delete ${s.name} (${s.batchYear})?`)) {
-                        deleteMutation.mutate(s.id);
-                      }
-                    }}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-200 text-red-600 hover:bg-red-50"
-                    title="Delete semester"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-          {!semesters.length && (
-            <p className="text-center text-slate-400 py-8">No semesters yet</p>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </AppShell>

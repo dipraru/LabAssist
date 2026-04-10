@@ -8,11 +8,33 @@ import {
   IsArray,
   ValidateNested,
   IsDateString,
+  ArrayMinSize,
+  Matches,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CourseType } from '../entities/course.entity';
 import { CoursePostType } from '../entities/course-post.entity';
 import { DayOfWeek } from '../entities/lab-schedule.entity';
+
+class CourseScheduleSlotDto {
+  @IsString()
+  sectionName: string;
+
+  @IsEnum(DayOfWeek)
+  dayOfWeek: DayOfWeek;
+
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
+    message: 'startTime must be in HH:mm format',
+  })
+  startTime: string;
+
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
+    message: 'endTime must be in HH:mm format',
+  })
+  endTime: string;
+}
 
 export class CreateCourseDto {
   @IsString()
@@ -34,6 +56,25 @@ export class CreateCourseDto {
 
   @IsUUID()
   semesterId: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('4', { each: true })
+  teacherIds: string[];
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => CourseScheduleSlotDto)
+  schedules: CourseScheduleSlotDto[];
+
+  @IsOptional()
+  @IsArray()
+  @Matches(/^\d{7}$/, {
+    each: true,
+    message: 'excludedStudentIds must contain valid 7-digit student IDs',
+  })
+  excludedStudentIds?: string[];
 }
 
 export class UpdateCourseDto {
@@ -60,6 +101,27 @@ export class UpdateCourseDto {
   @IsOptional()
   @IsUUID()
   semesterId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('4', { each: true })
+  teacherIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => CourseScheduleSlotDto)
+  schedules?: CourseScheduleSlotDto[];
+
+  @IsOptional()
+  @IsArray()
+  @Matches(/^\d{7}$/, {
+    each: true,
+    message: 'excludedStudentIds must contain valid 7-digit student IDs',
+  })
+  excludedStudentIds?: string[];
 }
 
 export class EnrollStudentsDto {

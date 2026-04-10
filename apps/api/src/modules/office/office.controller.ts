@@ -29,6 +29,8 @@ import {
   CorrectTeacherDto,
   CreateSemesterDto,
   CreateStudentDto,
+  CreateBatchDto,
+  UpdateSemesterStartDateDto,
 } from './dto/office.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -281,6 +283,16 @@ export class OfficeController {
   }
 
   // ── Semesters ─────────────────────────────────────────────
+  @Post('batches')
+  createBatch(@Body() dto: CreateBatchDto) {
+    return this.officeService.createBatch(dto);
+  }
+
+  @Get('batches')
+  getBatches() {
+    return this.officeService.getAllBatches();
+  }
+
   @Post('semesters')
   createSemester(@Body() dto: CreateSemesterDto) {
     return this.officeService.createSemester(dto);
@@ -289,7 +301,7 @@ export class OfficeController {
   @Patch('semesters/:id')
   updateSemester(
     @Param('id') id: string,
-    @Body() dto: Partial<CreateSemesterDto>,
+    @Body() dto: UpdateSemesterStartDateDto,
   ) {
     return this.officeService.updateSemester(id, dto);
   }

@@ -6,9 +6,12 @@ import { LoginPage } from './pages/LoginPage';
 import { OfficeDashboard } from './pages/office/OfficeDashboard';
 import { ManageTeachers } from './pages/office/ManageTeachers';
 import { ManageStudents } from './pages/office/ManageStudents';
+import { ManageBatches } from './pages/office/ManageBatches';
 import { ManageCourses } from './pages/office/ManageCourses';
 import { ManageSemesters } from './pages/office/ManageSemesters';
 import { CreateTempJudge } from './pages/office/CreateTempJudge';
+import { ApplicationsPage } from './pages/office/ApplicationsPage';
+import { ChangePasswordPage } from './pages/shared/ChangePasswordPage';
 
 // Teacher
 import { TeacherDashboard } from './pages/teacher/TeacherDashboard';
@@ -70,9 +73,12 @@ export default function App() {
         <Route path="/office" element={<OfficeDashboard />} />
         <Route path="/office/teachers" element={<ManageTeachers />} />
         <Route path="/office/students" element={<ManageStudents />} />
+        <Route path="/office/batches" element={<ManageBatches />} />
         <Route path="/office/courses" element={<ManageCourses />} />
         <Route path="/office/semesters" element={<ManageSemesters />} />
         <Route path="/office/temp-judges" element={<CreateTempJudge />} />
+        <Route path="/office/application" element={<ApplicationsPage />} />
+        <Route path="/office/change-password" element={<ChangePasswordPage />} />
       </Route>
 
       {/* Teacher */}
@@ -84,6 +90,7 @@ export default function App() {
         <Route path="/teacher/lab-tests" element={<LabTestManage />} />
         <Route path="/teacher/lecture-sheets" element={<LectureSheets />} />
         <Route path="/teacher/notifications" element={<TeacherNotifications />} />
+        <Route path="/teacher/change-password" element={<ChangePasswordPage />} />
       </Route>
 
       {/* Student */}
@@ -95,6 +102,7 @@ export default function App() {
         <Route path="/student/lab-tests" element={<StudentLabTests />} />
         <Route path="/student/profile" element={<StudentProfile />} />
         <Route path="/student/notifications" element={<StudentNotifications />} />
+        <Route path="/student/change-password" element={<ChangePasswordPage />} />
       </Route>
 
       <Route path="/judge/*" element={<RoleRedirect />} />

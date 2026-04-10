@@ -8,10 +8,20 @@ import { Student } from '../users/entities/student.entity';
 import { Teacher } from '../users/entities/teacher.entity';
 import { TempJudge } from '../users/entities/temp-judge.entity';
 import { Semester } from '../courses/entities/semester.entity';
+import { Course } from '../courses/entities/course.entity';
+import { Batch } from './entities/batch.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Student, Teacher, TempJudge, Semester]),
+    TypeOrmModule.forFeature([
+      User,
+      Student,
+      Teacher,
+      TempJudge,
+      Semester,
+      Course,
+      Batch,
+    ]),
   ],
   controllers: [OfficeController],
   providers: [OfficeService, PdfService],

@@ -46,6 +46,9 @@ export class LabSchedule {
   @Column({ type: 'varchar', nullable: true })
   batchYear: string | null; // which batch attends this slot
 
+  @Column({ type: 'varchar', nullable: true })
+  sectionName: string | null;
+
   @Column({ default: true })
   isActive: boolean;
 
