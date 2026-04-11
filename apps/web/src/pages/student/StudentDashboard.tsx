@@ -24,6 +24,29 @@ function formatShortDateTime(value: string): string {
   });
 }
 
+function resolveNotificationHref(notification: any): string {
+  if (notification?.targetPath) {
+    return notification.targetPath;
+  }
+  if (notification?.type === 'assignment_posted') {
+    return notification?.referenceId
+      ? `/student/assignments?assignmentId=${notification.referenceId}`
+      : '/student/assignments';
+  }
+  if (notification?.type === 'lecture_sheet_posted') {
+    return notification?.referenceId
+      ? `/student/courses`
+      : '/student/courses';
+  }
+  if (notification?.type === 'system') {
+    return '/student/courses';
+  }
+  if (notification?.type === 'contest_announcement') {
+    return '/student';
+  }
+  return '/student/notifications';
+}
+
 export function StudentDashboard() {
   const { user } = useAuthStore();
 
@@ -173,7 +196,9 @@ export function StudentDashboard() {
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-4 mb-8">
-            <StatCard icon={<BookOpen className="text-indigo-500" size={22} />} label="Enrolled Courses" value={(courses as any[]).length} />
+            <Link to="/student/courses">
+              <StatCard icon={<BookOpen className="text-indigo-500" size={22} />} label="Enrolled Courses" value={(courses as any[]).length} />
+            </Link>
             <Link to="/student/notifications">
               <StatCard icon={<Bell className="text-amber-500" size={22} />} label="Unread Notifications" value={unread.length} />
             </Link>
@@ -222,13 +247,19 @@ export function StudentDashboard() {
             <h2 className="text-lg font-semibold text-slate-800 mb-3">Recent Notifications</h2>
             <div className="space-y-2">
               {unread.slice(0, 5).map((n: any) => (
-                <div key={n.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex items-start gap-3">
+                <Link
+                  key={n.id}
+                  to={resolveNotificationHref(n)}
+                  className="block bg-white rounded-xl border border-slate-100 shadow-sm p-4 transition-colors hover:border-indigo-300"
+                >
+                  <div className="flex items-start gap-3">
                   <div className="w-2 h-2 bg-indigo-500 rounded-full mt-1.5 flex-shrink-0" />
                   <div>
                     <p className="font-medium text-slate-800 text-sm">{n.title}</p>
                     <p className="text-slate-500 text-xs mt-0.5">{n.body}</p>
                   </div>
-                </div>
+                  </div>
+                </Link>
               ))}
             </div>
           </div>
@@ -249,10 +280,14 @@ export function StudentDashboard() {
         ) : (
           <div className="grid grid-cols-2 gap-3">
             {(courses as any[]).map((c: any) => (
-              <div key={c.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
+              <Link
+                key={c.id}
+                to={`/student/courses/${c.id}`}
+                className="block bg-white rounded-xl border border-slate-100 shadow-sm p-4 transition-colors hover:border-indigo-300"
+              >
                 <p className="font-semibold text-slate-800">{courseTitle(c)}</p>
                 <p className="text-xs text-slate-500 mt-0.5">{courseCode(c)} · {c.semester?.name?.replace('_', ' ')}</p>
-              </div>
+              </Link>
             ))}
           </div>
         )}
@@ -263,7 +298,7 @@ export function StudentDashboard() {
 
 function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 flex items-center gap-4">
+    <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 flex items-center gap-4 transition-colors hover:border-indigo-300">
       <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center">{icon}</div>
       <div>
         <p className="text-2xl font-bold text-slate-900">{value}</p>
