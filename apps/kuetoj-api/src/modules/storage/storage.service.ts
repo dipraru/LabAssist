@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { existsSync, mkdirSync, unlinkSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync } from 'fs';
 import { join, extname } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -67,5 +67,19 @@ export class StorageService {
     } catch {
       // ignore
     }
+  }
+
+  resolvePublicUrlToPath(fileUrl: string): string {
+    const normalizedUrl = `${fileUrl ?? ''}`.trim();
+    if (!normalizedUrl.startsWith('/uploads/')) {
+      throw new Error('Unsupported file URL');
+    }
+    const relativePath = normalizedUrl.replace(/^\/uploads\//, '');
+    return join(this.uploadRoot, relativePath);
+  }
+
+  readTextFileByUrl(fileUrl: string): string {
+    const absolutePath = this.resolvePublicUrlToPath(fileUrl);
+    return readFileSync(absolutePath, 'utf8');
   }
 }

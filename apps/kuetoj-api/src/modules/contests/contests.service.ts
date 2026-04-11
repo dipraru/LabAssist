@@ -41,6 +41,7 @@ import {
   ContestStatus,
   ContestType,
   ManualVerdict,
+  ProgrammingLanguage,
   SubmissionStatus,
 } from '../../common/enums';
 import { UserRole } from '../../common/enums/role.enum';
@@ -217,6 +218,26 @@ export class ContestsService {
 
   private generatePublicStandingsKey(): string {
     return uuidv4().replace(/-/g, '');
+  }
+
+  private inferLanguageFromFileName(
+    fileName: string | null | undefined,
+  ): ProgrammingLanguage | null {
+    const normalized = `${fileName ?? ''}`.trim().toLowerCase();
+    if (!normalized) return null;
+    if (normalized.endsWith('.c')) return ProgrammingLanguage.C;
+    if (
+      normalized.endsWith('.cc') ||
+      normalized.endsWith('.cpp') ||
+      normalized.endsWith('.cxx')
+    ) {
+      return ProgrammingLanguage.CPP;
+    }
+    if (normalized.endsWith('.java')) return ProgrammingLanguage.JAVA;
+    if (normalized.endsWith('.py')) return ProgrammingLanguage.PYTHON3;
+    if (normalized.endsWith('.js')) return ProgrammingLanguage.JAVASCRIPT;
+    if (normalized.endsWith('.ts')) return ProgrammingLanguage.TYPESCRIPT;
+    return null;
   }
 
   private async ensureProblemCodes(): Promise<void> {
@@ -1156,6 +1177,13 @@ export class ContestsService {
     }
     if (!dto.code && !fileUrl)
       throw new BadRequestException('Code or file required');
+    const resolvedLanguage =
+      dto.language ?? this.inferLanguageFromFileName(file?.originalname);
+    if (!resolvedLanguage) {
+      throw new BadRequestException(
+        'Submission language is required for automated judging',
+      );
+    }
 
     const sub = this.subRepo.create({
       contestId: contest.id,
@@ -1165,7 +1193,7 @@ export class ContestsService {
       code: dto.code ?? null,
       fileUrl,
       fileName,
-      language: dto.language ?? null,
+      language: resolvedLanguage,
       submissionStatus: SubmissionStatus.PENDING,
       judgeToken: uuidv4(),
     });
@@ -1281,6 +1309,8 @@ export class ContestsService {
     sub.manualVerdict = normalizedVerdict;
     sub.submissionStatus = SubmissionStatus.MANUAL_REVIEW;
     sub.score = dto.score ?? null;
+    sub.judgeError = null;
+    sub.judgeMessage = null;
 
     // ICPC: compute penalty immediately
     if (
@@ -1800,13 +1830,35 @@ export class ContestsService {
 
   // ─── FUTURE JUDGE WEBHOOK ─────────────────────────────────────────────────────
 
-  async receiveJudgeResult(subId: string, dto: ContestJudgeResultDto) {
-    const sub = await this.subRepo.findOneBy({ id: subId });
+  async receiveJudgeResult(
+    subId: string,
+    dto: ContestJudgeResultDto,
+    judgeUserId: string,
+  ) {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
+    const sub = await this.subRepo.findOne({
+      where: { id: subId },
+      relations: ['contest'],
+    });
     if (!sub) throw new NotFoundException();
-    sub.submissionStatus =
-      dto.verdict.toUpperCase() as unknown as SubmissionStatus;
+    if (
+      !(await this.canJudgeManageContest(
+        sub.contestId,
+        sub.contest?.createdById,
+        judgeUserId,
+        judgeProfileId,
+      ))
+    ) {
+      throw new ForbiddenException();
+    }
+    sub.submissionStatus = dto.verdict
+      .toLowerCase()
+      .replace(/-/g, '_') as SubmissionStatus;
     sub.executionTimeMs = dto.executionTimeMs ?? null;
     sub.memoryUsedKb = dto.memoryUsedKb ?? null;
+    sub.judgedAt = new Date();
+    sub.judgeClaimedAt = null;
+    sub.judgeError = null;
     const saved = await this.subRepo.save(sub);
     // Push to contest room
     this.gateway.sendToContest(sub.contestId, 'verdict', {
