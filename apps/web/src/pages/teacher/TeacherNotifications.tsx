@@ -33,11 +33,17 @@ export function TeacherNotifications() {
   const unreadCount = (notifications as any[]).filter((n: any) => !n.isRead).length;
 
   const resolveNotificationHref = (n: any): string => {
+    if (n?.targetPath) {
+      return n.targetPath;
+    }
     if (n?.type === 'assignment_posted') {
       return n?.referenceId ? `/teacher/assignments?assignmentId=${n.referenceId}` : '/teacher/assignments';
     }
     if (n?.type === 'lecture_sheet_posted') {
       return n?.referenceId ? `/teacher/lecture-sheets?sheetId=${n.referenceId}` : '/teacher/lecture-sheets';
+    }
+    if (n?.type === 'system') {
+      return '/teacher/courses';
     }
     if (n?.type === 'contest_announcement') {
       return '/teacher';

@@ -501,6 +501,7 @@ export class CoursesService {
       title: `New Lecture Sheet: ${dto.title}`,
       body: `A new lecture sheet has been posted in your course.`,
       referenceId: saved.id,
+      targetPath: `/student/courses/${dto.courseId}?sheetId=${saved.id}`,
     });
 
     return saved;
@@ -592,6 +593,10 @@ export class CoursesService {
         title: `New comment in ${post.course.courseCode ?? 'course'}`,
         body: `${actor.displayName} commented on your course post.`,
         referenceId: post.id,
+        targetPath:
+          post.postedByRole === UserRole.TEACHER
+            ? `/teacher/courses/${post.courseId}`
+            : `/student/courses/${post.courseId}`,
       });
     }
 
@@ -677,6 +682,7 @@ export class CoursesService {
       title: string;
       body: string;
       referenceId: string;
+      targetPath?: string;
     },
   ) {
     const enrollments = await this.enrollmentRepo.find({
@@ -783,6 +789,7 @@ export class CoursesService {
         title: `${actor.course.courseCode}: ${post.title || 'New class post'}`,
         body: `${actor.displayName} posted an update in ${actor.course.title}.`,
         referenceId: post.id,
+        targetPath: `/student/courses/${post.courseId}`,
       });
       return;
     }
@@ -797,6 +804,7 @@ export class CoursesService {
         title: `${actor.course.courseCode}: new student question`,
         body: `${actor.displayName} posted in ${actor.course.title}.`,
         referenceId: post.id,
+        targetPath: `/teacher/courses/${post.courseId}`,
       });
     }
   }
