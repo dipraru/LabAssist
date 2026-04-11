@@ -19,7 +19,7 @@ class SampleTestCaseDto {
   @IsOptional() @IsString() explanation?: string;
 }
 
-class CreateProblemDto {
+export class CreateProblemDto {
   @IsString() title: string;
   @IsString() statement: string;
   @IsOptional() @IsNumber() marks?: number;
@@ -40,10 +40,11 @@ export class CreateLabTestDto {
   @IsDateString() startTime: string;
   @IsDateString() endTime: string;
   @IsOptional() @IsNumber() totalMarks?: number;
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateProblemDto)
-  problems: CreateProblemDto[];
+  problems?: CreateProblemDto[];
 }
 
 export class SubmitLabCodeDto {

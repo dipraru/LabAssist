@@ -12,6 +12,7 @@ import { LabTestProblem } from './entities/lab-test-problem.entity';
 import { LabSubmission } from './entities/lab-submission.entity';
 import {
   CreateLabTestDto,
+  CreateProblemDto,
   ManualGradeDto,
   SubmitLabCodeDto,
 } from './dto/lab-tests.dto';
@@ -57,8 +58,9 @@ export class LabTestsService {
       });
       await qr.manager.save(labTest);
 
-      for (let i = 0; i < dto.problems.length; i++) {
-        const p = dto.problems[i];
+      const problems = dto.problems ?? [];
+      for (let i = 0; i < problems.length; i++) {
+        const p = problems[i];
         const problem = qr.manager.create(LabTestProblem, {
           ...p,
           labTestId: labTest.id,
@@ -75,6 +77,27 @@ export class LabTestsService {
     } finally {
       await qr.release();
     }
+  }
+
+  async addProblem(
+    labTestId: string,
+    dto: CreateProblemDto,
+    teacherUserId: string,
+  ): Promise<LabTestProblem> {
+    const labTest = await this.labTestRepo.findOneBy({ id: labTestId });
+    if (!labTest) throw new NotFoundException('Lab test not found');
+
+    const existingCount = await this.problemRepo.count({
+      where: { labTestId },
+    });
+
+    const problem = this.problemRepo.create({
+      ...dto,
+      labTestId,
+      orderIndex: existingCount + 1,
+    });
+
+    return this.problemRepo.save(problem);
   }
 
   async updateLabTestStatus(
