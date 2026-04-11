@@ -18,6 +18,7 @@ import { Enrollment } from '../courses/entities/enrollment.entity';
 import { Batch, BatchSection } from './entities/batch.entity';
 import { SemesterName } from '../../common/enums';
 import { UserRole } from '../../common/enums/role.enum';
+import { LabTest, LabTestStatus } from '../lab-tests/entities/lab-test.entity';
 import {
   CreateTeacherDto,
   CreateStudentsBulkDto,
@@ -236,6 +237,7 @@ export class OfficeService {
     @InjectRepository(Semester) private semesterRepo: Repository<Semester>,
     @InjectRepository(Course) private courseRepo: Repository<Course>,
     @InjectRepository(Batch) private batchRepo: Repository<Batch>,
+    @InjectRepository(LabTest) private labTestRepo: Repository<LabTest>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -910,12 +912,22 @@ export class OfficeService {
   // ────────────────────────────────────────────────────────
 
   async getDashboardStats() {
-    const [totalTeachers, totalStudents, totalJudges] = await Promise.all([
+    const [teacherCount, studentCount, judgeCount, courseCount, activeLabTestCount] = await Promise.all([
       this.teacherRepo.count(),
       this.studentRepo.count(),
       this.judgeRepo.count(),
+      this.courseRepo.count(),
+      this.labTestRepo.count({
+        where: { status: LabTestStatus.RUNNING },
+      }),
     ]);
-    return { totalTeachers, totalStudents, totalJudges };
+    return {
+      teacherCount,
+      studentCount,
+      judgeCount,
+      courseCount,
+      activeLabTestCount,
+    };
   }
 
   async getAllTeachers(): Promise<Teacher[]> {

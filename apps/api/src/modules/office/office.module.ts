@@ -10,6 +10,7 @@ import { TempJudge } from '../users/entities/temp-judge.entity';
 import { Semester } from '../courses/entities/semester.entity';
 import { Course } from '../courses/entities/course.entity';
 import { Batch } from './entities/batch.entity';
+import { LabTest } from '../lab-tests/entities/lab-test.entity';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { Batch } from './entities/batch.entity';
       Semester,
       Course,
       Batch,
+      LabTest,
     ]),
   ],
   controllers: [OfficeController],
