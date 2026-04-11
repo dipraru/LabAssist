@@ -191,8 +191,11 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
     [posts],
   );
 
+  const getSheetHref = (sheet: any) =>
+    `${basePath}/${sheet.courseId ?? courseId}?sheetId=${sheet.id}`;
+
   return (
-    <div className="max-w-6xl">
+    <div className="w-full max-w-[1520px] 2xl:max-w-[1680px]">
       <div className="flex items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
@@ -253,7 +256,7 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
       )}
 
       {!selectedCourse ? null : (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(320px,0.95fr)_minmax(360px,1.08fr)] 2xl:grid-cols-[minmax(0,2.15fr)_minmax(360px,1fr)_minmax(400px,1.15fr)]">
           <div className="space-y-5">
             <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -357,45 +360,54 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                           : 'border-slate-100'
                       }`}
                     >
-                      <div className="flex items-start gap-3">
-                        <div className="mt-1 rounded-xl bg-indigo-100 p-2">
-                          <BookOpen size={16} className="text-indigo-600" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-medium text-indigo-700">
-                              Material
-                            </span>
-                            <span className="text-xs text-slate-400">
-                              {formatDateTime(sheet.createdAt)}
-                            </span>
+                      <Link
+                        to={getSheetHref(sheet)}
+                        className="block rounded-2xl transition-colors hover:bg-slate-50"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="mt-1 rounded-xl bg-indigo-100 p-2">
+                            <BookOpen size={16} className="text-indigo-600" />
                           </div>
-                          <h4 className="text-lg font-semibold text-slate-900 mt-3">
-                            {sheet.title}
-                          </h4>
-                          {sheet.description && (
-                            <p className="text-sm text-slate-600 mt-2">
-                              {sheet.description}
-                            </p>
-                          )}
-                          {!!sheet.links?.length && (
-                            <div className="mt-4 flex flex-wrap gap-2">
-                              {sheet.links.map((link: any, index: number) => (
-                                <a
-                                  key={`${sheet.id}-${index}`}
-                                  href={link.url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
-                                >
-                                  <ExternalLink size={12} />
-                                  {link.label || link.url}
-                                </a>
-                              ))}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-medium text-indigo-700">
+                                Material
+                              </span>
+                              <span className="text-xs text-slate-400">
+                                {formatDateTime(sheet.createdAt)}
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600">
+                                Open material
+                                <ExternalLink size={12} />
+                              </span>
                             </div>
-                          )}
+                            <h4 className="text-lg font-semibold text-slate-900 mt-3">
+                              {sheet.title}
+                            </h4>
+                            {sheet.description && (
+                              <p className="text-sm text-slate-600 mt-2">
+                                {sheet.description}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                      </div>
+                      </Link>
+                      {!!sheet.links?.length && (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {sheet.links.map((link: any, index: number) => (
+                            <a
+                              key={`${sheet.id}-${index}`}
+                              href={link.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+                            >
+                              <ExternalLink size={12} />
+                              {link.label || link.url}
+                            </a>
+                          ))}
+                        </div>
+                      )}
                     </article>
                   );
                 }
@@ -494,6 +506,85 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
           </div>
 
           <aside className="space-y-5">
+            <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+              <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                <Users size={16} className="text-slate-500" />
+                {role === 'teacher' ? 'Enrolled Students' : 'Teachers'}
+              </h3>
+
+              {role === 'teacher' ? (
+                !(enrollments as any[]).length ? (
+                  <p className="text-sm text-slate-400 mt-3">
+                    No students enrolled yet.
+                  </p>
+                ) : (
+                  <div className="mt-3 space-y-2 max-h-80 overflow-auto">
+                    {(enrollments as any[]).map((enrollment: any) => (
+                      <div
+                        key={enrollment.id}
+                        className="rounded-2xl bg-slate-50 px-3 py-2.5"
+                      >
+                        <p className="text-sm font-medium text-slate-800">
+                          {studentDisplayName(enrollment)}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {enrollment.student?.studentId ?? 'N/A'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : !teacherNames(selectedCourse).length ? (
+                <p className="text-sm text-slate-400 mt-3">
+                  No teachers assigned yet.
+                </p>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  {teacherNames(selectedCourse).map((name) => (
+                    <div
+                      key={name}
+                      className="rounded-2xl bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-800"
+                    >
+                      {name}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+            <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+              <h3 className="font-semibold text-slate-900">Materials</h3>
+              {!(sheets as any[]).length ? (
+                <p className="text-sm text-slate-400 mt-3">
+                  No materials posted yet.
+                </p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {(sheets as any[]).slice(0, 6).map((sheet: any) => (
+                    <Link
+                      key={sheet.id}
+                      to={getSheetHref(sheet)}
+                      className="flex items-start justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-3 transition-colors hover:bg-slate-100"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-800">
+                          {sheet.title}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          {formatDateTime(sheet.createdAt)}
+                        </p>
+                      </div>
+                      <ExternalLink
+                        size={14}
+                        className="mt-0.5 shrink-0 text-slate-400"
+                      />
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </section>
+          </aside>
+
+          <aside className="space-y-5">
             <section className="rounded-3xl border border-amber-200 bg-white p-5 shadow-sm">
               <div className="flex items-center gap-2">
                 <CircleHelp size={16} className="text-amber-600" />
@@ -549,7 +640,10 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                       className="rounded-2xl bg-amber-50 px-3 py-3 border border-amber-100"
                     >
                       <div className="flex items-start gap-2">
-                        <CircleHelp size={14} className="text-amber-700 mt-0.5 shrink-0" />
+                        <CircleHelp
+                          size={14}
+                          className="text-amber-700 mt-0.5 shrink-0"
+                        />
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-slate-800">
                             {post.title || 'Untitled question'}
@@ -592,7 +686,9 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                                 }))
                               }
                               placeholder={
-                                role === 'teacher' ? 'Reply to this question...' : 'Add a follow-up...'
+                                role === 'teacher'
+                                  ? 'Reply to this question...'
+                                  : 'Add a follow-up...'
                               }
                               className="min-w-0 flex-1 rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs outline-none focus:border-amber-400"
                             />
@@ -614,74 +710,6 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                   ))
                 )}
               </div>
-            </section>
-
-            <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-              <h3 className="font-semibold text-slate-900 flex items-center gap-2">
-                <Users size={16} className="text-slate-500" />
-                {role === 'teacher' ? 'Enrolled Students' : 'Teachers'}
-              </h3>
-
-              {role === 'teacher' ? (
-                !(enrollments as any[]).length ? (
-                  <p className="text-sm text-slate-400 mt-3">
-                    No students enrolled yet.
-                  </p>
-                ) : (
-                  <div className="mt-3 space-y-2 max-h-80 overflow-auto">
-                    {(enrollments as any[]).map((enrollment: any) => (
-                      <div
-                        key={enrollment.id}
-                        className="rounded-2xl bg-slate-50 px-3 py-2.5"
-                      >
-                        <p className="text-sm font-medium text-slate-800">
-                          {studentDisplayName(enrollment)}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {enrollment.student?.studentId ?? 'N/A'}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )
-              ) : !teacherNames(selectedCourse).length ? (
-                <p className="text-sm text-slate-400 mt-3">
-                  No teachers assigned yet.
-                </p>
-              ) : (
-                <div className="mt-3 space-y-2">
-                  {teacherNames(selectedCourse).map((name) => (
-                    <div
-                      key={name}
-                      className="rounded-2xl bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-800"
-                    >
-                      {name}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-              <h3 className="font-semibold text-slate-900">Materials</h3>
-              {!(sheets as any[]).length ? (
-                <p className="text-sm text-slate-400 mt-3">
-                  No materials posted yet.
-                </p>
-              ) : (
-                <div className="mt-3 space-y-3">
-                  {(sheets as any[]).slice(0, 6).map((sheet: any) => (
-                    <div key={sheet.id} className="rounded-2xl bg-slate-50 px-3 py-3">
-                      <p className="text-sm font-medium text-slate-800">
-                        {sheet.title}
-                      </p>
-                      <p className="text-xs text-slate-500 mt-1">
-                        {formatDateTime(sheet.createdAt)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
             </section>
           </aside>
         </div>
