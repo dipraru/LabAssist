@@ -8,6 +8,10 @@ type WheelDateInputProps = {
   maxYear?: number;
 };
 
+type WheelDateTimeInputProps = WheelDateInputProps & {
+  minuteStep?: number;
+};
+
 const ITEM_HEIGHT = 36;
 const REPEAT_COUNT = 7;
 
@@ -20,6 +24,26 @@ function parseValue(value: string) {
   const [year, month, day] = value.split('-').map(Number);
   if (!year || !month || !day) return null;
   return { year, month, day };
+}
+
+function parseDateTimeValue(value: string) {
+  if (!value) return null;
+
+  const [datePart, timePart = ''] = value.split('T');
+  const [year, month, day] = datePart.split('-').map(Number);
+  const [hour, minute] = timePart.replace('Z', '').split(':').map(Number);
+
+  if (
+    !year ||
+    !month ||
+    !day ||
+    Number.isNaN(hour) ||
+    Number.isNaN(minute)
+  ) {
+    return null;
+  }
+
+  return { year, month, day, hour, minute };
 }
 
 function clampDay(year: number, month: number, day: number) {
@@ -116,6 +140,7 @@ function WheelPicker({
 }
 
 type DatePart = 'day' | 'month' | 'year';
+type DateTimePart = DatePart | 'hour' | 'minute';
 
 function DateField({
   value,
@@ -330,6 +355,292 @@ export function WheelDateInput({
             interactive={activePart !== 'year'}
             onClick={() =>
               setActivePart((current) => (current === 'year' ? null : 'year'))
+            }
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function WheelDateTimeInput({
+  value,
+  onChange,
+  disabled = false,
+  minYear,
+  maxYear,
+  minuteStep = 1,
+}: WheelDateTimeInputProps) {
+  const [activePart, setActivePart] = useState<DateTimePart | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const now = new Date();
+  const safeMinuteStep = Math.max(1, Math.min(30, minuteStep));
+  const parsed = parseDateTimeValue(value) ?? {
+    day: now.getDate(),
+    month: now.getMonth() + 1,
+    year: now.getFullYear(),
+    hour: now.getHours(),
+    minute:
+      Math.floor(now.getMinutes() / safeMinuteStep) * safeMinuteStep,
+  };
+
+  useEffect(() => {
+    if (disabled) {
+      setActivePart(null);
+    }
+  }, [disabled]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setActivePart(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, []);
+
+  const minAllowedYear = minYear ?? now.getFullYear() - 100;
+  const maxAllowedYear = maxYear ?? now.getFullYear() + 100;
+  const years = useMemo(
+    () =>
+      Array.from(
+        { length: maxAllowedYear - minAllowedYear + 1 },
+        (_, index) => minAllowedYear + index,
+      ),
+    [maxAllowedYear, minAllowedYear],
+  );
+  const months = useMemo(
+    () => Array.from({ length: 12 }, (_, index) => index + 1),
+    [],
+  );
+  const days = useMemo(
+    () =>
+      Array.from(
+        { length: new Date(parsed.year, parsed.month, 0).getDate() },
+        (_, index) => index + 1,
+      ),
+    [parsed.month, parsed.year],
+  );
+  const hours = useMemo(
+    () => Array.from({ length: 24 }, (_, index) => index),
+    [],
+  );
+  const minutes = useMemo(
+    () =>
+      Array.from(
+        { length: Math.ceil(60 / safeMinuteStep) },
+        (_, index) => index * safeMinuteStep,
+      ).filter((item) => item < 60),
+    [safeMinuteStep],
+  );
+
+  const update = (next: Partial<typeof parsed>) => {
+    const year = next.year ?? parsed.year;
+    const month = next.month ?? parsed.month;
+    const day = clampDay(year, month, next.day ?? parsed.day);
+    const hour = next.hour ?? parsed.hour;
+    const minute = next.minute ?? parsed.minute;
+    onChange(
+      `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}`,
+    );
+  };
+
+  const activeValues =
+    activePart === 'day'
+      ? days
+      : activePart === 'month'
+        ? months
+        : activePart === 'year'
+          ? years
+          : activePart === 'hour'
+            ? hours
+            : minutes;
+  const activeSelected =
+    activePart === 'day'
+      ? clampDay(parsed.year, parsed.month, parsed.day)
+      : activePart === 'month'
+        ? parsed.month
+        : activePart === 'year'
+          ? parsed.year
+          : activePart === 'hour'
+            ? parsed.hour
+            : parsed.minute;
+  const expanded = Boolean(activePart);
+
+  return (
+    <div
+      ref={containerRef}
+      className={`inline-flex flex-wrap items-center gap-2 transition-all ${
+        expanded ? 'min-h-40' : 'min-h-10'
+      }`}
+    >
+      <div
+        className={`relative flex w-14 flex-shrink-0 items-center justify-center ${
+          expanded ? 'h-40' : 'h-10'
+        }`}
+      >
+        {activePart === 'day' && !disabled && (
+          <WheelPicker
+            values={activeValues}
+            selected={activeSelected}
+            onSelect={(nextValue) => update({ day: nextValue })}
+            widthClass="w-14"
+            formatter={pad}
+          />
+        )}
+        <div
+          className={`absolute inset-x-0 top-1/2 z-10 -translate-y-1/2 ${
+            activePart === 'day' ? 'pointer-events-none' : ''
+          }`}
+        >
+          <DateField
+            value={pad(parsed.day)}
+            widthClass="w-14"
+            active={activePart === 'day'}
+            disabled={disabled}
+            interactive={activePart !== 'day'}
+            onClick={() =>
+              setActivePart((current) => (current === 'day' ? null : 'day'))
+            }
+          />
+        </div>
+      </div>
+
+      <span className="text-sm font-semibold text-slate-300">/</span>
+
+      <div
+        className={`relative flex w-14 flex-shrink-0 items-center justify-center ${
+          expanded ? 'h-40' : 'h-10'
+        }`}
+      >
+        {activePart === 'month' && !disabled && (
+          <WheelPicker
+            values={activeValues}
+            selected={activeSelected}
+            onSelect={(nextValue) => update({ month: nextValue })}
+            widthClass="w-14"
+            formatter={pad}
+          />
+        )}
+        <div
+          className={`absolute inset-x-0 top-1/2 z-10 -translate-y-1/2 ${
+            activePart === 'month' ? 'pointer-events-none' : ''
+          }`}
+        >
+          <DateField
+            value={pad(parsed.month)}
+            widthClass="w-14"
+            active={activePart === 'month'}
+            disabled={disabled}
+            interactive={activePart !== 'month'}
+            onClick={() =>
+              setActivePart((current) => (current === 'month' ? null : 'month'))
+            }
+          />
+        </div>
+      </div>
+
+      <span className="text-sm font-semibold text-slate-300">/</span>
+
+      <div
+        className={`relative flex w-20 flex-shrink-0 items-center justify-center ${
+          expanded ? 'h-40' : 'h-10'
+        }`}
+      >
+        {activePart === 'year' && !disabled && (
+          <WheelPicker
+            values={activeValues}
+            selected={activeSelected}
+            onSelect={(nextValue) => update({ year: nextValue })}
+            widthClass="w-20"
+            formatter={String}
+          />
+        )}
+        <div
+          className={`absolute inset-x-0 top-1/2 z-10 -translate-y-1/2 ${
+            activePart === 'year' ? 'pointer-events-none' : ''
+          }`}
+        >
+          <DateField
+            value={String(parsed.year)}
+            widthClass="w-20"
+            active={activePart === 'year'}
+            disabled={disabled}
+            interactive={activePart !== 'year'}
+            onClick={() =>
+              setActivePart((current) => (current === 'year' ? null : 'year'))
+            }
+          />
+        </div>
+      </div>
+
+      <span className="text-sm font-semibold text-slate-300">at</span>
+
+      <div
+        className={`relative flex w-14 flex-shrink-0 items-center justify-center ${
+          expanded ? 'h-40' : 'h-10'
+        }`}
+      >
+        {activePart === 'hour' && !disabled && (
+          <WheelPicker
+            values={activeValues}
+            selected={activeSelected}
+            onSelect={(nextValue) => update({ hour: nextValue })}
+            widthClass="w-14"
+            formatter={pad}
+          />
+        )}
+        <div
+          className={`absolute inset-x-0 top-1/2 z-10 -translate-y-1/2 ${
+            activePart === 'hour' ? 'pointer-events-none' : ''
+          }`}
+        >
+          <DateField
+            value={pad(parsed.hour)}
+            widthClass="w-14"
+            active={activePart === 'hour'}
+            disabled={disabled}
+            interactive={activePart !== 'hour'}
+            onClick={() =>
+              setActivePart((current) => (current === 'hour' ? null : 'hour'))
+            }
+          />
+        </div>
+      </div>
+
+      <span className="text-sm font-semibold text-slate-300">:</span>
+
+      <div
+        className={`relative flex w-14 flex-shrink-0 items-center justify-center ${
+          expanded ? 'h-40' : 'h-10'
+        }`}
+      >
+        {activePart === 'minute' && !disabled && (
+          <WheelPicker
+            values={activeValues}
+            selected={activeSelected}
+            onSelect={(nextValue) => update({ minute: nextValue })}
+            widthClass="w-14"
+            formatter={pad}
+          />
+        )}
+        <div
+          className={`absolute inset-x-0 top-1/2 z-10 -translate-y-1/2 ${
+            activePart === 'minute' ? 'pointer-events-none' : ''
+          }`}
+        >
+          <DateField
+            value={pad(parsed.minute)}
+            widthClass="w-14"
+            active={activePart === 'minute'}
+            disabled={disabled}
+            interactive={activePart !== 'minute'}
+            onClick={() =>
+              setActivePart((current) =>
+                current === 'minute' ? null : 'minute',
+              )
             }
           />
         </div>
