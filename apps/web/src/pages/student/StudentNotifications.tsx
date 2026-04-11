@@ -33,11 +33,17 @@ export function StudentNotifications() {
   const unreadCount = (notifications as any[]).filter((n: any) => !n.isRead).length;
 
   const resolveNotificationHref = (n: any): string => {
+    if (n?.targetPath) {
+      return n.targetPath;
+    }
     if (n?.type === 'assignment_posted') {
       return n?.referenceId ? `/student/assignments?assignmentId=${n.referenceId}` : '/student/assignments';
     }
     if (n?.type === 'lecture_sheet_posted') {
       return n?.referenceId ? `/student/courses?sheetId=${n.referenceId}` : '/student/courses';
+    }
+    if (n?.type === 'system') {
+      return '/student/courses';
     }
     if (n?.type === 'contest_announcement') {
       return '/student';

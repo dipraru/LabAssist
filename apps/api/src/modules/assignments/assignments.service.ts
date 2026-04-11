@@ -83,6 +83,7 @@ export class AssignmentsService {
       title: `New Assignment: ${dto.title}`,
       body: `A new assignment has been posted. ${dto.deadline ? `Deadline: ${new Date(dto.deadline).toLocaleString()}` : ''}`,
       referenceId: saved.id,
+      targetPath: `/student/assignments?assignmentId=${saved.id}`,
     });
 
     return this.getAssignmentById(saved.id);

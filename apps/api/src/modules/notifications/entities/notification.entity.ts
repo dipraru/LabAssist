@@ -34,6 +34,9 @@ export class Notification {
   @Column({ type: 'varchar', nullable: true })
   referenceId: string | null; // e.g. assignmentId, contestId
 
+  @Column({ type: 'varchar', nullable: true })
+  targetPath: string | null;
+
   @Column({ default: false })
   isRead: boolean;
 

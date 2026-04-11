@@ -10,11 +10,20 @@ import { Notification } from './entities/notification.entity';
 import { User } from '../users/entities/user.entity';
 import { Student } from '../users/entities/student.entity';
 import { Teacher } from '../users/entities/teacher.entity';
+import { LectureSheet } from '../courses/entities/lecture-sheet.entity';
+import { CoursePost } from '../courses/entities/course-post.entity';
 
 @Global()
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Notification, User, Student, Teacher]),
+    TypeOrmModule.forFeature([
+      Notification,
+      User,
+      Student,
+      Teacher,
+      LectureSheet,
+      CoursePost,
+    ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
