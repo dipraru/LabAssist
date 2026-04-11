@@ -18,6 +18,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/role.enum';
 import { LabTestsService } from './lab-tests.service';
 import {
+  CreateProblemDto,
   CreateLabTestDto,
   JudgeResultCallbackDto,
   ManualGradeDto,
@@ -53,6 +54,16 @@ export class LabTestsController {
   @Get('course/:courseId')
   getByCourse(@Param('courseId') courseId: string) {
     return this.svc.getLabTestsByCourse(courseId);
+  }
+
+  @Roles(UserRole.TEACHER)
+  @Post(':id/problems')
+  addProblem(
+    @Param('id') id: string,
+    @Body() dto: CreateProblemDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.svc.addProblem(id, dto, user.userId);
   }
 
   @Roles(UserRole.TEACHER)

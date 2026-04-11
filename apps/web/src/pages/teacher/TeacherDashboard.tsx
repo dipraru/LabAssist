@@ -23,8 +23,10 @@ export function TeacherDashboard() {
         <h1 className="text-2xl font-bold text-slate-900 mb-6">Teacher Dashboard</h1>
 
         <div className="grid grid-cols-2 gap-4 mb-8">
-          <StatCard icon={<BookOpen className="text-indigo-500" size={22} />}
-            label="My Courses" value={courses.length} />
+          <Link to="/teacher/courses" className="block">
+            <StatCard icon={<BookOpen className="text-indigo-500" size={22} />}
+              label="My Courses" value={courses.length} />
+          </Link>
           <Link to="/teacher/notifications" className="block">
             <StatCard icon={<Bell className="text-amber-500" size={22} />}
               label="Unread Notifications" value={unread} />
@@ -37,7 +39,11 @@ export function TeacherDashboard() {
         ) : (
           <div className="grid gap-3">
             {courses.map((c: any) => (
-              <div key={c.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex items-center gap-4">
+              <Link
+                key={c.id}
+                to={`/teacher/courses/${c.id}`}
+                className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex items-center gap-4 transition-colors hover:border-indigo-300 hover:bg-indigo-50/30"
+              >
                 <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center">
                   <BookOpen className="text-indigo-500" size={18} />
                 </div>
@@ -45,7 +51,7 @@ export function TeacherDashboard() {
                   <p className="font-semibold text-slate-800">{courseTitle(c)}</p>
                   <p className="text-sm text-slate-500">{courseCode(c)} · {semesterLabel(c)}</p>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}
@@ -56,7 +62,7 @@ export function TeacherDashboard() {
 
 function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 flex items-center gap-4">
+    <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 flex items-center gap-4 transition-colors hover:border-indigo-300">
       <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center">{icon}</div>
       <div>
         <p className="text-2xl font-bold text-slate-900">{value}</p>
