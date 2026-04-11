@@ -64,7 +64,13 @@ export function LabTestManage() {
     enabled: !!selectedTest,
   });
 
-  const testForm = useForm<TestData>({ resolver: zodResolver(testSchema) });
+  const testForm = useForm<TestData>({
+    resolver: zodResolver(testSchema),
+    defaultValues: {
+      startTime: '',
+      endTime: '',
+    },
+  });
   const problemForm = useForm<ProblemData>({ resolver: zodResolver(problemSchema) });
   const gradeForm = useForm<GradeData>({ resolver: zodResolver(gradeSchema) });
 
@@ -152,7 +158,7 @@ export function LabTestManage() {
                   name="startTime"
                   render={({ field }) => (
                     <WheelDateTimeInput
-                      value={field.value}
+                      value={field.value ?? ''}
                       onChange={field.onChange}
                     />
                   )}
@@ -170,7 +176,7 @@ export function LabTestManage() {
                   name="endTime"
                   render={({ field }) => (
                     <WheelDateTimeInput
-                      value={field.value}
+                      value={field.value ?? ''}
                       onChange={field.onChange}
                     />
                   )}

@@ -107,7 +107,7 @@ export function AssignmentManage() {
 
   const assignForm = useForm<AssignData>({
     resolver: zodResolver(assignSchema),
-    defaultValues: { links: [] },
+    defaultValues: { deadline: '', links: [] },
   });
   const { fields: linkFields, append: appendLink, remove: removeLink } = useFieldArray({
     control: assignForm.control,
@@ -228,7 +228,7 @@ export function AssignmentManage() {
                   name="deadline"
                   render={({ field }) => (
                     <WheelDateTimeInput
-                      value={field.value}
+                      value={field.value ?? ''}
                       onChange={field.onChange}
                     />
                   )}

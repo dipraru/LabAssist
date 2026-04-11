@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
+import { WheelDateTimeInput } from '../../components/WheelDateInput';
 import { Plus, Download, Clock, ShieldCheck, RefreshCw } from 'lucide-react';
 
 const createSchema = z.object({
@@ -54,8 +55,14 @@ export function CreateTempJudge() {
     queryFn: () => api.get('/office/judges').then(r => r.data),
   });
 
-  const createForm = useForm<CreateData>({ resolver: zodResolver(createSchema) });
-  const extendForm = useForm<ExtendData>({ resolver: zodResolver(extendSchema) });
+  const createForm = useForm<CreateData>({
+    resolver: zodResolver(createSchema),
+    defaultValues: { accessUntil: '' },
+  });
+  const extendForm = useForm<ExtendData>({
+    resolver: zodResolver(extendSchema),
+    defaultValues: { newAccessUntil: '' },
+  });
 
   const downloadPdf = (base64: string) => {
     const link = document.createElement('a');
@@ -157,10 +164,15 @@ export function CreateTempJudge() {
             <form onSubmit={createForm.handleSubmit(d => createMutation.mutate(d))} className="space-y-5">
               <div>
                 <label className={labelClass}>Access Until</label>
-                <input
-                  type="datetime-local"
-                  {...createForm.register('accessUntil')}
-                  className={inputClass}
+                <Controller
+                  control={createForm.control}
+                  name="accessUntil"
+                  render={({ field }) => (
+                    <WheelDateTimeInput
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                    />
+                  )}
                 />
                 {createForm.formState.errors.accessUntil && (
                   <p className="text-red-500 text-xs mt-1.5">{createForm.formState.errors.accessUntil.message}</p>
@@ -233,10 +245,15 @@ export function CreateTempJudge() {
                             onSubmit={extendForm.handleSubmit(d => extendMutation.mutate({ id: j.id, data: d }))}
                             className="flex items-center gap-2"
                           >
-                            <input
-                              type="datetime-local"
-                              {...extendForm.register('newAccessUntil')}
-                              className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                            <Controller
+                              control={extendForm.control}
+                              name="newAccessUntil"
+                              render={({ field }) => (
+                                <WheelDateTimeInput
+                                  value={field.value ?? ''}
+                                  onChange={field.onChange}
+                                />
+                              )}
                             />
                             <button type="submit" className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-all">
                               Save

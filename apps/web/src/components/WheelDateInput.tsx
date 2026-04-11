@@ -61,15 +61,32 @@ function WheelPicker({
   onSelect,
   widthClass,
   formatter = (current: number) => String(current),
+  autoFocus = false,
 }: {
   values: number[];
   selected: number;
   onSelect: (value: number) => void;
   widthClass: string;
   formatter?: (value: number) => string;
+  autoFocus?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const isAdjustingRef = useRef(false);
+  const typingBufferRef = useRef('');
+  const lastTypingAtRef = useRef(0);
+
+  const scrollToValue = (value: number, behavior: ScrollBehavior = 'auto') => {
+    const node = scrollRef.current;
+    if (!node || !values.length) return;
+
+    const selectedIndex = values.indexOf(value);
+    const safeIndex = selectedIndex >= 0 ? selectedIndex : 0;
+    node.scrollTo({
+      top: (getCenterIndex(values.length) + safeIndex) * ITEM_HEIGHT,
+      behavior,
+    });
+  };
+
   const repeatedValues = useMemo(
     () =>
       Array.from({ length: values.length * REPEAT_COUNT }, (_, index) => ({
@@ -80,13 +97,71 @@ function WheelPicker({
   );
 
   useEffect(() => {
-    const node = scrollRef.current;
-    if (!node || !values.length) return;
+    scrollToValue(selected);
+  }, [selected, values]);
 
+  useEffect(() => {
+    if (autoFocus) {
+      scrollRef.current?.focus();
+    }
+  }, [autoFocus]);
+
+  const handleDirectSelect = (value: number) => {
+    onSelect(value);
+    requestAnimationFrame(() => {
+      scrollToValue(value, 'smooth');
+    });
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!values.length) return;
+
+    if (/^\d$/.test(event.key)) {
+      event.preventDefault();
+
+      const now = Date.now();
+      const nextBuffer =
+        now - lastTypingAtRef.current > 900
+          ? event.key
+          : `${typingBufferRef.current}${event.key}`;
+
+      typingBufferRef.current = nextBuffer;
+      lastTypingAtRef.current = now;
+
+      const exactMatch = values.find(
+        (value) => String(value) === String(Number(nextBuffer)),
+      );
+      const prefixMatch =
+        exactMatch ??
+        values.find((value) => String(value).startsWith(nextBuffer));
+
+      if (prefixMatch !== undefined) {
+        handleDirectSelect(prefixMatch);
+      }
+      return;
+    }
+
+    if (event.key === 'Backspace') {
+      event.preventDefault();
+      typingBufferRef.current = typingBufferRef.current.slice(0, -1);
+      lastTypingAtRef.current = Date.now();
+      return;
+    }
+
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+      return;
+    }
+
+    event.preventDefault();
     const selectedIndex = values.indexOf(selected);
     const safeIndex = selectedIndex >= 0 ? selectedIndex : 0;
-    node.scrollTop = (getCenterIndex(values.length) + safeIndex) * ITEM_HEIGHT;
-  }, [selected, values]);
+    const nextIndex =
+      event.key === 'ArrowDown'
+        ? (safeIndex + 1) % values.length
+        : (safeIndex - 1 + values.length) % values.length;
+
+    handleDirectSelect(values[nextIndex]);
+  };
 
   const handleScroll = () => {
     const node = scrollRef.current;
@@ -120,19 +195,23 @@ function WheelPicker({
       <div
         ref={scrollRef}
         onScroll={handleScroll}
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
         className="h-full overflow-y-auto py-[52px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        style={{ scrollSnapType: 'y mandatory' }}
+        style={{ scrollSnapType: 'y mandatory', touchAction: 'pan-y' }}
       >
         {repeatedValues.map((item) => (
-          <div
+          <button
+            type="button"
             key={item.key}
-            className={`flex items-center justify-center text-sm font-semibold transition-colors ${
+            onClick={() => handleDirectSelect(item.value)}
+            className={`flex w-full items-center justify-center text-sm font-semibold transition-colors ${
               item.value === selected ? 'text-slate-900' : 'text-slate-400'
             }`}
             style={{ height: ITEM_HEIGHT, scrollSnapAlign: 'center' }}
           >
             {formatter(item.value)}
-          </div>
+          </button>
         ))}
       </div>
     </div>
@@ -140,8 +219,6 @@ function WheelPicker({
 }
 
 type DatePart = 'day' | 'month' | 'year';
-type DateTimePart = DatePart | 'hour' | 'minute';
-
 function DateField({
   value,
   widthClass,
@@ -272,6 +349,7 @@ export function WheelDateInput({
             onSelect={(nextValue) => update({ day: nextValue })}
             widthClass="w-14"
             formatter={pad}
+            autoFocus
           />
         )}
         <div
@@ -306,6 +384,7 @@ export function WheelDateInput({
             onSelect={(nextValue) => update({ month: nextValue })}
             widthClass="w-14"
             formatter={pad}
+            autoFocus
           />
         )}
         <div
@@ -340,6 +419,7 @@ export function WheelDateInput({
             onSelect={(nextValue) => update({ year: nextValue })}
             widthClass="w-20"
             formatter={String}
+            autoFocus
           />
         )}
         <div
@@ -371,7 +451,9 @@ export function WheelDateTimeInput({
   maxYear,
   minuteStep = 1,
 }: WheelDateTimeInputProps) {
-  const [activePart, setActivePart] = useState<DateTimePart | null>(null);
+  const [activeTimePart, setActiveTimePart] = useState<'hour' | 'minute' | null>(
+    null,
+  );
   const containerRef = useRef<HTMLDivElement | null>(null);
   const now = new Date();
   const safeMinuteStep = Math.max(1, Math.min(30, minuteStep));
@@ -383,50 +465,7 @@ export function WheelDateTimeInput({
     minute:
       Math.floor(now.getMinutes() / safeMinuteStep) * safeMinuteStep,
   };
-
-  useEffect(() => {
-    if (disabled) {
-      setActivePart(null);
-    }
-  }, [disabled]);
-
-  useEffect(() => {
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        setActivePart(null);
-      }
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
-  }, []);
-
-  const minAllowedYear = minYear ?? now.getFullYear() - 100;
-  const maxAllowedYear = maxYear ?? now.getFullYear() + 100;
-  const years = useMemo(
-    () =>
-      Array.from(
-        { length: maxAllowedYear - minAllowedYear + 1 },
-        (_, index) => minAllowedYear + index,
-      ),
-    [maxAllowedYear, minAllowedYear],
-  );
-  const months = useMemo(
-    () => Array.from({ length: 12 }, (_, index) => index + 1),
-    [],
-  );
-  const days = useMemo(
-    () =>
-      Array.from(
-        { length: new Date(parsed.year, parsed.month, 0).getDate() },
-        (_, index) => index + 1,
-      ),
-    [parsed.month, parsed.year],
-  );
-  const hours = useMemo(
-    () => Array.from({ length: 24 }, (_, index) => index),
-    [],
-  );
+  const hours = useMemo(() => Array.from({ length: 24 }, (_, index) => index), []);
   const minutes = useMemo(
     () =>
       Array.from(
@@ -436,175 +475,86 @@ export function WheelDateTimeInput({
     [safeMinuteStep],
   );
 
-  const update = (next: Partial<typeof parsed>) => {
-    const year = next.year ?? parsed.year;
-    const month = next.month ?? parsed.month;
-    const day = clampDay(year, month, next.day ?? parsed.day);
+  useEffect(() => {
+    if (disabled) {
+      setActiveTimePart(null);
+    }
+  }, [disabled]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setActiveTimePart(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, []);
+
+  const updateTime = (next: Partial<Pick<typeof parsed, 'hour' | 'minute'>>) => {
+    const dateValue = `${parsed.year}-${pad(parsed.month)}-${pad(parsed.day)}`;
     const hour = next.hour ?? parsed.hour;
     const minute = next.minute ?? parsed.minute;
-    onChange(
-      `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}`,
-    );
+    onChange(`${dateValue}T${pad(hour)}:${pad(minute)}`);
   };
 
-  const activeValues =
-    activePart === 'day'
-      ? days
-      : activePart === 'month'
-        ? months
-        : activePart === 'year'
-          ? years
-          : activePart === 'hour'
-            ? hours
-            : minutes;
-  const activeSelected =
-    activePart === 'day'
-      ? clampDay(parsed.year, parsed.month, parsed.day)
-      : activePart === 'month'
-        ? parsed.month
-        : activePart === 'year'
-          ? parsed.year
-          : activePart === 'hour'
-            ? parsed.hour
-            : parsed.minute;
-  const expanded = Boolean(activePart);
+  const updateDate = (dateValue: string) => {
+    if (!dateValue) {
+      onChange('');
+      return;
+    }
+
+    onChange(`${dateValue}T${pad(parsed.hour)}:${pad(parsed.minute)}`);
+  };
 
   return (
     <div
       ref={containerRef}
       className={`inline-flex flex-wrap items-center gap-2 transition-all ${
-        expanded ? 'min-h-40' : 'min-h-10'
+        activeTimePart ? 'min-h-40' : 'min-h-10'
       }`}
     >
-      <div
-        className={`relative flex w-14 flex-shrink-0 items-center justify-center ${
-          expanded ? 'h-40' : 'h-10'
-        }`}
-      >
-        {activePart === 'day' && !disabled && (
-          <WheelPicker
-            values={activeValues}
-            selected={activeSelected}
-            onSelect={(nextValue) => update({ day: nextValue })}
-            widthClass="w-14"
-            formatter={pad}
-          />
-        )}
-        <div
-          className={`absolute inset-x-0 top-1/2 z-10 -translate-y-1/2 ${
-            activePart === 'day' ? 'pointer-events-none' : ''
-          }`}
-        >
-          <DateField
-            value={pad(parsed.day)}
-            widthClass="w-14"
-            active={activePart === 'day'}
-            disabled={disabled}
-            interactive={activePart !== 'day'}
-            onClick={() =>
-              setActivePart((current) => (current === 'day' ? null : 'day'))
-            }
-          />
-        </div>
-      </div>
-
-      <span className="text-sm font-semibold text-slate-300">/</span>
-
-      <div
-        className={`relative flex w-14 flex-shrink-0 items-center justify-center ${
-          expanded ? 'h-40' : 'h-10'
-        }`}
-      >
-        {activePart === 'month' && !disabled && (
-          <WheelPicker
-            values={activeValues}
-            selected={activeSelected}
-            onSelect={(nextValue) => update({ month: nextValue })}
-            widthClass="w-14"
-            formatter={pad}
-          />
-        )}
-        <div
-          className={`absolute inset-x-0 top-1/2 z-10 -translate-y-1/2 ${
-            activePart === 'month' ? 'pointer-events-none' : ''
-          }`}
-        >
-          <DateField
-            value={pad(parsed.month)}
-            widthClass="w-14"
-            active={activePart === 'month'}
-            disabled={disabled}
-            interactive={activePart !== 'month'}
-            onClick={() =>
-              setActivePart((current) => (current === 'month' ? null : 'month'))
-            }
-          />
-        </div>
-      </div>
-
-      <span className="text-sm font-semibold text-slate-300">/</span>
-
-      <div
-        className={`relative flex w-20 flex-shrink-0 items-center justify-center ${
-          expanded ? 'h-40' : 'h-10'
-        }`}
-      >
-        {activePart === 'year' && !disabled && (
-          <WheelPicker
-            values={activeValues}
-            selected={activeSelected}
-            onSelect={(nextValue) => update({ year: nextValue })}
-            widthClass="w-20"
-            formatter={String}
-          />
-        )}
-        <div
-          className={`absolute inset-x-0 top-1/2 z-10 -translate-y-1/2 ${
-            activePart === 'year' ? 'pointer-events-none' : ''
-          }`}
-        >
-          <DateField
-            value={String(parsed.year)}
-            widthClass="w-20"
-            active={activePart === 'year'}
-            disabled={disabled}
-            interactive={activePart !== 'year'}
-            onClick={() =>
-              setActivePart((current) => (current === 'year' ? null : 'year'))
-            }
-          />
-        </div>
-      </div>
+      <WheelDateInput
+        value={`${parsed.year}-${pad(parsed.month)}-${pad(parsed.day)}`}
+        onChange={updateDate}
+        disabled={disabled}
+        minYear={minYear}
+        maxYear={maxYear}
+      />
 
       <span className="text-sm font-semibold text-slate-300">at</span>
 
       <div
         className={`relative flex w-14 flex-shrink-0 items-center justify-center ${
-          expanded ? 'h-40' : 'h-10'
+          activeTimePart === 'hour' ? 'h-40' : 'h-10'
         }`}
       >
-        {activePart === 'hour' && !disabled && (
+        {activeTimePart === 'hour' && !disabled && (
           <WheelPicker
-            values={activeValues}
-            selected={activeSelected}
-            onSelect={(nextValue) => update({ hour: nextValue })}
+            values={hours}
+            selected={parsed.hour}
+            onSelect={(nextValue) => updateTime({ hour: nextValue })}
             widthClass="w-14"
             formatter={pad}
+            autoFocus
           />
         )}
         <div
           className={`absolute inset-x-0 top-1/2 z-10 -translate-y-1/2 ${
-            activePart === 'hour' ? 'pointer-events-none' : ''
+            activeTimePart === 'hour' ? 'pointer-events-none' : ''
           }`}
         >
           <DateField
             value={pad(parsed.hour)}
             widthClass="w-14"
-            active={activePart === 'hour'}
+            active={activeTimePart === 'hour'}
             disabled={disabled}
-            interactive={activePart !== 'hour'}
+            interactive={activeTimePart !== 'hour'}
             onClick={() =>
-              setActivePart((current) => (current === 'hour' ? null : 'hour'))
+              setActiveTimePart((current) =>
+                current === 'hour' ? null : 'hour',
+              )
             }
           />
         </div>
@@ -614,31 +564,32 @@ export function WheelDateTimeInput({
 
       <div
         className={`relative flex w-14 flex-shrink-0 items-center justify-center ${
-          expanded ? 'h-40' : 'h-10'
+          activeTimePart === 'minute' ? 'h-40' : 'h-10'
         }`}
       >
-        {activePart === 'minute' && !disabled && (
+        {activeTimePart === 'minute' && !disabled && (
           <WheelPicker
-            values={activeValues}
-            selected={activeSelected}
-            onSelect={(nextValue) => update({ minute: nextValue })}
+            values={minutes}
+            selected={parsed.minute}
+            onSelect={(nextValue) => updateTime({ minute: nextValue })}
             widthClass="w-14"
             formatter={pad}
+            autoFocus
           />
         )}
         <div
           className={`absolute inset-x-0 top-1/2 z-10 -translate-y-1/2 ${
-            activePart === 'minute' ? 'pointer-events-none' : ''
+            activeTimePart === 'minute' ? 'pointer-events-none' : ''
           }`}
         >
           <DateField
             value={pad(parsed.minute)}
             widthClass="w-14"
-            active={activePart === 'minute'}
+            active={activeTimePart === 'minute'}
             disabled={disabled}
-            interactive={activePart !== 'minute'}
+            interactive={activeTimePart !== 'minute'}
             onClick={() =>
-              setActivePart((current) =>
+              setActiveTimePart((current) =>
                 current === 'minute' ? null : 'minute',
               )
             }
