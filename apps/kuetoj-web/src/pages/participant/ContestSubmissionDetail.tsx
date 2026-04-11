@@ -49,8 +49,58 @@ export function ContestSubmissionDetail() {
               <p><span className="font-semibold">Language:</span> {submission.language ?? '—'}</p>
               <p><span className="font-semibold">Verdict:</span> {submission.manualVerdict ?? submission.submissionStatus}</p>
               <p><span className="font-semibold">Submitted:</span> {new Date(submission.submittedAt).toLocaleString()}</p>
+              {submission.executionTimeMs != null && <p><span className="font-semibold">Time:</span> {submission.executionTimeMs} ms</p>}
+              {submission.memoryUsedKb != null && <p><span className="font-semibold">Memory:</span> {submission.memoryUsedKb} KB</p>}
               {submission.score != null && <p><span className="font-semibold">Score:</span> {submission.score}</p>}
+              {submission.judgeServerName && <p><span className="font-semibold">Judge Server:</span> {submission.judgeServerName}</p>}
               {submission.fileName && <p><span className="font-semibold">Uploaded file:</span> {submission.fileName}</p>}
+              {submission.judgeError && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
+                  <p className="font-semibold">Judge Queue Notice</p>
+                  <p className="mt-1 whitespace-pre-wrap">{submission.judgeError}</p>
+                </div>
+              )}
+              {submission.judgeMessage && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="font-semibold text-slate-700">Judge Message</p>
+                  <p className="mt-1 whitespace-pre-wrap text-slate-600">{submission.judgeMessage}</p>
+                </div>
+              )}
+              {submission.compileOutput && (
+                <div>
+                  <p className="mb-1 font-semibold">Compiler Output</p>
+                  <pre className="max-h-72 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{submission.compileOutput}</pre>
+                </div>
+              )}
+              {Array.isArray(submission.testcaseResults) && submission.testcaseResults.length > 0 && (
+                <div>
+                  <p className="mb-2 font-semibold">Executed Test Cases</p>
+                  <div className="overflow-hidden rounded-lg border border-slate-200">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2">Case</th>
+                          <th className="px-3 py-2">Type</th>
+                          <th className="px-3 py-2">Verdict</th>
+                          <th className="px-3 py-2">Time</th>
+                          <th className="px-3 py-2">Memory</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {submission.testcaseResults.map((testCase: any) => (
+                          <tr key={`${testCase.index}-${testCase.isSample ? 'sample' : 'hidden'}`} className="border-t border-slate-100">
+                            <td className="px-3 py-2">{testCase.index}</td>
+                            <td className="px-3 py-2">{testCase.isSample ? 'Sample' : 'Hidden'}</td>
+                            <td className="px-3 py-2">{testCase.verdict}</td>
+                            <td className="px-3 py-2">{testCase.timeMs != null ? `${testCase.timeMs} ms` : '—'}</td>
+                            <td className="px-3 py-2">{testCase.memoryKb != null ? `${testCase.memoryKb} KB` : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
               {submission.code ? (
                 <div>

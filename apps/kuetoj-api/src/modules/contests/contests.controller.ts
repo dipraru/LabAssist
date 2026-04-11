@@ -319,9 +319,14 @@ export class ContestsController {
 
   // ─── FUTURE JUDGE WEBHOOK ─────────────────────────────────────────────────────
 
+  @Roles(UserRole.TEMP_JUDGE)
   @Patch('submissions/:id/result')
-  judgeResult(@Param('id') id: string, @Body() dto: ContestJudgeResultDto) {
-    return this.svc.receiveJudgeResult(id, dto);
+  judgeResult(
+    @Param('id') id: string,
+    @Body() dto: ContestJudgeResultDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.svc.receiveJudgeResult(id, dto, user.id);
   }
 }
 
