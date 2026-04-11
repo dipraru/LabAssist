@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useFieldArray, useForm } from 'react-hook-form';
+import { Controller, useFieldArray, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
+import { WheelDateTimeInput } from '../../components/WheelDateInput';
 import { Plus, ChevronDown, ChevronRight } from 'lucide-react';
 import { courseCode, courseTitle, studentDisplayName } from '../../lib/display';
 
@@ -106,7 +107,7 @@ export function AssignmentManage() {
 
   const assignForm = useForm<AssignData>({
     resolver: zodResolver(assignSchema),
-    defaultValues: { links: [] },
+    defaultValues: { deadline: '', links: [] },
   });
   const { fields: linkFields, append: appendLink, remove: removeLink } = useFieldArray({
     control: assignForm.control,
@@ -222,7 +223,21 @@ export function AssignmentManage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Deadline</label>
-                <input type="datetime-local" {...assignForm.register('deadline')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                <Controller
+                  control={assignForm.control}
+                  name="deadline"
+                  render={({ field }) => (
+                    <WheelDateTimeInput
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
+                {assignForm.formState.errors.deadline && (
+                  <p className="mt-2 text-xs text-red-500">
+                    {assignForm.formState.errors.deadline.message}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Total Marks</label>

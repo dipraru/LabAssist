@@ -13,7 +13,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   GraduationCap,
-  BriefcaseBusiness,
   ShieldUser,
   CalendarRange,
   UserCircle2,

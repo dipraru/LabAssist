@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
+import { WheelDateTimeInput } from '../../components/WheelDateInput';
 import { Plus, PlayCircle, StopCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { courseCode, courseTitle, studentDisplayName } from '../../lib/display';
 
@@ -63,7 +64,13 @@ export function LabTestManage() {
     enabled: !!selectedTest,
   });
 
-  const testForm = useForm<TestData>({ resolver: zodResolver(testSchema) });
+  const testForm = useForm<TestData>({
+    resolver: zodResolver(testSchema),
+    defaultValues: {
+      startTime: '',
+      endTime: '',
+    },
+  });
   const problemForm = useForm<ProblemData>({ resolver: zodResolver(problemSchema) });
   const gradeForm = useForm<GradeData>({ resolver: zodResolver(gradeSchema) });
 
@@ -146,11 +153,39 @@ export function LabTestManage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Start Time</label>
-                <input type="datetime-local" {...testForm.register('startTime')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                <Controller
+                  control={testForm.control}
+                  name="startTime"
+                  render={({ field }) => (
+                    <WheelDateTimeInput
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
+                {testForm.formState.errors.startTime && (
+                  <p className="mt-2 text-xs text-red-500">
+                    {testForm.formState.errors.startTime.message}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">End Time</label>
-                <input type="datetime-local" {...testForm.register('endTime')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                <Controller
+                  control={testForm.control}
+                  name="endTime"
+                  render={({ field }) => (
+                    <WheelDateTimeInput
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
+                {testForm.formState.errors.endTime && (
+                  <p className="mt-2 text-xs text-red-500">
+                    {testForm.formState.errors.endTime.message}
+                  </p>
+                )}
               </div>
               <div className="col-span-2 flex gap-3">
                 <button type="submit" disabled={testForm.formState.isSubmitting}
