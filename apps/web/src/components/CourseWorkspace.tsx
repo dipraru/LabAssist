@@ -195,9 +195,13 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
     <div className="max-w-6xl">
       <div className="flex items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Courses</h1>
+          <h1 className="text-2xl font-bold text-slate-900">
+            {selectedCourse ? courseCode(selectedCourse) : 'Courses'}
+          </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Open a course card to view the class stream and discussion.
+            {selectedCourse
+              ? 'Course stream, materials, and discussion for the selected class.'
+              : 'Open a course card to view the class stream and discussion.'}
           </p>
         </div>
         {selectedCourse && (
@@ -210,31 +214,26 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
         )}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 mb-8">
-        {coursesLoading &&
-          [1, 2, 3].map((key) => (
-            <div
-              key={key}
-              className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm animate-pulse"
-            >
-              <div className="w-10 h-10 rounded-xl bg-slate-100 mb-3" />
-              <div className="h-4 w-24 rounded bg-slate-100 mb-2" />
-              <div className="h-3 w-36 rounded bg-slate-100" />
-            </div>
-          ))}
+      {!selectedCourse && (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 mb-8">
+          {coursesLoading &&
+            [1, 2, 3].map((key) => (
+              <div
+                key={key}
+                className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm animate-pulse"
+              >
+                <div className="w-10 h-10 rounded-xl bg-slate-100 mb-3" />
+                <div className="h-4 w-24 rounded bg-slate-100 mb-2" />
+                <div className="h-3 w-36 rounded bg-slate-100" />
+              </div>
+            ))}
 
-        {!coursesLoading &&
-          (courses as any[]).map((course: any) => {
-            const active = course.id === courseId;
-            return (
+          {!coursesLoading &&
+            (courses as any[]).map((course: any) => (
               <Link
                 key={course.id}
                 to={`${basePath}/${course.id}`}
-                className={`rounded-2xl border p-5 shadow-sm transition-all ${
-                  active
-                    ? 'border-indigo-400 bg-indigo-50 shadow-indigo-100'
-                    : 'border-slate-100 bg-white hover:border-slate-300 hover:-translate-y-0.5'
-                }`}
+                className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition-all hover:border-slate-300 hover:-translate-y-0.5"
               >
                 <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center mb-3">
                   <BookOpen size={18} className="text-indigo-600" />
@@ -245,13 +244,13 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                   {teacherNames(course).join(', ') || 'Teacher not assigned yet'}
                 </p>
               </Link>
-            );
-          })}
+            ))}
 
-        {!coursesLoading && !(courses as any[]).length && (
-          <p className="text-slate-400 py-4">No courses available right now.</p>
-        )}
-      </div>
+          {!coursesLoading && !(courses as any[]).length && (
+            <p className="text-slate-400 py-4">No courses available right now.</p>
+          )}
+        </div>
+      )}
 
       {!selectedCourse ? null : (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
