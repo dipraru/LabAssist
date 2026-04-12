@@ -51,7 +51,7 @@ function RoleRedirect() {
 
 function JudgeContestDefaultRedirect() {
   const { id } = useParams<{ id: string }>();
-  return <Navigate to={`/contests/${id}/problems`} replace />;
+  return <Navigate to={`/contests/${id}/status`} replace />;
 }
 
 function LegacyJudgeRedirect() {

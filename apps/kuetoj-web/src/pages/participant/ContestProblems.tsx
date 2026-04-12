@@ -1,10 +1,13 @@
+import { useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AppShell } from '../../components/AppShell';
 import { ParticipantContestNav } from '../../components/ParticipantContestNav';
 import { ParticipantContestHeader } from '../../components/ParticipantContestHeader';
 import { api } from '../../lib/api';
 import { getContestPhase } from '../../components/ContestCountdownBar';
+import { getSocket, joinContest, leaveContest } from '../../lib/socket';
+import { isAcceptedVerdict } from '../../lib/verdict';
 
 function contestProblemLabel(cp: any, index: number): string {
   const raw = typeof cp?.label === 'string' ? cp.label.trim().toUpperCase() : '';
@@ -14,6 +17,7 @@ function contestProblemLabel(cp: any, index: number): string {
 
 export function ContestProblems() {
   const { id } = useParams<{ id: string }>();
+  const qc = useQueryClient();
 
   const { data: contest, isLoading } = useQuery({
     queryKey: ['contest', id],
@@ -25,12 +29,14 @@ export function ContestProblems() {
     queryKey: ['my-contest-submissions', id],
     queryFn: () => api.get(`/contests/${id}/my-submissions`).then((response) => response.data),
     enabled: !!id,
+    refetchInterval: 3000,
   });
 
   const { data: standings } = useQuery({
     queryKey: ['contest-standings', id],
     queryFn: () => api.get(`/contests/${id}/standings`).then((response) => response.data),
     enabled: !!id,
+    refetchInterval: 10000,
   });
 
   const { data: announcements = [] } = useQuery({
@@ -38,6 +44,35 @@ export function ContestProblems() {
     queryFn: () => api.get(`/contests/${id}/announcements`).then((response) => response.data),
     enabled: !!id,
   });
+
+  useEffect(() => {
+    if (!contest?.id || !id) return;
+
+    joinContest(contest.id);
+    const socket = getSocket();
+    const refreshSubmissions = () => {
+      qc.invalidateQueries({ queryKey: ['my-contest-submissions', id] });
+    };
+    const refreshStandings = () => {
+      qc.invalidateQueries({ queryKey: ['contest-standings', id] });
+    };
+    const refreshAnnouncements = () => {
+      qc.invalidateQueries({ queryKey: ['contest-announcements', id] });
+    };
+
+    const verdictHandler = () => {
+      refreshSubmissions();
+      refreshStandings();
+    };
+    socket.on('verdict', verdictHandler);
+    socket.on('announcement', refreshAnnouncements);
+
+    return () => {
+      socket.off('verdict', verdictHandler);
+      socket.off('announcement', refreshAnnouncements);
+      leaveContest(contest.id);
+    };
+  }, [contest?.id, id, qc]);
 
   const contestPathId = contest?.contestNumber != null
     ? String(contest.contestNumber)
@@ -80,10 +115,7 @@ export function ContestProblems() {
                     {problems.map((cp: any, index: number) => {
                       const label = contestProblemLabel(cp, index);
                       const myProblemSubs = (mySubmissions as any[]).filter((submission) => submission.contestProblemId === cp.id);
-                      const accepted = myProblemSubs.some((submission) => {
-                        const verdict = `${submission.manualVerdict ?? submission.submissionStatus ?? ''}`.toLowerCase();
-                        return verdict === 'accepted';
-                      });
+                      const accepted = myProblemSubs.some((submission) => isAcceptedVerdict(submission));
                       const hasSubmission = myProblemSubs.length > 0;
                       const doneClass = accepted
                         ? 'bg-green-100 text-green-700'

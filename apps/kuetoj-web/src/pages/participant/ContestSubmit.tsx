@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useParams, useLocation, Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useParams, useLocation, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
@@ -11,6 +11,8 @@ import 'ace-builds/src-noconflict/mode-javascript';
 import 'ace-builds/src-noconflict/theme-monokai';
 import toast from 'react-hot-toast';
 import { Upload, Code2 } from 'lucide-react';
+import { getSocket, joinContest, leaveContest } from '../../lib/socket';
+import { getEffectiveVerdict, getVerdictBadgeClass } from '../../lib/verdict';
 
 const LANG_MODES: Record<string, string> = {
   c: 'c_cpp', cpp: 'c_cpp', java: 'java',
@@ -19,16 +21,10 @@ const LANG_MODES: Record<string, string> = {
 
 const LANGUAGES = ['c', 'cpp', 'java', 'python', 'python3', 'javascript'];
 
-const VERDICT_COLOR: Record<string, string> = {
-  accepted: 'text-green-600',
-  wrong_answer: 'text-red-600',
-  pending: 'text-amber-600',
-  manual_review: 'text-blue-600',
-};
-
 export function ContestSubmit() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const state = location.state as { problemLabel?: string; problemId?: string; contestProblemId?: string } | null;
 
@@ -41,12 +37,36 @@ export function ContestSubmit() {
   const { data: contest } = useQuery({
     queryKey: ['contest', id],
     queryFn: () => api.get(`/contests/${id}`).then(r => r.data),
+    enabled: !!id,
   });
+
+  const contestPathId = contest?.contestNumber != null
+    ? String(contest.contestNumber)
+    : id;
 
   const { data: mySubmissions = [] } = useQuery({
     queryKey: ['my-contest-submissions', id],
     queryFn: () => api.get(`/contests/${id}/my-submissions`).then(r => r.data),
+    enabled: !!id,
+    refetchInterval: 3000,
   });
+
+  useEffect(() => {
+    if (!contest?.id || !id) return;
+
+    joinContest(contest.id);
+    const socket = getSocket();
+    const refreshSubmissions = () => {
+      qc.invalidateQueries({ queryKey: ['my-contest-submissions', id] });
+    };
+
+    socket.on('verdict', refreshSubmissions);
+
+    return () => {
+      socket.off('verdict', refreshSubmissions);
+      leaveContest(contest.id);
+    };
+  }, [contest?.id, id, qc]);
 
   const submitMutation = useMutation({
     mutationFn: () => {
@@ -60,11 +80,15 @@ export function ContestSubmit() {
       }
       return api.post(`/contests/${id}/submit`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
     },
-    onSuccess: () => {
+    onSuccess: (response) => {
       toast.success('Submitted!');
-      qc.invalidateQueries({ queryKey: ['my-contest-submissions'] });
+      qc.invalidateQueries({ queryKey: ['my-contest-submissions', id] });
       setCode('');
       setFile(null);
+      const submissionId = response.data?.id;
+      if (submissionId && contestPathId) {
+        navigate(`/contest/${contestPathId}/submissions/${submissionId}`);
+      }
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Submission failed'),
   });
@@ -160,9 +184,14 @@ export function ContestSubmit() {
                   <div key={sub.id} className="bg-white rounded-lg border border-slate-100 p-3 text-xs">
                     <div className="flex items-center justify-between mb-0.5">
                       <span className="font-bold text-slate-700">{sub.contestProblem?.label ?? '—'}</span>
-                      <span className={`font-medium ${VERDICT_COLOR[sub.submissionStatus] ?? 'text-slate-600'}`}>
-                        {sub.manualVerdict ?? sub.submissionStatus}
-                      </span>
+                      {(() => {
+                        const effectiveVerdict = getEffectiveVerdict(sub);
+                        return (
+                          <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${getVerdictBadgeClass(effectiveVerdict)}`}>
+                            {effectiveVerdict}
+                          </span>
+                        );
+                      })()}
                     </div>
                     <p className="text-slate-400">{sub.language} · {sub.submittedAt?.slice(11,16)}</p>
                     {sub.score != null && <p className="text-slate-600">{sub.score} pts</p>}

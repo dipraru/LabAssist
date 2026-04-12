@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
@@ -11,6 +11,8 @@ import 'ace-builds/src-noconflict/mode-java';
 import 'ace-builds/src-noconflict/mode-python';
 import 'ace-builds/src-noconflict/mode-javascript';
 import 'ace-builds/src-noconflict/theme-textmate';
+import { getSocket, joinContest, leaveContest } from '../../lib/socket';
+import { getEffectiveVerdict, getVerdictBadgeClass } from '../../lib/verdict';
 
 const LANG_MODES: Record<string, string> = {
   c: 'c_cpp',
@@ -45,6 +47,7 @@ function contestTimeLabel(startTime?: string, endTime?: string) {
 export function ContestProblem() {
   const { id, problemLabel } = useParams<{ id: string; problemLabel: string }>();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [language, setLanguage] = useState('cpp');
   const [code, setCode] = useState('');
   const [activeTab, setActiveTab] = useState<'statement' | 'submissions'>('statement');
@@ -73,12 +76,31 @@ export function ContestProblem() {
     queryKey: ['my-contest-submissions', id],
     queryFn: () => api.get(`/contests/${id}/my-submissions`).then((response) => response.data),
     enabled: !!id,
+    refetchInterval: 3000,
   });
 
   const { data: contest } = useQuery({
     queryKey: ['contest', id],
     queryFn: () => api.get(`/contests/${id}`).then(r => r.data),
+    enabled: !!id,
   });
+
+  useEffect(() => {
+    if (!contest?.id || !id) return;
+
+    joinContest(contest.id);
+    const socket = getSocket();
+    const refreshSubmissions = () => {
+      queryClient.invalidateQueries({ queryKey: ['my-contest-submissions', id] });
+    };
+
+    socket.on('verdict', refreshSubmissions);
+
+    return () => {
+      socket.off('verdict', refreshSubmissions);
+      leaveContest(contest.id);
+    };
+  }, [contest?.id, id, queryClient]);
 
   const contestProblems: any[] = [...(contest?.problems ?? contest?.contestProblems ?? [])]
     .sort((a, b) => (a?.orderIndex ?? 0) - (b?.orderIndex ?? 0));
@@ -106,10 +128,14 @@ export function ContestProblem() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
     },
-    onSuccess: () => {
+    onSuccess: (response) => {
       toast.success('Submitted successfully');
       setCode('');
       queryClient.invalidateQueries({ queryKey: ['my-contest-submissions', id] });
+      const submissionId = response.data?.id;
+      if (submissionId && contestPathId) {
+        navigate(`/contest/${contestPathId}/submissions/${submissionId}`);
+      }
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.message ?? 'Submission failed');
@@ -325,7 +351,9 @@ export function ContestProblem() {
                 </tr>
               </thead>
               <tbody>
-                {problemSubmissions.map((submission: any) => (
+                {problemSubmissions.map((submission: any) => {
+                  const verdict = getEffectiveVerdict(submission);
+                  return (
                   <tr key={submission.id} className="border-t border-slate-100">
                     <td className="px-4 py-3 font-mono text-xs">
                       <button
@@ -340,11 +368,15 @@ export function ContestProblem() {
                     <td className="px-4 py-3">{currentProblemLabel}. {problem.title}</td>
                     <td className="px-4 py-3 text-slate-500">{new Date(submission.submittedAt).toLocaleString()}</td>
                     <td className="px-4 py-3">{submission.language ?? '—'}</td>
-                    <td className="px-4 py-3">{submission.manualVerdict ?? submission.submissionStatus}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getVerdictBadgeClass(verdict)}`}>
+                        {verdict}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">{submission.executionTimeMs != null ? `${submission.executionTimeMs} ms` : '—'}</td>
                     <td className="px-4 py-3">{submission.memoryUsedKb != null ? `${submission.memoryUsedKb} KB` : '—'}</td>
                   </tr>
-                ))}
+                )})}
                 {!problemSubmissions.length && (
                   <tr>
                     <td colSpan={8} className="px-4 py-10 text-center text-slate-400">No submissions for this problem yet.</td>
@@ -365,7 +397,12 @@ export function ContestProblem() {
           <div className="space-y-3 text-sm">
             <p><span className="font-semibold">Problem:</span> {currentProblemLabel}. {problem.title}</p>
             <p><span className="font-semibold">Language:</span> {selectedSubmission.language ?? '—'}</p>
-            <p><span className="font-semibold">Status:</span> {selectedSubmission.manualVerdict ?? selectedSubmission.submissionStatus}</p>
+            <p>
+              <span className="font-semibold">Status:</span>{' '}
+              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold align-middle ${getVerdictBadgeClass(getEffectiveVerdict(selectedSubmission))}`}>
+                {getEffectiveVerdict(selectedSubmission)}
+              </span>
+            </p>
             <p><span className="font-semibold">Submitted:</span> {new Date(selectedSubmission.submittedAt).toLocaleString()}</p>
             {selectedSubmission.code ? (
               <div>

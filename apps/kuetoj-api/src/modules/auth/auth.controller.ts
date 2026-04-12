@@ -33,7 +33,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('me')
   async me(@CurrentUser() user: { id: string; role: string }) {
-    return user;
+    return this.authService.getAuthenticatedUser(user.id);
   }
 
   @UseGuards(JwtAuthGuard)

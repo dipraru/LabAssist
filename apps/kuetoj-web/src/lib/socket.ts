@@ -22,9 +22,9 @@ export function disconnectSocket() {
 }
 
 export function joinContest(contestId: string) {
-  getSocket().emit('join-contest', { contestId });
+  getSocket().emit('join-contest', contestId);
 }
 
 export function leaveContest(contestId: string) {
-  getSocket().emit('leave-contest', { contestId });
+  getSocket().emit('leave-contest', contestId);
 }

@@ -154,6 +154,21 @@ export class ContestsService {
     return rows.map((row) => row.contestId).filter(Boolean);
   }
 
+  private async canJudgeAccessContest(
+    contestId: string,
+    createdById: string | null | undefined,
+    judgeUserId: string,
+    judgeProfileId: string,
+  ): Promise<boolean> {
+    if (createdById === judgeProfileId || createdById === judgeUserId) {
+      return true;
+    }
+
+    const legacyContestIds =
+      await this.getLegacyContestIdsByProblemAuthor(judgeUserId);
+    return legacyContestIds.includes(contestId);
+  }
+
   private async canJudgeManageContest(
     contestId: string,
     createdById: string | null | undefined,
@@ -1255,7 +1270,7 @@ export class ContestsService {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const c = await this.resolveContestOrThrow(contestId);
     if (
-      !(await this.canJudgeManageContest(
+      !(await this.canJudgeAccessContest(
         c.id,
         c.createdById,
         judgeUserId,
@@ -1429,7 +1444,7 @@ export class ContestsService {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const c = await this.resolveContestOrThrow(contestId);
     if (
-      !(await this.canJudgeManageContest(
+      !(await this.canJudgeAccessContest(
         c.id,
         c.createdById,
         judgeUserId,
@@ -1465,7 +1480,7 @@ export class ContestsService {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const c = await this.resolveContestOrThrow(contestId);
     if (
-      !(await this.canJudgeManageContest(
+      !(await this.canJudgeAccessContest(
         c.id,
         c.createdById,
         judgeUserId,
@@ -1709,7 +1724,7 @@ export class ContestsService {
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const contest = await this.resolveContestOrThrow(contestId);
     if (
-      !(await this.canJudgeManageContest(
+      !(await this.canJudgeAccessContest(
         contest.id,
         contest.createdById,
         judgeUserId,

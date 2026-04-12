@@ -29,7 +29,17 @@ export function BridgeLoginPage() {
           headers: { Authorization: `Bearer ${token}` },
         });
 
-        const user = me.data as { id: string; username: string; role: 'temp_judge' | 'temp_participant' };
+        const user = me.data as {
+          id: string;
+          username: string;
+          role: 'temp_judge' | 'temp_participant';
+          isFirstLogin?: boolean;
+          profile?: {
+            fullName?: string | null;
+            participantId?: string | null;
+            judgeId?: string | null;
+          } | null;
+        };
         if (user.role !== 'temp_judge' && user.role !== 'temp_participant') {
           throw new Error('Only temp judge or participant can access KUETOJ');
         }
@@ -38,7 +48,8 @@ export function BridgeLoginPage() {
           id: user.id,
           username: user.username,
           role: user.role,
-          isFirstLogin: false,
+          isFirstLogin: Boolean(user.isFirstLogin),
+          profile: user.profile ?? null,
         });
 
         navigate(user.role === 'temp_judge' ? '/contests' : '/contest', { replace: true });

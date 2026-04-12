@@ -1,27 +1,24 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AppShell } from '../../components/AppShell';
 import { ParticipantContestNav } from '../../components/ParticipantContestNav';
 import { ParticipantContestHeader } from '../../components/ParticipantContestHeader';
 import { Modal } from '../../components/Modal';
 import { api } from '../../lib/api';
-
-const VERDICT_COLOR: Record<string, string> = {
-  accepted: 'text-green-600',
-  wrong_answer: 'text-red-600',
-  pending: 'text-amber-600',
-  manual_review: 'text-blue-600',
-};
+import { getSocket, joinContest, leaveContest } from '../../lib/socket';
+import { getEffectiveVerdict, getVerdictBadgeClass } from '../../lib/verdict';
 
 export function ContestSubmissions() {
   const { id } = useParams<{ id: string }>();
+  const qc = useQueryClient();
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
 
   const { data: submissions = [], isLoading } = useQuery({
     queryKey: ['my-contest-submissions', id],
     queryFn: () => api.get(`/contests/${id}/my-submissions`).then((r) => r.data),
     enabled: !!id,
+    refetchInterval: 3000,
   });
 
   const { data: contest } = useQuery({
@@ -30,6 +27,23 @@ export function ContestSubmissions() {
     enabled: !!id,
     staleTime: 60_000,
   });
+
+  useEffect(() => {
+    if (!contest?.id || !id) return;
+
+    joinContest(contest.id);
+    const socket = getSocket();
+    const refreshSubmissions = () => {
+      qc.invalidateQueries({ queryKey: ['my-contest-submissions', id] });
+    };
+
+    socket.on('verdict', refreshSubmissions);
+
+    return () => {
+      socket.off('verdict', refreshSubmissions);
+      leaveContest(contest.id);
+    };
+  }, [contest?.id, id, qc]);
 
   const contestPathId = contest?.contestNumber != null
     ? String(contest.contestNumber)
@@ -71,7 +85,9 @@ export function ContestSubmissions() {
                 <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">No submissions yet.</td></tr>
               )}
 
-              {(submissions as any[]).map((submission: any) => (
+              {(submissions as any[]).map((submission: any) => {
+                const verdict = getEffectiveVerdict(submission);
+                return (
                 <tr key={submission.id} className="border-t border-slate-100">
                   <td className="px-4 py-3 font-mono text-xs">
                     <button
@@ -86,13 +102,15 @@ export function ContestSubmissions() {
                   <td className="px-4 py-3">{submission.contestProblem?.label ?? '—'}. {submission.contestProblem?.problem?.title ?? 'Untitled Problem'}</td>
                   <td className="px-4 py-3 text-slate-500">{new Date(submission.submittedAt).toLocaleString()}</td>
                   <td className="px-4 py-3">{submission.language ?? '—'}</td>
-                  <td className={`px-4 py-3 font-medium ${VERDICT_COLOR[submission.manualVerdict ?? submission.submissionStatus] ?? 'text-slate-600'}`}>
-                    {submission.manualVerdict ?? submission.submissionStatus}
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getVerdictBadgeClass(verdict)}`}>
+                      {verdict}
+                    </span>
                   </td>
                   <td className="px-4 py-3">{submission.executionTimeMs != null ? `${submission.executionTimeMs} ms` : '—'}</td>
                   <td className="px-4 py-3">{submission.memoryUsedKb != null ? `${submission.memoryUsedKb} KB` : '—'}</td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>
@@ -107,7 +125,12 @@ export function ContestSubmissions() {
           <div className="space-y-3 text-sm">
             <p><span className="font-semibold">Problem:</span> {selected.contestProblem?.label ?? '—'}. {selected.contestProblem?.problem?.title ?? 'Untitled Problem'}</p>
             <p><span className="font-semibold">Language:</span> {selected.language ?? '—'}</p>
-            <p><span className="font-semibold">Status:</span> {selected.manualVerdict ?? selected.submissionStatus}</p>
+            <p>
+              <span className="font-semibold">Status:</span>{' '}
+              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold align-middle ${getVerdictBadgeClass(getEffectiveVerdict(selected))}`}>
+                {getEffectiveVerdict(selected)}
+              </span>
+            </p>
             <p><span className="font-semibold">Submitted:</span> {new Date(selected.submittedAt).toLocaleString()}</p>
             {selected.score != null && <p><span className="font-semibold">Score:</span> {selected.score}</p>}
             {selected.code ? (

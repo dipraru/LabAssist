@@ -9,6 +9,8 @@ import { RefreshCw } from 'lucide-react';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
+import { getSocket, joinContest, leaveContest } from '../../lib/socket';
+import { getEffectiveVerdict } from '../../lib/verdict';
 
 const gradeSchema = z.object({
   manualVerdict: z.string().min(1, 'Select verdict'),
@@ -32,7 +34,15 @@ const VERDICTS = ['accepted', 'wrong_answer', 'time_limit_exceeded', 'memory_lim
 const VERDICT_COLOR: Record<string, string> = {
   accepted: 'bg-green-100 text-green-700',
   wrong_answer: 'bg-red-100 text-red-700',
+  time_limit_exceeded: 'bg-orange-100 text-orange-700',
+  memory_limit_exceeded: 'bg-orange-100 text-orange-700',
+  runtime_error: 'bg-rose-100 text-rose-700',
+  compilation_error: 'bg-fuchsia-100 text-fuchsia-700',
+  presentation_error: 'bg-yellow-100 text-yellow-700',
+  partial: 'bg-sky-100 text-sky-700',
   pending: 'bg-amber-100 text-amber-700',
+  judging: 'bg-blue-100 text-blue-700',
+  skipped: 'bg-slate-100 text-slate-600',
   manual_review: 'bg-blue-100 text-blue-700',
 };
 
@@ -75,23 +85,66 @@ export function ContestManage() {
   const { data: submissions = [] } = useQuery({
     queryKey: ['contest-submissions', id],
     queryFn: () => api.get(`/contests/${id}/submissions/all`).then(r => r.data),
+    enabled: !!id,
+    refetchInterval: activeTab === 'status' ? 5000 : false,
   });
 
   const { data: clarifications = [] } = useQuery({
     queryKey: ['contest-clarifications', id],
     queryFn: () => api.get(`/contests/${id}/clarifications/all`).then(r => r.data),
+    enabled: !!id,
   });
 
   const { data: announcements = [] } = useQuery({
     queryKey: ['contest-announcements', id],
     queryFn: () => api.get(`/contests/${id}/announcements`).then(r => r.data),
+    enabled: !!id,
   });
 
   const { data: standings, refetch: refetchStandings, isFetching: standingsFetching } = useQuery({
     queryKey: ['contest-standings', id],
     queryFn: () => api.get(`/contests/${id}/standings`).then(r => r.data),
+    enabled: !!id,
     refetchInterval: 30000,
   });
+
+  useEffect(() => {
+    if (!id || !contest?.id) return;
+
+    joinContest(contest.id);
+    const socket = getSocket();
+
+    const refreshSubmissions = () => {
+      qc.invalidateQueries({ queryKey: ['contest-submissions', id] });
+    };
+    const refreshStandings = () => {
+      qc.invalidateQueries({ queryKey: ['contest-standings', id] });
+    };
+    const refreshAnnouncements = () => {
+      qc.invalidateQueries({ queryKey: ['contest-announcements', id] });
+    };
+    const refreshClarifications = () => {
+      qc.invalidateQueries({ queryKey: ['contest-clarifications', id] });
+    };
+
+    const verdictHandler = () => {
+      refreshSubmissions();
+      refreshStandings();
+    };
+
+    socket.on('verdict', verdictHandler);
+    socket.on('standings:freeze', refreshStandings);
+    socket.on('announcement', refreshAnnouncements);
+    socket.on('clarification', refreshClarifications);
+
+    return () => {
+      socket.off('verdict', verdictHandler);
+      socket.off('standings:freeze', refreshStandings);
+      socket.off('announcement', refreshAnnouncements);
+      socket.off('clarification', refreshClarifications);
+      leaveContest(contest.id);
+    };
+  }, [id, contest?.id, qc]);
 
   const gradeForm = useForm<GradeInput, unknown, GradeData>({ resolver: zodResolver(gradeSchema) });
   const announcementForm = useForm<AnnouncementData>({ resolver: zodResolver(announcementSchema) });
@@ -102,7 +155,13 @@ export function ContestManage() {
         verdict: d.manualVerdict,
         score: d.score,
       }),
-    onSuccess: () => { toast.success('Graded!'); qc.invalidateQueries({ queryKey: ['contest-submissions'] }); setGradingId(null); gradeForm.reset(); },
+    onSuccess: () => {
+      toast.success('Graded!');
+      qc.invalidateQueries({ queryKey: ['contest-submissions', id] });
+      qc.invalidateQueries({ queryKey: ['contest-standings', id] });
+      setGradingId(null);
+      gradeForm.reset();
+    },
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
   });
 
@@ -374,9 +433,14 @@ export function ContestManage() {
                     <td className="px-4 py-2.5 text-slate-500">{new Date(sub.submittedAt).toLocaleString()}</td>
                     <td className="px-4 py-2.5 font-mono text-xs">{sub.language}</td>
                     <td className="px-4 py-2.5">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${VERDICT_COLOR[sub.submissionStatus] ?? 'bg-slate-100 text-slate-600'}`}>
-                        {sub.manualVerdict ?? sub.submissionStatus}
-                      </span>
+                      {(() => {
+                        const effectiveVerdict = getEffectiveVerdict(sub);
+                        return (
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${VERDICT_COLOR[effectiveVerdict] ?? 'bg-slate-100 text-slate-600'}`}>
+                            {effectiveVerdict}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-2.5">{sub.executionTimeMs != null ? `${sub.executionTimeMs} ms` : '—'}</td>
                     <td className="px-4 py-2.5">{sub.memoryUsedKb != null ? `${sub.memoryUsedKb} KB` : '—'}</td>
@@ -688,7 +752,7 @@ export function ContestManage() {
             <div className="space-y-3 text-sm">
               <p><span className="font-semibold">Problem:</span> {selectedSubmission.contestProblem?.label ?? '—'}. {selectedSubmission.contestProblem?.problem?.title ?? 'Untitled Problem'}</p>
               <p><span className="font-semibold">Language:</span> {selectedSubmission.language ?? '—'}</p>
-              <p><span className="font-semibold">Status:</span> {selectedSubmission.manualVerdict ?? selectedSubmission.submissionStatus}</p>
+              <p><span className="font-semibold">Status:</span> {getEffectiveVerdict(selectedSubmission)}</p>
               <p><span className="font-semibold">Submitted:</span> {new Date(selectedSubmission.submittedAt).toLocaleString()}</p>
               {selectedSubmission.code ? (
                 <div>
