@@ -21,6 +21,19 @@ export function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   const navItems = user ? (roleNavItems[user.role] ?? []) : [];
+  const profileFullName =
+    typeof user?.profile?.fullName === 'string' ? user.profile.fullName.trim() : '';
+  const profileParticipantId =
+    typeof user?.profile?.participantId === 'string'
+      ? user.profile.participantId.trim()
+      : '';
+  const displayName = profileFullName || user?.username || 'User';
+  const secondaryLabel =
+    user?.role === 'temp_participant'
+      ? profileParticipantId || user?.username || 'Participant'
+      : user?.role === 'temp_judge'
+        ? user?.username || 'Judge'
+        : user?.role || '';
 
   const handleLogout = () => {
     logout();
@@ -61,8 +74,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           <div className="flex items-center gap-3">
             <div className="text-right">
-              <p className="text-sm font-medium leading-4">{user?.username}</p>
-              <p className="text-xs text-slate-400">{user?.role}</p>
+              <p className="text-sm font-medium leading-4">{displayName}</p>
+              <p className="text-xs text-slate-400">{secondaryLabel}</p>
             </div>
             <button
               onClick={handleLogout}

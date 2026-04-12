@@ -771,12 +771,16 @@ export function JudgeContests() {
             {rows.map((contest) => {
               const phase = getContestPhase(contest.startTime ?? '', contest.endTime ?? '');
               const contestRouteId = String(contest.contestNumber ?? contest.id);
+              const contestOpenHref =
+                phase === 'old'
+                  ? `/contests/${contestRouteId}/status`
+                  : `/contests/${contestRouteId}`;
               return (
                 <tr key={contest.id} className="hover:bg-slate-50">
                   <td className="px-3 py-3 font-medium text-slate-900 truncate">
                     <button
                       type="button"
-                      onClick={() => navigate(`/contests/${contestRouteId}`)}
+                      onClick={() => navigate(contestOpenHref)}
                       className="text-left text-indigo-700 hover:underline truncate max-w-full"
                     >
                       {contest.title}

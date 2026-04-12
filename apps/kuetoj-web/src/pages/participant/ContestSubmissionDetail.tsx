@@ -1,17 +1,22 @@
+import { useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AppShell } from '../../components/AppShell';
 import { ParticipantContestNav } from '../../components/ParticipantContestNav';
 import { ParticipantContestHeader } from '../../components/ParticipantContestHeader';
 import { api } from '../../lib/api';
+import { getSocket, joinContest, leaveContest } from '../../lib/socket';
+import { getEffectiveVerdict, getVerdictBadgeClass } from '../../lib/verdict';
 
 export function ContestSubmissionDetail() {
   const { id, submissionId } = useParams<{ id: string; submissionId: string }>();
+  const qc = useQueryClient();
 
   const { data: submission, isLoading } = useQuery({
     queryKey: ['my-contest-submission-detail', id, submissionId],
     queryFn: () => api.get(`/contests/${id}/my-submissions/${submissionId}`).then((r) => r.data),
     enabled: !!id && !!submissionId,
+    refetchInterval: 3000,
   });
 
   const { data: contest } = useQuery({
@@ -24,6 +29,24 @@ export function ContestSubmissionDetail() {
   const contestPathId = contest?.contestNumber != null
     ? String(contest.contestNumber)
     : id;
+
+  useEffect(() => {
+    if (!contest?.id || !id || !submissionId) return;
+
+    joinContest(contest.id);
+    const socket = getSocket();
+    const refreshSubmission = () => {
+      qc.invalidateQueries({ queryKey: ['my-contest-submission-detail', id, submissionId] });
+      qc.invalidateQueries({ queryKey: ['my-contest-submissions', id] });
+    };
+
+    socket.on('verdict', refreshSubmission);
+
+    return () => {
+      socket.off('verdict', refreshSubmission);
+      leaveContest(contest.id);
+    };
+  }, [contest?.id, id, submissionId, qc]);
 
   return (
     <AppShell>
@@ -44,10 +67,19 @@ export function ContestSubmissionDetail() {
 
           {submission && (
             <div className="space-y-3 text-sm">
+              {(() => {
+                const verdict = getEffectiveVerdict(submission);
+                return (
+                  <>
               <p><span className="font-semibold">Submission ID:</span> #{submission.submissionDisplayId}</p>
               <p><span className="font-semibold">Problem:</span> {submission.contestProblem?.label ?? '—'}</p>
               <p><span className="font-semibold">Language:</span> {submission.language ?? '—'}</p>
-              <p><span className="font-semibold">Verdict:</span> {submission.manualVerdict ?? submission.submissionStatus}</p>
+              <p>
+                <span className="font-semibold">Verdict:</span>{' '}
+                <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold align-middle ${getVerdictBadgeClass(verdict)}`}>
+                  {verdict}
+                </span>
+              </p>
               <p><span className="font-semibold">Submitted:</span> {new Date(submission.submittedAt).toLocaleString()}</p>
               {submission.executionTimeMs != null && <p><span className="font-semibold">Time:</span> {submission.executionTimeMs} ms</p>}
               {submission.memoryUsedKb != null && <p><span className="font-semibold">Memory:</span> {submission.memoryUsedKb} KB</p>}
@@ -91,7 +123,11 @@ export function ContestSubmissionDetail() {
                           <tr key={`${testCase.index}-${testCase.isSample ? 'sample' : 'hidden'}`} className="border-t border-slate-100">
                             <td className="px-3 py-2">{testCase.index}</td>
                             <td className="px-3 py-2">{testCase.isSample ? 'Sample' : 'Hidden'}</td>
-                            <td className="px-3 py-2">{testCase.verdict}</td>
+                            <td className="px-3 py-2">
+                              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getVerdictBadgeClass(testCase.verdict)}`}>
+                                {testCase.verdict}
+                              </span>
+                            </td>
                             <td className="px-3 py-2">{testCase.timeMs != null ? `${testCase.timeMs} ms` : '—'}</td>
                             <td className="px-3 py-2">{testCase.memoryKb != null ? `${testCase.memoryKb} KB` : '—'}</td>
                           </tr>
@@ -110,6 +146,9 @@ export function ContestSubmissionDetail() {
               ) : (
                 <p className="text-slate-500">No inline code attached.</p>
               )}
+                  </>
+                );
+              })()}
             </div>
           )}
         </div>

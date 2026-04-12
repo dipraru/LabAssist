@@ -8,7 +8,12 @@ export interface AuthUser {
   username: string;
   role: UserRole;
   isFirstLogin: boolean;
-  profile?: Record<string, unknown>;
+  profile?: {
+    fullName?: string | null;
+    participantId?: string | null;
+    judgeId?: string | null;
+    [key: string]: unknown;
+  } | null;
 }
 
 interface AuthState {

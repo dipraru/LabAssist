@@ -151,4 +151,25 @@ export class AuthService {
       passwordChangeSuggested: user.passwordChangeSuggested,
     };
   }
+
+  async getAuthenticatedUser(userId: string) {
+    const user = await this.usersService.findUserById(userId);
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    const profile = await this.usersService.getProfileByUserId(
+      user.id,
+      user.role,
+    );
+
+    return {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      isFirstLogin: user.isFirstLogin,
+      passwordChangeSuggested: user.passwordChangeSuggested,
+      profile,
+    };
+  }
 }
