@@ -14,6 +14,7 @@ import {
   FolderArchive,
   Link2,
   Plus,
+  Trash2,
   Users,
 } from 'lucide-react';
 import { api } from '../../lib/api';
@@ -304,6 +305,21 @@ export function TeacherCourseDetail() {
       toast.error(error.response?.data?.message ?? 'Failed to add lecture material'),
   });
 
+  const deleteMaterialMutation = useMutation({
+    mutationFn: (sheetId: string) =>
+      api.delete(`/courses/lecture-sheets/${sheetId}`),
+    onSuccess: () => {
+      toast.success('Lecture material deleted');
+      queryClient.invalidateQueries({
+        queryKey: ['teacher-course-lecture-materials', courseId],
+      });
+    },
+    onError: (error: any) =>
+      toast.error(
+        error.response?.data?.message ?? 'Failed to delete lecture material',
+      ),
+  });
+
   if (!courseId) return null;
 
   if (courseLoading) {
@@ -534,6 +550,19 @@ export function TeacherCourseDetail() {
                         <span className="text-xs font-medium text-slate-400">
                           {formatDateTime(sheet.createdAt)}
                         </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (deleteMaterialMutation.isPending) return;
+                            if (!window.confirm('Delete this lecture material?')) return;
+                            deleteMaterialMutation.mutate(sheet.id);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={deleteMaterialMutation.isPending}
+                        >
+                          <Trash2 size={12} />
+                          Delete
+                        </button>
                       </div>
                       <h3 className="mt-3 text-lg font-semibold text-slate-900">{sheet.title}</h3>
                       {sheet.description ? (

@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
@@ -130,6 +131,8 @@ function studentIdFallsInsideSection(
 
 @Injectable()
 export class CoursesService {
+  private readonly logger = new Logger(CoursesService.name);
+
   constructor(
     @InjectRepository(Course) private courseRepo: Repository<Course>,
     @InjectRepository(Semester) private semesterRepo: Repository<Semester>,
@@ -1122,7 +1125,10 @@ export class CoursesService {
     dto: CreateCoursePostCommentDto,
     user: { id: string; role: UserRole },
   ): Promise<CoursePostComment> {
-    const post = await this.coursePostRepo.findOne({ where: { id: postId } });
+    const post = await this.coursePostRepo.findOne({
+      where: { id: postId },
+      relations: ['course'],
+    });
     if (!post) throw new NotFoundException('Course post not found');
 
     const actor = await this.resolveCourseActor(post.courseId, user);
@@ -1138,16 +1144,24 @@ export class CoursesService {
     const saved = await this.coursePostCommentRepo.save(comment);
 
     if (post.postedByUserId !== actor.userId) {
-      await this.notificationsService.createBulk([post.postedByUserId], {
-        type: NotificationType.SYSTEM,
-        title: `New comment in ${post.course.courseCode ?? 'course'}`,
-        body: `${actor.displayName} commented on your course post.`,
-        referenceId: post.id,
-        targetPath:
-          post.postedByRole === UserRole.TEACHER
-            ? `/teacher/courses/${post.courseId}`
-            : `/student/courses/${post.courseId}`,
-      });
+      try {
+        await this.notificationsService.createBulk([post.postedByUserId], {
+          type: NotificationType.SYSTEM,
+          title: `New comment in ${post.course?.courseCode ?? 'course'}`,
+          body: `${actor.displayName} commented on your course post.`,
+          referenceId: post.id,
+          targetPath:
+            post.postedByRole === UserRole.TEACHER
+              ? `/teacher/courses/${post.courseId}`
+              : `/student/courses/${post.courseId}`,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown notification error';
+        this.logger.warn(
+          `Failed to notify course post author ${post.postedByUserId}: ${message}`,
+        );
+      }
     }
 
     return saved;
@@ -1240,8 +1254,25 @@ export class CoursesService {
       where: { courseId, isActive: true },
       relations: ['student', 'student.user'],
     });
-    const userIds = enrollments.map((e) => e.student.userId);
-    await this.notificationsService.createBulk(userIds, payload);
+    const userIds = Array.from(
+      new Set(
+        enrollments
+          .map((enrollment) => enrollment.student?.userId)
+          .filter((userId): userId is string => Boolean(userId)),
+      ),
+    );
+
+    if (!userIds.length) return;
+
+    try {
+      await this.notificationsService.createBulk(userIds, payload);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown notification error';
+      this.logger.warn(
+        `Failed to notify enrolled students for course ${courseId}: ${message}`,
+      );
+    }
   }
 
   async getAllCourses(): Promise<Course[]> {
@@ -1335,13 +1366,21 @@ export class CoursesService {
         .map((enrollment) => enrollment.student?.userId)
         .filter((userId): userId is string => Boolean(userId));
 
-      await this.notificationsService.createBulk(recipientUserIds, {
-        type: NotificationType.SYSTEM,
-        title: `${actor.course.courseCode}: ${post.title || 'New class post'}`,
-        body: `${actor.displayName} posted an update in ${actor.course.title}.`,
-        referenceId: post.id,
-        targetPath: `/student/courses/${post.courseId}`,
-      });
+      try {
+        await this.notificationsService.createBulk(recipientUserIds, {
+          type: NotificationType.SYSTEM,
+          title: `${actor.course.courseCode}: ${post.title || 'New class post'}`,
+          body: `${actor.displayName} posted an update in ${actor.course.title}.`,
+          referenceId: post.id,
+          targetPath: `/student/courses/${post.courseId}`,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown notification error';
+        this.logger.warn(
+          `Failed to notify enrolled students about course post ${post.id}: ${message}`,
+        );
+      }
       return;
     }
 
@@ -1350,13 +1389,21 @@ export class CoursesService {
         .map((teacher) => teacher.userId)
         .filter((userId): userId is string => Boolean(userId));
 
-      await this.notificationsService.createBulk(teacherUserIds, {
-        type: NotificationType.SYSTEM,
-        title: `${actor.course.courseCode}: new student question`,
-        body: `${actor.displayName} posted in ${actor.course.title}.`,
-        referenceId: post.id,
-        targetPath: `/teacher/courses/${post.courseId}`,
-      });
+      try {
+        await this.notificationsService.createBulk(teacherUserIds, {
+          type: NotificationType.SYSTEM,
+          title: `${actor.course.courseCode}: new student question`,
+          body: `${actor.displayName} posted in ${actor.course.title}.`,
+          referenceId: post.id,
+          targetPath: `/teacher/courses/${post.courseId}`,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown notification error';
+        this.logger.warn(
+          `Failed to notify teachers about course post ${post.id}: ${message}`,
+        );
+      }
     }
   }
 }

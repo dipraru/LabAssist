@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { courseCode, courseTitle, studentDisplayName } from '../lib/display';
+import { TeacherAvatar } from '../pages/teacher/teacher.shared';
 
 type WorkspaceRole = 'student' | 'teacher';
 
@@ -28,12 +29,14 @@ function formatDateTime(value: string | Date | null | undefined): string {
   });
 }
 
+function courseTeachers(course: any): any[] {
+  return Array.isArray(course?.teachers) ? course.teachers : [];
+}
+
 function teacherNames(course: any): string[] {
-  return Array.isArray(course?.teachers)
-    ? course.teachers
-        .map((teacher: any) => teacher?.fullName || teacher?.teacherId)
-        .filter((value: unknown): value is string => Boolean(value))
-    : [];
+  return courseTeachers(course)
+    .map((teacher: any) => teacher?.fullName || teacher?.teacherId)
+    .filter((value: unknown): value is string => Boolean(value));
 }
 
 function postTypeLabel(type: string): string {
@@ -243,9 +246,23 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                 </div>
                 <p className="font-semibold text-slate-900">{courseCode(course)}</p>
                 <p className="text-sm text-slate-600 mt-1">{courseTitle(course)}</p>
-                <p className="text-xs text-slate-500 mt-3">
-                  {teacherNames(course).join(', ') || 'Teacher not assigned yet'}
-                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {courseTeachers(course).length ? (
+                    courseTeachers(course).slice(0, 3).map((teacher: any) => (
+                      <div
+                        key={teacher.id ?? teacher.teacherId ?? teacher.fullName}
+                        className="inline-flex items-center gap-2 rounded-full bg-slate-50 px-2.5 py-1.5"
+                      >
+                        <TeacherAvatar teacher={teacher} size="sm" />
+                        <span className="max-w-[9rem] truncate text-xs font-medium text-slate-600">
+                          {teacher.fullName || teacher.teacherId}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-500">Teacher not assigned yet</p>
+                  )}
+                </div>
               </Link>
             ))}
 
@@ -267,10 +284,30 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                   <h2 className="text-2xl font-semibold text-slate-900 mt-2">
                     {courseTitle(selectedCourse)}
                   </h2>
-                  <p className="text-sm text-slate-500 mt-2">
-                    {teacherNames(selectedCourse).join(', ') ||
-                      'Teacher not assigned yet'}
-                  </p>
+                  {courseTeachers(selectedCourse).length ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {courseTeachers(selectedCourse).map((teacher: any) => (
+                        <div
+                          key={teacher.id ?? teacher.teacherId ?? teacher.fullName}
+                          className="inline-flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-2"
+                        >
+                          <TeacherAvatar teacher={teacher} size="sm" />
+                          <div>
+                            <p className="text-sm font-medium text-slate-900">
+                              {teacher.fullName || teacher.teacherId}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {teacher.designation || teacher.teacherId || 'Teacher'}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500 mt-2">
+                      Teacher not assigned yet
+                    </p>
+                  )}
                 </div>
                 <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
                   {selectedCourse.semester?.name?.replace(/_/g, ' ') ||
@@ -540,12 +577,20 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                 </p>
               ) : (
                 <div className="mt-3 space-y-2">
-                  {teacherNames(selectedCourse).map((name) => (
+                  {courseTeachers(selectedCourse).map((teacher: any) => (
                     <div
-                      key={name}
-                      className="rounded-2xl bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-800"
+                      key={teacher.id ?? teacher.teacherId ?? teacher.fullName}
+                      className="flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-2.5"
                     >
-                      {name}
+                      <TeacherAvatar teacher={teacher} size="sm" />
+                      <div>
+                        <p className="text-sm font-medium text-slate-800">
+                          {teacher.fullName || teacher.teacherId}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {teacher.designation || teacher.teacherId || 'Teacher'}
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </div>
