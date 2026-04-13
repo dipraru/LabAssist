@@ -20,6 +20,7 @@ import { AssignmentManage } from './pages/teacher/AssignmentManage';
 import { LabTestManage } from './pages/teacher/LabTestManage';
 import { LectureSheets } from './pages/teacher/LectureSheets';
 import { TeacherNotifications } from './pages/teacher/TeacherNotifications';
+import { TeacherProfile } from './pages/teacher/TeacherProfile';
 
 // Student
 import { StudentDashboard } from './pages/student/StudentDashboard';
@@ -85,11 +86,13 @@ export default function App() {
       <Route element={<ProtectedRoute allowedRoles={['teacher']} />}>
         <Route path="/teacher" element={<TeacherDashboard />} />
         <Route path="/teacher/courses" element={<TeacherCourses />} />
+        <Route path="/teacher/courses/:courseId/lab-classes/:labClassId" element={<TeacherCourses />} />
         <Route path="/teacher/courses/:courseId" element={<TeacherCourses />} />
         <Route path="/teacher/assignments" element={<AssignmentManage />} />
         <Route path="/teacher/lab-tests" element={<LabTestManage />} />
         <Route path="/teacher/lecture-sheets" element={<LectureSheets />} />
         <Route path="/teacher/notifications" element={<TeacherNotifications />} />
+        <Route path="/teacher/profile" element={<TeacherProfile />} />
         <Route path="/teacher/change-password" element={<ChangePasswordPage />} />
       </Route>
 

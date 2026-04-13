@@ -8,7 +8,12 @@ import {
   Query,
   UseGuards,
   Patch,
+  UseInterceptors,
+  UploadedFiles,
+  BadRequestException,
 } from '@nestjs/common';
+import { AnyFilesInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { CoursesService } from './courses.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -25,6 +30,9 @@ import {
   UpdateLectureSheetDto,
   CreateCoursePostDto,
   CreateCoursePostCommentDto,
+  CreateLabClassDto,
+  TakeLabClassAttendanceDto,
+  UpdateLabClassSectionScheduleDto,
 } from './dto/courses.dto';
 
 @UseGuards(JwtAuthGuard)
@@ -53,9 +61,74 @@ export class CoursesController {
     return this.coursesService.getAllCourses();
   }
 
-  @Get(':id')
-  getCourse(@Param('id') id: string) {
-    return this.coursesService.getCourseById(id);
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.TEACHER)
+  @Post(':courseId/lab-classes')
+  createLabClass(
+    @Param('courseId') courseId: string,
+    @Body() dto: CreateLabClassDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.coursesService.createLabClass({ ...dto, courseId }, user.id);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.TEACHER)
+  @Get(':courseId/lab-classes')
+  getLabClasses(
+    @Param('courseId') courseId: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.coursesService.getLabClasses(courseId, user.id);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.TEACHER)
+  @Get(':courseId/lab-classes/:labClassId')
+  getLabClass(
+    @Param('courseId') courseId: string,
+    @Param('labClassId') labClassId: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.coursesService.getLabClassById(courseId, labClassId, user.id);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.TEACHER)
+  @Patch(':courseId/lab-classes/:labClassId/sections/:sectionId/schedule')
+  updateLabClassSectionSchedule(
+    @Param('courseId') courseId: string,
+    @Param('labClassId') labClassId: string,
+    @Param('sectionId') sectionId: string,
+    @Body() dto: UpdateLabClassSectionScheduleDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.coursesService.updateLabClassSectionSchedule(
+      courseId,
+      labClassId,
+      sectionId,
+      dto,
+      user.id,
+    );
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.TEACHER)
+  @Patch(':courseId/lab-classes/:labClassId/sections/:sectionId/attendance')
+  takeLabClassAttendance(
+    @Param('courseId') courseId: string,
+    @Param('labClassId') labClassId: string,
+    @Param('sectionId') sectionId: string,
+    @Body() dto: TakeLabClassAttendanceDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.coursesService.takeLabClassAttendance(
+      courseId,
+      labClassId,
+      sectionId,
+      dto,
+      user.id,
+    );
   }
 
   @Get(':id/posts')
@@ -156,17 +229,72 @@ export class CoursesController {
   // Lecture sheets
   @UseGuards(RolesGuard)
   @Roles(UserRole.TEACHER)
-  @Post('lecture-sheets')
-  createLectureSheet(
+  @Post(':courseId/lecture-materials')
+  createLectureMaterial(
+    @Param('courseId') courseId: string,
     @Body() dto: CreateLectureSheetDto,
     @CurrentUser() user: { id: string },
   ) {
-    return this.coursesService.createLectureSheet(dto, user.id);
+    return this.coursesService.createLectureSheet({ ...dto, courseId }, user.id);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.TEACHER)
+  @Post(':courseId/lecture-materials/upload')
+  @UseInterceptors(AnyFilesInterceptor({ storage: memoryStorage() }))
+  createLectureMaterialUpload(
+    @Param('courseId') courseId: string,
+    @Body() body: Record<string, unknown>,
+    @UploadedFiles() files: Express.Multer.File[],
+    @CurrentUser() user: { id: string },
+  ) {
+    let links: { url: string; label?: string }[] = [];
+
+    if (typeof body.links === 'string' && body.links.trim()) {
+      try {
+        const parsed = JSON.parse(body.links);
+        if (Array.isArray(parsed)) {
+          links = parsed;
+        }
+      } catch {
+        throw new BadRequestException('Invalid links payload');
+      }
+    }
+
+    return this.coursesService.createLectureSheet(
+      {
+        courseId,
+        title: String(body.title ?? ''),
+        description:
+          typeof body.description === 'string' ? body.description : undefined,
+        labClassId:
+          typeof body.labClassId === 'string' && body.labClassId
+            ? body.labClassId
+            : undefined,
+        sectionName:
+          typeof body.sectionName === 'string' && body.sectionName
+            ? body.sectionName
+            : undefined,
+        links,
+      },
+      user.id,
+      files ?? [],
+    );
+  }
+
+  @Get(':courseId/lecture-materials')
+  getLectureMaterials(@Param('courseId') courseId: string) {
+    return this.coursesService.getLectureSheets(courseId);
   }
 
   @Get(':courseId/lecture-sheets')
   getLectureSheets(@Param('courseId') courseId: string) {
     return this.coursesService.getLectureSheets(courseId);
+  }
+
+  @Get(':id')
+  getCourse(@Param('id') id: string) {
+    return this.coursesService.getCourseById(id);
   }
 
   @UseGuards(RolesGuard)

@@ -38,6 +38,10 @@ export class CreateTeacherDto {
   @IsOptional()
   @IsString()
   gender?: string;
+
+  @IsOptional()
+  @IsString()
+  profilePhoto?: string;
 }
 
 export class CreateStudentsBulkDto {

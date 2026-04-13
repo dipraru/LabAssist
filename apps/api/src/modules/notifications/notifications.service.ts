@@ -9,6 +9,7 @@ import { Teacher } from '../users/entities/teacher.entity';
 import { UserRole } from '../../common/enums/role.enum';
 import { LectureSheet } from '../courses/entities/lecture-sheet.entity';
 import { CoursePost } from '../courses/entities/course-post.entity';
+import { NotificationsGateway } from './notifications.gateway';
 
 @Injectable()
 export class NotificationsService {
@@ -21,6 +22,7 @@ export class NotificationsService {
     private lectureSheetRepo: Repository<LectureSheet>,
     @InjectRepository(CoursePost)
     private coursePostRepo: Repository<CoursePost>,
+    private readonly notificationsGateway: NotificationsGateway,
     private readonly mailService: MailService,
   ) {}
 
@@ -46,7 +48,15 @@ export class NotificationsService {
         targetPath: payload.targetPath ?? null,
       }),
     );
-    await this.notifRepo.save(notifications);
+    const savedNotifications = await this.notifRepo.save(notifications);
+
+    savedNotifications.forEach((notification) => {
+      this.notificationsGateway.sendToUser(
+        notification.recipientUserId,
+        'notification:new',
+        notification,
+      );
+    });
 
     // Send emails for assignment/lecture sheet notifications
     if (

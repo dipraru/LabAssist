@@ -473,6 +473,10 @@ export class OfficeService {
   async createTeacher(
     dto: CreateTeacherDto,
   ): Promise<{ teacher: Teacher; plainPassword: string }> {
+    if (!dto.profilePhoto?.trim()) {
+      throw new BadRequestException('Teacher photo is required');
+    }
+
     const existing = await this.userRepo.findOne({
       where: { username: dto.teacherId },
     });
@@ -503,6 +507,7 @@ export class OfficeService {
         email: dto.email,
         phone: dto.phone.trim(),
         gender: dto.gender ?? null,
+        profilePhoto: dto.profilePhoto.trim(),
         userId: savedUser.id,
       });
       const savedTeacher = await queryRunner.manager.save(teacher);

@@ -20,6 +20,8 @@ import { Semester } from './modules/courses/entities/semester.entity';
 import { Course } from './modules/courses/entities/course.entity';
 import { Enrollment } from './modules/courses/entities/enrollment.entity';
 import { LabSchedule } from './modules/courses/entities/lab-schedule.entity';
+import { LabClass } from './modules/courses/entities/lab-class.entity';
+import { LabClassSection } from './modules/courses/entities/lab-class-section.entity';
 import { LectureSheet } from './modules/courses/entities/lecture-sheet.entity';
 import { CoursePost } from './modules/courses/entities/course-post.entity';
 import { CoursePostComment } from './modules/courses/entities/course-post-comment.entity';
@@ -61,6 +63,8 @@ import { Batch } from './modules/office/entities/batch.entity';
           Course,
           Enrollment,
           LabSchedule,
+          LabClass,
+          LabClassSection,
           LectureSheet,
           CoursePost,
           CoursePostComment,

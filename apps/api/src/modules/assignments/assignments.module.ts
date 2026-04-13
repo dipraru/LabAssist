@@ -6,6 +6,7 @@ import { Assignment } from './entities/assignment.entity';
 import { AssignmentLink } from './entities/assignment-link.entity';
 import { AssignmentSubmission } from './entities/assignment-submission.entity';
 import { Enrollment } from '../courses/entities/enrollment.entity';
+import { Course } from '../courses/entities/course.entity';
 import { Student } from '../users/entities/student.entity';
 import { Teacher } from '../users/entities/teacher.entity';
 
@@ -15,6 +16,7 @@ import { Teacher } from '../users/entities/teacher.entity';
       Assignment,
       AssignmentLink,
       AssignmentSubmission,
+      Course,
       Enrollment,
       Student,
       Teacher,

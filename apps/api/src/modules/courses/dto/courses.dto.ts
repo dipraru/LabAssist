@@ -179,9 +179,63 @@ class LinkDto {
   label?: string;
 }
 
-export class CreateLectureSheetDto {
+export class CreateLabClassDto {
+  @IsOptional()
   @IsUUID()
-  courseId: string;
+  courseId?: string;
+
+  @IsString()
+  title: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsDateString()
+  classDate?: string;
+}
+
+class AttendanceRecordDto {
+  @IsString()
+  studentId: string;
+
+  @IsBoolean()
+  isPresent: boolean;
+}
+
+export class TakeLabClassAttendanceDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AttendanceRecordDto)
+  attendance: AttendanceRecordDto[];
+}
+
+export class UpdateLabClassSectionScheduleDto {
+  @IsDateString()
+  scheduledDate: string;
+
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
+    message: 'startTime must be in HH:mm format',
+  })
+  startTime: string;
+
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
+    message: 'endTime must be in HH:mm format',
+  })
+  endTime: string;
+
+  @IsOptional()
+  @IsString()
+  roomNumber?: string;
+}
+
+export class CreateLectureSheetDto {
+  @IsOptional()
+  @IsUUID()
+  courseId?: string;
 
   @IsString()
   title: string;
@@ -194,6 +248,14 @@ export class CreateLectureSheetDto {
   @ValidateNested({ each: true })
   @Type(() => LinkDto)
   links: LinkDto[];
+
+  @IsOptional()
+  @IsUUID()
+  labClassId?: string;
+
+  @IsOptional()
+  @IsString()
+  sectionName?: string;
 }
 
 export class UpdateLectureSheetDto {
@@ -210,6 +272,14 @@ export class UpdateLectureSheetDto {
   @ValidateNested({ each: true })
   @Type(() => LinkDto)
   links?: LinkDto[];
+
+  @IsOptional()
+  @IsUUID()
+  labClassId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  sectionName?: string | null;
 }
 
 export class CreateCoursePostDto {

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -86,6 +87,9 @@ export class UsersController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) return { message: 'No file provided' };
+    if (!file.mimetype?.startsWith('image/')) {
+      throw new BadRequestException('Photo must be an image');
+    }
     const saved = await this.storage.saveBuffer(
       file.buffer,
       `${uuidv4()}_${file.originalname}`,
@@ -95,6 +99,10 @@ export class UsersController {
     const student = await this.users.findStudentByUserId(user.id);
     if (student) {
       await this.users.updateStudent(user.id, { profilePhoto: saved.url });
+    }
+    const teacher = await this.users.findTeacherByUserId(user.id);
+    if (teacher) {
+      await this.users.updateTeacher(user.id, { profilePhoto: saved.url });
     }
     return { url: saved.url };
   }

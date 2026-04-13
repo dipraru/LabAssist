@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { Course } from '../../courses/entities/course.entity';
 import { Teacher } from '../../users/entities/teacher.entity';
+import { LabClass } from './lab-class.entity';
 
 // Lecture sheets are links posted by teachers for a course
 @Entity('lecture_sheets')
@@ -39,6 +40,16 @@ export class LectureSheet {
 
   @Column({ type: 'varchar', nullable: true })
   postedById: string | null;
+
+  @ManyToOne(() => LabClass, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn()
+  labClass: LabClass | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  labClassId: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  sectionName: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

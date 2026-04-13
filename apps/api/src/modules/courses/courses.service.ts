@@ -1,19 +1,24 @@
 import {
   Injectable,
   NotFoundException,
-  ConflictException,
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
-import { Course } from './entities/course.entity';
+import { Course, CourseType } from './entities/course.entity';
 import { Semester } from './entities/semester.entity';
 import { Enrollment } from './entities/enrollment.entity';
 import { LabSchedule } from './entities/lab-schedule.entity';
 import { LectureSheet } from './entities/lecture-sheet.entity';
 import { CoursePost, CoursePostType } from './entities/course-post.entity';
 import { CoursePostComment } from './entities/course-post-comment.entity';
+import { LabClass } from './entities/lab-class.entity';
+import {
+  LabAttendanceRecord,
+  LabClassSection,
+  LabClassSectionStatus,
+} from './entities/lab-class-section.entity';
 import { Student } from '../users/entities/student.entity';
 import { Teacher } from '../users/entities/teacher.entity';
 import { Batch } from '../office/entities/batch.entity';
@@ -28,9 +33,13 @@ import {
   UpdateLectureSheetDto,
   CreateCoursePostDto,
   CreateCoursePostCommentDto,
+  CreateLabClassDto,
+  TakeLabClassAttendanceDto,
+  UpdateLabClassSectionScheduleDto,
 } from './dto/courses.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
+import { StorageService } from '../storage/storage.service';
 
 function batchYearVariants(batchYear: string): string[] {
   const digits = batchYear.replace(/\D/g, '');
@@ -43,6 +52,82 @@ function isValidTimeRange(startTime: string, endTime: string): boolean {
   return startTime < endTime;
 }
 
+function startOfToday(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function normalizeSectionName(sectionName?: string | null): string {
+  return sectionName?.trim() || 'All Students';
+}
+
+function compareSectionNames(left: string, right: string): number {
+  return left.localeCompare(right, undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  });
+}
+
+function nextOccurrenceDate(dayName: string, fromDate: Date): Date {
+  const days = [
+    'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+  ];
+  const targetDay = days.findIndex((day) => day === dayName);
+  const current = new Date(
+    fromDate.getFullYear(),
+    fromDate.getMonth(),
+    fromDate.getDate(),
+  );
+
+  if (targetDay < 0) {
+    return current;
+  }
+
+  const offset = (targetDay - current.getDay() + 7) % 7;
+  current.setDate(current.getDate() + offset);
+  return current;
+}
+
+function parseDateStringAsLocalDate(value: string): Date {
+  const [yearText = '0', monthText = '1', dayText = '1'] = value.split('-');
+  return new Date(Number(yearText), Number(monthText) - 1, Number(dayText));
+}
+
+function combineDateAndTime(dateValue: Date | null | undefined, timeValue: string | null | undefined): Date | null {
+  if (!dateValue || !timeValue) return null;
+
+  const [hoursText = '0', minutesText = '0'] = String(timeValue).split(':');
+  const result = new Date(dateValue);
+  result.setHours(Number(hoursText), Number(minutesText), 0, 0);
+  return result;
+}
+
+function studentIdFallsInsideSection(
+  studentId: string,
+  fromStudentId: string,
+  toStudentId: string,
+): boolean {
+  const current = Number(studentId);
+  const from = Number(fromStudentId);
+  const to = Number(toStudentId);
+
+  if (
+    !Number.isFinite(current) ||
+    !Number.isFinite(from) ||
+    !Number.isFinite(to)
+  ) {
+    return false;
+  }
+
+  return current >= Math.min(from, to) && current <= Math.max(from, to);
+}
+
 @Injectable()
 export class CoursesService {
   constructor(
@@ -52,6 +137,10 @@ export class CoursesService {
     private enrollmentRepo: Repository<Enrollment>,
     @InjectRepository(LabSchedule)
     private scheduleRepo: Repository<LabSchedule>,
+    @InjectRepository(LabClass)
+    private labClassRepo: Repository<LabClass>,
+    @InjectRepository(LabClassSection)
+    private labClassSectionRepo: Repository<LabClassSection>,
     @InjectRepository(LectureSheet)
     private lectureSheetRepo: Repository<LectureSheet>,
     @InjectRepository(CoursePost)
@@ -62,7 +151,143 @@ export class CoursesService {
     @InjectRepository(Teacher) private teacherRepo: Repository<Teacher>,
     @InjectRepository(Batch) private batchRepo: Repository<Batch>,
     private readonly notificationsService: NotificationsService,
+    private readonly storageService: StorageService,
   ) {}
+
+  private isCourseArchived(course: Pick<Course, 'semester'>): boolean {
+    if (course.semester?.isCurrent) {
+      return false;
+    }
+
+    if (!course.semester?.endDate) {
+      return false;
+    }
+
+    const endDate = new Date(course.semester.endDate);
+    const endDay = new Date(
+      endDate.getFullYear(),
+      endDate.getMonth(),
+      endDate.getDate(),
+    );
+
+    return endDay < startOfToday();
+  }
+
+  private async getTeacherWithCourseAccess(
+    courseId: string,
+    teacherUserId: string,
+  ): Promise<{ teacher: Teacher; course: Course }> {
+    const teacher = await this.teacherRepo.findOne({
+      where: { userId: teacherUserId },
+    });
+    if (!teacher) throw new NotFoundException('Teacher not found');
+
+    const course = await this.courseRepo.findOne({
+      where: { id: courseId, isActive: true },
+      relations: [
+        'teachers',
+        'semester',
+        'schedules',
+        'enrollments',
+        'enrollments.student',
+      ],
+    });
+    if (!course) throw new NotFoundException('Course not found');
+
+    const isAssigned = course.teachers.some((item) => item.id === teacher.id);
+    if (!isAssigned) {
+      throw new ForbiddenException('You are not assigned to this course');
+    }
+
+    return { teacher, course };
+  }
+
+  private async getCourseBatchSections(course: Course) {
+    if (!course.semester?.batchYear) {
+      return [];
+    }
+
+    const batch = await this.batchRepo.findOne({
+      where: { year: course.semester.batchYear },
+    });
+
+    return batch?.sections ?? [];
+  }
+
+  private async getStudentsForCourseSection(
+    course: Course,
+    sectionName: string,
+  ): Promise<Student[]> {
+    const allStudents = (course.enrollments ?? [])
+      .filter((enrollment) => enrollment.isActive !== false)
+      .map((enrollment) => enrollment.student)
+      .filter((student): student is Student => Boolean(student));
+
+    const normalizedSectionName = normalizeSectionName(sectionName);
+    if (normalizedSectionName === 'All Students') {
+      return allStudents;
+    }
+
+    const batchSections = await this.getCourseBatchSections(course);
+    const batchSection = batchSections.find(
+      (item) => item.name === normalizedSectionName,
+    );
+
+    if (!batchSection) {
+      return [];
+    }
+
+    return allStudents.filter((student) =>
+      studentIdFallsInsideSection(
+        student.studentId,
+        batchSection.fromStudentId,
+        batchSection.toStudentId,
+      ),
+    );
+  }
+
+  private getScheduleForSection(course: Course, sectionName: string) {
+    const normalizedSectionName = normalizeSectionName(sectionName);
+    return (course.schedules ?? []).find(
+      (schedule) =>
+        normalizeSectionName(schedule.sectionName) === normalizedSectionName,
+    );
+  }
+
+  private async validateLectureSheetPlacement(
+    courseId: string,
+    labClassId?: string | null,
+    sectionName?: string | null,
+  ): Promise<LabClass | null> {
+    if (!labClassId && sectionName) {
+      throw new BadRequestException(
+        'Section-specific material must be attached to a lab class',
+      );
+    }
+
+    if (!labClassId) {
+      return null;
+    }
+
+    const labClass = await this.labClassRepo.findOne({
+      where: { id: labClassId },
+      relations: ['sections'],
+    });
+    if (!labClass || labClass.courseId !== courseId) {
+      throw new BadRequestException('Lab class not found for this course');
+    }
+
+    if (
+      sectionName &&
+      !labClass.sections.some(
+        (section) => section.sectionName === normalizeSectionName(sectionName),
+      )
+    ) {
+      throw new BadRequestException('Invalid section for the selected lab class');
+    }
+
+    return labClass;
+  }
 
   private async validateCourseSetup(
     semester: Semester,
@@ -330,7 +555,11 @@ export class CoursesService {
       relations: ['teachers', 'semester', 'schedules', 'enrollments', 'enrollments.student'],
     });
     if (!course) throw new NotFoundException('Course not found');
-    return course;
+
+    const batchSections = (await this.getCourseBatchSections(course)).sort(
+      (left, right) => compareSectionNames(left.name, right.name),
+    );
+    return Object.assign(course, { batchSections });
   }
 
   async getCoursesByTeacher(teacherUserId: string): Promise<Course[]> {
@@ -338,15 +567,26 @@ export class CoursesService {
       where: { userId: teacherUserId },
     });
     if (!teacher) throw new NotFoundException('Teacher not found');
-    return this.courseRepo
+    const courses = await this.courseRepo
       .createQueryBuilder('course')
-      .innerJoin('course.teachers', 'teacher', 'teacher.id = :tid', {
+      .innerJoin('course.teachers', 'assignedTeacher', 'assignedTeacher.id = :tid', {
         tid: teacher.id,
       })
+      .leftJoinAndSelect('course.teachers', 'teacher')
       .leftJoinAndSelect('course.semester', 'semester')
       .leftJoinAndSelect('course.schedules', 'schedules')
       .where('course.isActive = true')
       .getMany();
+
+    return Promise.all(
+      courses.map(async (course) =>
+        Object.assign(course, {
+          batchSections: (await this.getCourseBatchSections(course)).sort(
+            (left, right) => compareSectionNames(left.name, right.name),
+          ),
+        }),
+      ),
+    );
   }
 
   async getCoursesByStudent(studentUserId: string): Promise<Course[]> {
@@ -479,29 +719,339 @@ export class CoursesService {
     await this.scheduleRepo.delete(id);
   }
 
+  async createLabClass(
+    dto: CreateLabClassDto,
+    teacherUserId: string,
+  ): Promise<LabClass> {
+    if (!dto.courseId) {
+      throw new BadRequestException('Course ID is required');
+    }
+
+    const courseId = dto.courseId;
+    const { teacher, course } = await this.getTeacherWithCourseAccess(
+      courseId,
+      teacherUserId,
+    );
+
+    if (course.type !== CourseType.LAB) {
+      throw new BadRequestException(
+        'Lab classes can be created only for lab courses',
+      );
+    }
+
+    if (this.isCourseArchived(course)) {
+      throw new BadRequestException(
+        'New lab classes cannot be created for ended semesters',
+      );
+    }
+
+    const existingMax = await this.labClassRepo
+      .createQueryBuilder('labClass')
+      .select('MAX(labClass.labNumber)', 'max')
+      .where('labClass.courseId = :courseId', { courseId })
+      .getRawOne<{ max: string | null }>();
+
+    const nextLabNumber = Number(existingMax?.max ?? 0) + 1;
+    const normalizedSections = Array.from(
+      new Set(
+        (course.schedules ?? []).map((schedule) =>
+          normalizeSectionName(schedule.sectionName),
+        ),
+      ),
+    ).sort(compareSectionNames);
+    if (!normalizedSections.length) {
+      normalizedSections.push('All Students');
+    }
+
+    const baseDate = dto.classDate ? new Date(dto.classDate) : new Date();
+
+    const labClass = this.labClassRepo.create({
+      courseId,
+      title: dto.title.trim() || `Lab Class ${nextLabNumber}`,
+      description: dto.description?.trim() || null,
+      labNumber: nextLabNumber,
+      classDate: new Date(baseDate),
+      createdById: teacher.id,
+      sections: normalizedSections.map((sectionName) =>
+        {
+          const schedule = this.getScheduleForSection(course, sectionName);
+          const scheduledDate = schedule?.dayOfWeek
+            ? nextOccurrenceDate(schedule.dayOfWeek, baseDate)
+            : new Date(baseDate);
+
+          return this.labClassSectionRepo.create({
+            sectionName,
+            status: LabClassSectionStatus.PENDING,
+            attendanceRecords: [],
+            scheduledDate,
+            scheduledStartTime: schedule?.startTime ?? null,
+            scheduledEndTime: schedule?.endTime ?? null,
+            roomNumber: schedule?.roomNumber ?? null,
+            attendanceTakenAt: null,
+            conductedAt: null,
+          });
+        },
+      ),
+    });
+
+    const saved = await this.labClassRepo.save(labClass);
+    return this.getLabClassById(courseId, saved.id, teacherUserId);
+  }
+
+  async getLabClasses(
+    courseId: string,
+    teacherUserId: string,
+  ): Promise<LabClass[]> {
+    await this.getTeacherWithCourseAccess(courseId, teacherUserId);
+
+    const labClasses = await this.labClassRepo.find({
+      where: { courseId },
+      relations: ['sections'],
+      order: { labNumber: 'DESC', createdAt: 'DESC' },
+    });
+
+    return labClasses.map((labClass) => ({
+      ...labClass,
+      sections: [...(labClass.sections ?? [])].sort((left, right) =>
+        compareSectionNames(left.sectionName, right.sectionName),
+      ),
+    }));
+  }
+
+  async getLabClassById(
+    courseId: string,
+    labClassId: string,
+    teacherUserId: string,
+  ): Promise<LabClass> {
+    const labClass = await this.labClassRepo.findOne({
+      where: { id: labClassId },
+      relations: [
+        'sections',
+        'course',
+        'course.teachers',
+        'course.semester',
+        'course.schedules',
+        'course.enrollments',
+        'course.enrollments.student',
+      ],
+    });
+    if (!labClass) {
+      throw new NotFoundException('Lab class not found');
+    }
+
+    await this.getTeacherWithCourseAccess(courseId, teacherUserId);
+    if (labClass.courseId !== courseId) {
+      throw new NotFoundException('Lab class not found');
+    }
+    labClass.course = Object.assign(labClass.course, {
+      batchSections: (await this.getCourseBatchSections(labClass.course)).sort(
+        (left, right) => compareSectionNames(left.name, right.name),
+      ),
+    });
+    labClass.sections = [...(labClass.sections ?? [])].sort((left, right) =>
+      compareSectionNames(left.sectionName, right.sectionName),
+    );
+
+    return labClass;
+  }
+
+  async updateLabClassSectionSchedule(
+    courseId: string,
+    labClassId: string,
+    sectionId: string,
+    dto: UpdateLabClassSectionScheduleDto,
+    teacherUserId: string,
+  ): Promise<LabClassSection> {
+    const { course } = await this.getTeacherWithCourseAccess(
+      courseId,
+      teacherUserId,
+    );
+    const section = await this.labClassSectionRepo.findOne({
+      where: { id: sectionId, labClassId },
+      relations: ['labClass'],
+    });
+    if (!section || section.labClass.courseId !== courseId) {
+      throw new NotFoundException('Lab class section not found');
+    }
+
+    if (!isValidTimeRange(dto.startTime, dto.endTime)) {
+      throw new BadRequestException('End time must be after start time');
+    }
+
+    const currentScheduleStart = combineDateAndTime(
+      section.scheduledDate,
+      section.scheduledStartTime,
+    );
+    if (currentScheduleStart && currentScheduleStart.getTime() <= Date.now()) {
+      throw new BadRequestException(
+        'This class has already started, so it can no longer be rescheduled',
+      );
+    }
+
+    const baseSchedule = this.getScheduleForSection(course, section.sectionName);
+    section.scheduledDate = parseDateStringAsLocalDate(dto.scheduledDate);
+    section.scheduledStartTime = dto.startTime;
+    section.scheduledEndTime = dto.endTime;
+    section.roomNumber =
+      dto.roomNumber?.trim() || baseSchedule?.roomNumber || null;
+
+    return this.labClassSectionRepo.save(section);
+  }
+
+  async takeLabClassAttendance(
+    courseId: string,
+    labClassId: string,
+    sectionId: string,
+    dto: TakeLabClassAttendanceDto,
+    teacherUserId: string,
+  ): Promise<LabClassSection> {
+    const section = await this.labClassSectionRepo.findOne({
+      where: { id: sectionId, labClassId },
+      relations: [
+        'labClass',
+        'labClass.sections',
+        'labClass.course',
+        'labClass.course.teachers',
+        'labClass.course.semester',
+        'labClass.course.enrollments',
+        'labClass.course.enrollments.student',
+      ],
+    });
+    if (!section || section.labClass.courseId !== courseId) {
+      throw new NotFoundException('Lab class section not found');
+    }
+
+    await this.getTeacherWithCourseAccess(courseId, teacherUserId);
+
+    const enrolledStudents = (section.labClass.course.enrollments ?? [])
+      .filter((enrollment) => enrollment?.isActive !== false)
+      .map((enrollment) => enrollment.student)
+      .filter((student): student is Student => Boolean(student));
+    const enrolledStudentIds = new Set(
+      enrolledStudents.map((student) => student.id),
+    );
+    const naturalSectionStudentIds = new Set(
+      (
+        await this.getStudentsForCourseSection(
+          section.labClass.course,
+          section.sectionName,
+        )
+      ).map((student) => student.id),
+    );
+    const seenStudentIds = new Set<string>();
+    const presentInOtherSections = new Set(
+      (section.labClass.sections ?? [])
+        .filter((item) => item.id !== section.id)
+        .flatMap((item) =>
+          (item.attendanceRecords ?? [])
+            .filter((record) => record.isPresent)
+            .map((record) => record.studentId),
+        ),
+    );
+
+    const attendanceRecords: LabAttendanceRecord[] = dto.attendance.map(
+      (item) => {
+        if (seenStudentIds.has(item.studentId)) {
+          throw new BadRequestException('Duplicate student found in attendance');
+        }
+        seenStudentIds.add(item.studentId);
+
+        if (!enrolledStudentIds.has(item.studentId)) {
+          throw new BadRequestException(
+            'Attendance contains a student outside this course',
+          );
+        }
+
+        if (item.isPresent && presentInOtherSections.has(item.studentId)) {
+          throw new BadRequestException(
+            'A student cannot be present in more than one section for the same lab class',
+          );
+        }
+
+        return {
+          studentId: item.studentId,
+          isPresent: item.isPresent,
+          addedAsExtra: !naturalSectionStudentIds.has(item.studentId),
+        };
+      },
+    );
+
+    section.attendanceRecords = attendanceRecords;
+    section.status = LabClassSectionStatus.CONDUCTED;
+    section.attendanceTakenAt = new Date();
+    section.conductedAt = new Date();
+
+    return this.labClassSectionRepo.save(section);
+  }
+
   async createLectureSheet(
     dto: CreateLectureSheetDto,
     teacherUserId: string,
+    uploadedFiles: Express.Multer.File[] = [],
   ): Promise<LectureSheet> {
-    const teacher = await this.teacherRepo.findOne({
-      where: { userId: teacherUserId },
-    });
+    if (!dto.courseId) {
+      throw new BadRequestException('Course ID is required');
+    }
+
+    const courseId = dto.courseId;
+    const { teacher } = await this.getTeacherWithCourseAccess(
+      courseId,
+      teacherUserId,
+    );
+    const labClass = await this.validateLectureSheetPlacement(
+      courseId,
+      dto.labClassId,
+      dto.sectionName,
+    );
+    const uploadedLinks = await Promise.all(
+      uploadedFiles.map(async (file) => {
+        const stored = await this.storageService.saveBuffer(
+          file.buffer,
+          file.originalname,
+          'materials',
+          25 * 1024 * 1024,
+        );
+
+        return {
+          url: stored.url,
+          label: file.originalname,
+        };
+      }),
+    );
+
+    const normalizedLinks = [...(dto.links ?? []), ...uploadedLinks]
+      .filter((link) => link?.url)
+      .map((link) => ({
+        url: link.url.trim(),
+        label: link.label?.trim() || undefined,
+      }));
+
+    if (!normalizedLinks.length) {
+      throw new BadRequestException(
+        'Add at least one lecture material link or file',
+      );
+    }
+
     const sheet = this.lectureSheetRepo.create({
-      courseId: dto.courseId,
-      title: dto.title,
-      description: dto.description ?? null,
-      links: dto.links,
+      courseId,
+      title: dto.title.trim(),
+      description: dto.description?.trim() || null,
+      links: normalizedLinks,
       postedById: teacher?.id ?? null,
+      labClassId: labClass?.id ?? null,
+      sectionName: dto.sectionName
+        ? normalizeSectionName(dto.sectionName)
+        : null,
     });
     const saved = await this.lectureSheetRepo.save(sheet);
 
     // Notify enrolled students
-    await this.notifyEnrolledStudents(dto.courseId, {
+    await this.notifyEnrolledStudents(courseId, {
       type: NotificationType.LECTURE_SHEET_POSTED,
       title: `New Lecture Sheet: ${dto.title}`,
       body: `A new lecture sheet has been posted in your course.`,
       referenceId: saved.id,
-      targetPath: `/student/courses/${dto.courseId}?sheetId=${saved.id}`,
+      targetPath: `/student/courses/${courseId}?sheetId=${saved.id}`,
     });
 
     return saved;
@@ -606,6 +1156,7 @@ export class CoursesService {
   async getLectureSheets(courseId: string): Promise<LectureSheet[]> {
     return this.lectureSheetRepo.find({
       where: { courseId },
+      relations: ['labClass'],
       order: { createdAt: 'DESC' },
     });
   }
