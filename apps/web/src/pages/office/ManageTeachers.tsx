@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ChangeEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
-import { Plus, Download, Trash2, Users } from 'lucide-react';
+import { Plus, Download, Trash2, Upload, Users } from 'lucide-react';
 
 const schema = z.object({
   fullName: z.string().min(1),
@@ -17,7 +17,7 @@ const schema = z.object({
   phone: z.string().min(1, 'Phone number is required'),
   gender: z.enum(['male','female','other']).optional(),
 });
-type FormData = z.infer<typeof schema>;
+type TeacherFormValues = z.infer<typeof schema>;
 
 const designationColor: Record<string, string> = {
   'Lecturer': 'bg-sky-50 text-sky-700 ring-sky-200',
@@ -43,18 +43,34 @@ const labelClass = "block text-xs font-semibold uppercase tracking-wide text-sla
 export function ManageTeachers() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   const { data: teachers = [] } = useQuery({
     queryKey: ['teachers'],
     queryFn: () => api.get('/office/teachers').then(r => r.data),
   });
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormData>({
+  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<TeacherFormValues>({
     resolver: zodResolver(schema),
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: FormData) => api.post('/office/teachers', data),
+    mutationFn: (data: TeacherFormValues & { photo: File }) => {
+      const body = new FormData();
+      body.append('fullName', data.fullName);
+      body.append('teacherId', data.teacherId);
+      body.append('designation', data.designation);
+      body.append('email', data.email);
+      body.append('phone', data.phone);
+      if (data.gender) {
+        body.append('gender', data.gender);
+      }
+      body.append('photo', data.photo);
+      return api.post('/office/teachers', body, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    },
     onSuccess: (res) => {
       toast.success('Teacher created!');
       qc.invalidateQueries({ queryKey: ['teachers'] });
@@ -65,6 +81,8 @@ export function ManageTeachers() {
         link.click();
       }
       reset();
+      setPhotoFile(null);
+      setPhotoPreview(null);
       setShowForm(false);
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
@@ -93,6 +111,20 @@ export function ManageTeachers() {
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to delete teacher'),
   });
 
+  const handlePhotoChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const resetFormState = () => {
+    reset();
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    setShowForm(false);
+  };
+
   return (
     <AppShell>
       <div className="min-h-screen bg-slate-50">
@@ -109,7 +141,16 @@ export function ManageTeachers() {
               </div>
             </div>
             <button
-              onClick={() => setShowForm(!showForm)}
+              onClick={() => {
+                if (showForm) {
+                  resetFormState();
+                  return;
+                }
+                reset();
+                setPhotoFile(null);
+                setPhotoPreview(null);
+                setShowForm(true);
+              }}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 active:bg-indigo-800 shadow-sm shadow-indigo-200 transition-all"
             >
               <Plus size={16} /> Add Teacher
@@ -118,8 +159,56 @@ export function ManageTeachers() {
         </div>
 
         <div className="px-8 pb-10">
-          <Modal open={showForm} onClose={() => { setShowForm(false); reset(); }} title="New Teacher">
-            <form onSubmit={handleSubmit((d) => createMutation.mutate(d))} className="grid grid-cols-2 gap-5">
+          <Modal open={showForm} onClose={resetFormState} title="New Teacher">
+            <form
+              onSubmit={handleSubmit((values) => {
+                if (!photoFile) {
+                  toast.error('Teacher photo is required');
+                  return;
+                }
+                createMutation.mutate({ ...values, photo: photoFile });
+              })}
+              className="grid grid-cols-2 gap-5"
+            >
+              <div className="col-span-2 rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 p-4">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                      {photoPreview ? (
+                        <img
+                          src={photoPreview}
+                          alt="Teacher preview"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+                          Photo
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        Faculty profile photo
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Mandatory for teacher cards, profile, and classroom views.
+                      </p>
+                    </div>
+                  </div>
+
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
+                    <Upload size={16} />
+                    {photoFile ? 'Replace photo' : 'Upload photo'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoChange}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+
               {[
                 { name: 'fullName', label: 'Full Name', type: 'text', placeholder: 'Dr. John Smith' },
                 { name: 'teacherId', label: 'Teacher ID', type: 'text', placeholder: 'T-001' },
@@ -129,13 +218,13 @@ export function ManageTeachers() {
                 <div key={f.name}>
                   <label className={labelClass}>{f.label}</label>
                   <input
-                    {...register(f.name as keyof FormData)}
+                    {...register(f.name as keyof TeacherFormValues)}
                     type={f.type}
                     placeholder={f.placeholder}
                     className={inputClass}
                   />
-                  {errors[f.name as keyof FormData] && (
-                    <p className="text-red-500 text-xs mt-1.5">{errors[f.name as keyof FormData]?.message}</p>
+                  {errors[f.name as keyof TeacherFormValues] && (
+                    <p className="text-red-500 text-xs mt-1.5">{errors[f.name as keyof TeacherFormValues]?.message}</p>
                   )}
                 </div>
               ))}
@@ -168,7 +257,7 @@ export function ManageTeachers() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowForm(false); reset(); }}
+                  onClick={resetFormState}
                   className="px-5 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-50 transition-all"
                 >
                   Cancel
@@ -194,8 +283,16 @@ export function ManageTeachers() {
                   <tr key={t.id} className="hover:bg-slate-50/70 transition-colors">
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-xl ${avatarColors[i % avatarColors.length]} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
-                          {getInitials(t.fullName)}
+                        <div className={`w-9 h-9 rounded-xl ${t.profilePhoto ? 'bg-slate-100' : avatarColors[i % avatarColors.length]} flex items-center justify-center overflow-hidden text-white text-xs font-bold flex-shrink-0`}>
+                          {t.profilePhoto ? (
+                            <img
+                              src={t.profilePhoto}
+                              alt={t.fullName}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            getInitials(t.fullName)
+                          )}
                         </div>
                         <div>
                           <p className="font-semibold text-slate-800">{t.fullName}</p>

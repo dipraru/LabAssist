@@ -24,6 +24,7 @@ export class StorageService {
     this.ensureDir(join(this.uploadRoot, 'profiles'));
     this.ensureDir(join(this.uploadRoot, 'submissions'));
     this.ensureDir(join(this.uploadRoot, 'assignments'));
+    this.ensureDir(join(this.uploadRoot, 'materials'));
     this.ensureDir(join(this.uploadRoot, 'problems'));
   }
 

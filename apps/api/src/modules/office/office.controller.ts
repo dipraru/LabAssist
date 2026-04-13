@@ -13,6 +13,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { OfficeService } from './office.service';
 import { PdfService } from './pdf.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -20,6 +21,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/role.enum';
+import { StorageService } from '../storage/storage.service';
+import { Teacher } from '../users/entities/teacher.entity';
 import {
   CreateTeacherDto,
   CreateStudentsBulkDto,
@@ -40,6 +43,7 @@ export class OfficeController {
   constructor(
     private readonly officeService: OfficeService,
     private readonly pdfService: PdfService,
+    private readonly storageService: StorageService,
   ) {}
 
   @Get('dashboard')
@@ -49,9 +53,37 @@ export class OfficeController {
 
   // ── Teachers ─────────────────────────────────────────────
   @Post('teachers')
-  async createTeacher(@Body() dto: CreateTeacherDto) {
-    const { teacher, plainPassword } =
-      await this.officeService.createTeacher(dto);
+  @UseInterceptors(FileInterceptor('photo', { storage: memoryStorage() }))
+  async createTeacher(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() dto: CreateTeacherDto,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Teacher photo is required');
+    }
+    if (!file.mimetype?.startsWith('image/')) {
+      throw new BadRequestException('Teacher photo must be an image');
+    }
+
+    const savedPhoto = await this.storageService.saveBuffer(
+      file.buffer,
+      file.originalname,
+      'profiles',
+      5 * 1024 * 1024,
+    );
+
+    let createResult: { teacher: Teacher; plainPassword: string };
+    try {
+      createResult = await this.officeService.createTeacher({
+        ...dto,
+        profilePhoto: savedPhoto.url,
+      });
+    } catch (error) {
+      this.storageService.deleteFile(savedPhoto.filePath);
+      throw error;
+    }
+    const { teacher, plainPassword } = createResult;
+
     const pdf = await this.pdfService.generateCredentialsPdf([
       {
         username: teacher.teacherId,

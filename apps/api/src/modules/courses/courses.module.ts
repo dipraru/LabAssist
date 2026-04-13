@@ -6,6 +6,8 @@ import { Course } from './entities/course.entity';
 import { Semester } from './entities/semester.entity';
 import { Enrollment } from './entities/enrollment.entity';
 import { LabSchedule } from './entities/lab-schedule.entity';
+import { LabClass } from './entities/lab-class.entity';
+import { LabClassSection } from './entities/lab-class-section.entity';
 import { LectureSheet } from './entities/lecture-sheet.entity';
 import { CoursePost } from './entities/course-post.entity';
 import { CoursePostComment } from './entities/course-post-comment.entity';
@@ -21,6 +23,8 @@ import { Batch } from '../office/entities/batch.entity';
       Semester,
       Enrollment,
       LabSchedule,
+      LabClass,
+      LabClassSection,
       LectureSheet,
       CoursePost,
       CoursePostComment,

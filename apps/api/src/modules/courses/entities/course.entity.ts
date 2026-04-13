@@ -15,6 +15,7 @@ import { Teacher } from '../../users/entities/teacher.entity';
 import { Enrollment } from './enrollment.entity';
 import { LabSchedule } from './lab-schedule.entity';
 import { CoursePost } from './course-post.entity';
+import { LabClass } from './lab-class.entity';
 
 export enum CourseType {
   THEORY = 'theory',
@@ -70,6 +71,9 @@ export class Course {
 
   @OneToMany(() => CoursePost, (post) => post.course)
   posts: CoursePost[];
+
+  @OneToMany(() => LabClass, (labClass) => labClass.course)
+  labClasses: LabClass[];
 
   @CreateDateColumn()
   createdAt: Date;

@@ -13,6 +13,7 @@ import {
   AssignmentSubmissionStatus,
 } from './entities/assignment-submission.entity';
 import { Enrollment } from '../courses/entities/enrollment.entity';
+import { Course } from '../courses/entities/course.entity';
 import { Student } from '../users/entities/student.entity';
 import { Teacher } from '../users/entities/teacher.entity';
 import { AssignmentStatus } from '../../common/enums';
@@ -34,6 +35,8 @@ export class AssignmentsService {
     private linkRepo: Repository<AssignmentLink>,
     @InjectRepository(AssignmentSubmission)
     private submissionRepo: Repository<AssignmentSubmission>,
+    @InjectRepository(Course)
+    private courseRepo: Repository<Course>,
     @InjectRepository(Enrollment)
     private enrollmentRepo: Repository<Enrollment>,
     @InjectRepository(Student) private studentRepo: Repository<Student>,
@@ -42,6 +45,31 @@ export class AssignmentsService {
     private readonly storageService: StorageService,
   ) {}
 
+  private isCourseArchived(course: Course): boolean {
+    if (course.semester?.isCurrent) {
+      return false;
+    }
+
+    if (!course.semester?.endDate) {
+      return false;
+    }
+
+    const today = new Date();
+    const todayStart = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+    );
+    const endDate = new Date(course.semester.endDate);
+    const endDay = new Date(
+      endDate.getFullYear(),
+      endDate.getMonth(),
+      endDate.getDate(),
+    );
+
+    return endDay < todayStart;
+  }
+
   async createAssignment(
     dto: CreateAssignmentDto,
     teacherUserId: string,
@@ -49,6 +77,25 @@ export class AssignmentsService {
     const teacher = await this.teacherRepo.findOne({
       where: { userId: teacherUserId },
     });
+    if (!teacher) throw new NotFoundException('Teacher not found');
+
+    const course = await this.courseRepo.findOne({
+      where: { id: dto.courseId, isActive: true },
+      relations: ['teachers', 'semester'],
+    });
+    if (!course) throw new NotFoundException('Course not found');
+
+    const isAssignedTeacher = course.teachers.some((item) => item.id === teacher.id);
+    if (!isAssignedTeacher) {
+      throw new ForbiddenException('You are not assigned to this course');
+    }
+
+    if (this.isCourseArchived(course)) {
+      throw new BadRequestException(
+        'Assignments cannot be created for ended semesters',
+      );
+    }
+
     const assignment = this.assignmentRepo.create({
       courseId: dto.courseId,
       title: dto.title,
