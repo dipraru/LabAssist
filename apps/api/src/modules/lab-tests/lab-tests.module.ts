@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { LabTest } from './entities/lab-test.entity';
 import { LabTestProblem } from './entities/lab-test-problem.entity';
 import { LabSubmission } from './entities/lab-submission.entity';
+import { LabProctoringEvent } from './entities/lab-proctoring-event.entity';
 import { LabTestsService } from './lab-tests.service';
 import { LabTestsController } from './lab-tests.controller';
 import { Problem } from '../contests/entities/problem.entity';
@@ -19,6 +20,7 @@ import { LabJudgeRemoteService } from './judge-remote.service';
       LabTest,
       LabTestProblem,
       LabSubmission,
+      LabProctoringEvent,
       Problem,
       Course,
       Enrollment,

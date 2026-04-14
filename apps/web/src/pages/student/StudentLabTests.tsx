@@ -9,7 +9,7 @@ import 'ace-builds/src-noconflict/mode-java';
 import 'ace-builds/src-noconflict/mode-javascript';
 import 'ace-builds/src-noconflict/mode-python';
 import 'ace-builds/src-noconflict/mode-typescript';
-import 'ace-builds/src-noconflict/theme-monokai';
+import 'ace-builds/src-noconflict/theme-github';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { courseCode, courseTitle } from '../../lib/display';
@@ -109,7 +109,11 @@ export function StudentLabTests() {
   const [leftPaneTab, setLeftPaneTab] = useState<'statement' | 'submissions'>(
     'statement',
   );
+  const [fullscreenRequired, setFullscreenRequired] = useState(false);
+  const [proctoringWarnings, setProctoringWarnings] = useState<string[]>([]);
   const autoSubmittedRef = useRef(false);
+  const fullscreenStartedRef = useRef(false);
+  const lastViolationAtRef = useRef<Record<string, number>>({});
 
   const filterCourse = searchParams.get('courseId') ?? '';
   const filterKind =
@@ -212,6 +216,59 @@ export function StudentLabTests() {
     [mySubmissions, selectedProblemId],
   );
 
+  const proctoringActive = Boolean(
+    labTestId && selectedActivity?.status === 'running',
+  );
+
+  const pushWarning = (message: string) => {
+    setProctoringWarnings((current) => [message, ...current].slice(0, 4));
+  };
+
+  const reportViolation = async (
+    eventType:
+      | 'fullscreen_exit'
+      | 'tab_hidden'
+      | 'window_blur'
+      | 'copy_blocked'
+      | 'paste_blocked'
+      | 'cut_blocked',
+    message: string,
+  ) => {
+    if (!labTestId || !proctoringActive) return;
+
+    const now = Date.now();
+    const lastSentAt = lastViolationAtRef.current[eventType] ?? 0;
+    if (now - lastSentAt < 4000) return;
+    lastViolationAtRef.current[eventType] = now;
+
+    pushWarning(message);
+    toast.error(message, { id: `lab-proctor-${eventType}` });
+
+    try {
+      await api.post(`/lab-tests/${labTestId}/proctoring-events`, {
+        eventType,
+        problemId: selectedProblemId ?? undefined,
+        message,
+      });
+    } catch {
+      // Keep the student UI responsive even if the reporting request fails.
+    }
+  };
+
+  const requestLabFullscreen = async () => {
+    try {
+      const target = document.documentElement;
+      if (!document.fullscreenElement) {
+        await target.requestFullscreen();
+      }
+      fullscreenStartedRef.current = true;
+      setFullscreenRequired(false);
+    } catch {
+      toast.error('Fullscreen permission was denied. Please allow it to continue.');
+      setFullscreenRequired(true);
+    }
+  };
+
   const runMutation = useMutation({
     mutationFn: () =>
       api.post(`/lab-tests/problems/${selectedProblemId}/run`, {
@@ -280,6 +337,112 @@ export function StudentLabTests() {
   useEffect(() => {
     setLeftPaneTab('statement');
   }, [selectedProblemId, labTestId]);
+
+  useEffect(() => {
+    fullscreenStartedRef.current = false;
+    lastViolationAtRef.current = {};
+    setProctoringWarnings([]);
+    setFullscreenRequired(Boolean(labTestId && selectedActivity?.status === 'running'));
+  }, [labTestId, selectedActivity?.status]);
+
+  useEffect(() => {
+    if (!proctoringActive) {
+      setFullscreenRequired(false);
+      return;
+    }
+
+    setFullscreenRequired(!document.fullscreenElement);
+
+    const handleFullscreenChange = () => {
+      const isFullscreen = Boolean(document.fullscreenElement);
+      setFullscreenRequired(!isFullscreen);
+
+      if (!isFullscreen && fullscreenStartedRef.current) {
+        reportViolation(
+          'fullscreen_exit',
+          'Fullscreen mode was exited during the active lab.',
+        );
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        reportViolation(
+          'tab_hidden',
+          'Leaving the active lab tab was detected and reported.',
+        );
+      }
+    };
+
+    const handleWindowBlur = () => {
+      if (document.visibilityState === 'visible') {
+        reportViolation(
+          'window_blur',
+          'Moving focus away from the active lab window was detected.',
+        );
+      }
+    };
+
+    const handleClipboardEvent = (event: ClipboardEvent) => {
+      event.preventDefault();
+      const eventType =
+        event.type === 'copy'
+          ? 'copy_blocked'
+          : event.type === 'cut'
+            ? 'cut_blocked'
+            : 'paste_blocked';
+      const verb =
+        event.type === 'copy'
+          ? 'Copy'
+          : event.type === 'cut'
+            ? 'Cut'
+            : 'Paste';
+
+      reportViolation(
+        eventType,
+        `${verb} is disabled during this active lab activity.`,
+      );
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const modifierPressed = event.ctrlKey || event.metaKey;
+      if (!modifierPressed) return;
+
+      const key = event.key.toLowerCase();
+      if (!['c', 'v', 'x'].includes(key)) return;
+
+      event.preventDefault();
+      const eventType =
+        key === 'c'
+          ? 'copy_blocked'
+          : key === 'x'
+            ? 'cut_blocked'
+            : 'paste_blocked';
+      const label = key === 'c' ? 'Copy' : key === 'x' ? 'Cut' : 'Paste';
+      reportViolation(
+        eventType,
+        `${label} shortcut is disabled during this active lab activity.`,
+      );
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('copy', handleClipboardEvent);
+    window.addEventListener('cut', handleClipboardEvent);
+    window.addEventListener('paste', handleClipboardEvent);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('copy', handleClipboardEvent);
+      window.removeEventListener('cut', handleClipboardEvent);
+      window.removeEventListener('paste', handleClipboardEvent);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [labTestId, proctoringActive, selectedProblemId]);
 
   const tryAutoSubmit = () => {
     if (autoSubmittedRef.current) return;
@@ -430,6 +593,40 @@ export function StudentLabTests() {
               </div>
             ) : (
               <>
+                {proctoringActive && fullscreenRequired ? (
+                  <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/78 px-6">
+                    <div className="w-full max-w-xl rounded-[28px] border border-slate-200 bg-white p-8 shadow-2xl">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-rose-600">
+                        Proctored Activity
+                      </p>
+                      <h2 className="mt-3 text-2xl font-semibold text-slate-900">
+                        Fullscreen is required to continue
+                      </h2>
+                      <p className="mt-3 text-sm leading-7 text-slate-600">
+                        This {selectedActivity.activityKind === 'lab_task' ? 'lab task' : 'lab test'} is
+                        being monitored. Exiting fullscreen, leaving the tab, changing window
+                        focus, or trying to copy and paste is recorded and reported to the
+                        teacher.
+                      </p>
+                      <div className="mt-6 flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          onClick={requestLabFullscreen}
+                          className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white"
+                        >
+                          Enter fullscreen
+                        </button>
+                        <Link
+                          to={`/student/lab-tests?courseId=${filterCourse}&kind=${filterKind}`}
+                          className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700"
+                        >
+                          Leave activity
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
                 <section className="rounded-[24px] border border-slate-200 bg-white px-5 py-4 shadow-sm">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
@@ -474,6 +671,21 @@ export function StudentLabTests() {
                     </div>
                   </div>
                 </section>
+
+                {proctoringWarnings.length ? (
+                  <section className="rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm">
+                    <p className="text-sm font-semibold text-amber-800">
+                      Proctoring warnings
+                    </p>
+                    <div className="mt-2 space-y-1">
+                      {proctoringWarnings.map((warning, index) => (
+                        <p key={`${warning}-${index}`} className="text-xs text-amber-700">
+                          {warning}
+                        </p>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
 
                 <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(640px,0.95fr)]">
                   <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
@@ -778,11 +990,11 @@ export function StudentLabTests() {
                     </div>
 
                     <div className="grid h-[calc(100vh-15rem)] grid-rows-[minmax(0,1fr)_auto_auto]">
-                      <div className="min-h-0 bg-[#171b26]">
+                      <div className="min-h-0 bg-white">
                         {!useFile ? (
                           <AceEditor
                             mode={LANG_MODES[language] ?? 'c_cpp'}
-                            theme="monokai"
+                            theme="github"
                             value={code}
                             onChange={setCode}
                             name="student-lab-editor"
@@ -790,6 +1002,7 @@ export function StudentLabTests() {
                             height="100%"
                             fontSize={14}
                             setOptions={{ useWorker: false, showPrintMargin: false }}
+                            editorProps={{ $blockScrolling: true }}
                           />
                         ) : (
                           <div className="flex h-full items-center justify-center p-6">

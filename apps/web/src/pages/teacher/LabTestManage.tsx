@@ -123,6 +123,7 @@ export function LabTestManage() {
   const filterCourse = searchParams.get('courseId') ?? '';
   const filterKind =
     searchParams.get('kind') === 'lab_task' ? 'lab_task' : 'lab_test';
+  const requestedActivityId = searchParams.get('activityId');
 
   const { data: courses = [] } = useQuery({
     queryKey: ['my-courses'],
@@ -155,6 +156,14 @@ export function LabTestManage() {
   }, [courses, filterCourse, filterKind, searchParams, setSearchParams]);
 
   useEffect(() => {
+    if (
+      requestedActivityId &&
+      (labTests as any[]).some((item: any) => item.id === requestedActivityId)
+    ) {
+      setSelectedTestId(requestedActivityId);
+      return;
+    }
+
     if (!selectedTestId && (labTests as any[]).length > 0) {
       setSelectedTestId((labTests as any[])[0].id);
       return;
@@ -166,7 +175,16 @@ export function LabTestManage() {
     ) {
       setSelectedTestId((labTests as any[])[0]?.id ?? null);
     }
-  }, [labTests, selectedTestId]);
+  }, [labTests, requestedActivityId, selectedTestId]);
+
+  useEffect(() => {
+    if (!selectedTestId) return;
+    const next = new URLSearchParams(searchParams);
+    next.set('activityId', selectedTestId);
+    if (filterCourse) next.set('courseId', filterCourse);
+    next.set('kind', filterKind);
+    setSearchParams(next, { replace: true });
+  }, [filterCourse, filterKind, searchParams, selectedTestId, setSearchParams]);
 
   useEffect(() => {
     setShowProblemComposer(false);
@@ -184,6 +202,16 @@ export function LabTestManage() {
     queryFn: () =>
       api.get(`/lab-tests/${selectedTestId}/submissions`).then((response) => response.data),
     enabled: Boolean(selectedTestId),
+  });
+
+  const { data: proctoringEvents = [] } = useQuery({
+    queryKey: ['lab-test-proctoring-events', selectedTestId],
+    queryFn: () =>
+      api
+        .get(`/lab-tests/${selectedTestId}/proctoring-events`)
+        .then((response) => response.data),
+    enabled: Boolean(selectedTestId),
+    refetchInterval: selectedTest?.status === 'running' ? 5000 : false,
   });
 
   const { data: problemBank = [] } = useQuery({
@@ -983,6 +1011,47 @@ export function LabTestManage() {
                       {!(problems as any[]).length ? (
                         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
                           No problems added yet.
+                        </div>
+                      ) : null}
+                    </div>
+                  </section>
+
+                  <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 className="font-semibold text-slate-900">
+                      Proctoring Alerts ({(proctoringEvents as any[]).length})
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Focus loss, fullscreen exits, and copy-paste attempts are listed here.
+                    </p>
+
+                    <div className="mt-5 space-y-3">
+                      {(proctoringEvents as any[]).slice(0, 12).map((event: any) => (
+                        <div
+                          key={event.id}
+                          className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-slate-900">
+                                {studentDisplayName(event.student)}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {new Date(event.createdAt).toLocaleString()}
+                              </p>
+                            </div>
+                            <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
+                              {humanize(event.eventType)}
+                            </span>
+                          </div>
+                          <p className="mt-3 text-sm text-amber-900">
+                            {event.message ?? humanize(event.eventType)}
+                          </p>
+                        </div>
+                      ))}
+
+                      {!(proctoringEvents as any[]).length ? (
+                        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                          No proctoring alerts recorded for this activity.
                         </div>
                       ) : null}
                     </div>
