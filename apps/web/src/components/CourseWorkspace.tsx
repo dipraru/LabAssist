@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import {
   BookOpen,
   ExternalLink,
+  FlaskConical,
   MessageSquare,
   Send,
   Users,
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { courseCode, courseTitle, studentDisplayName } from '../lib/display';
+import { TeacherAvatar } from '../pages/teacher/teacher.shared';
 
 type WorkspaceRole = 'student' | 'teacher';
 
@@ -28,12 +30,14 @@ function formatDateTime(value: string | Date | null | undefined): string {
   });
 }
 
+function courseTeachers(course: any): any[] {
+  return Array.isArray(course?.teachers) ? course.teachers : [];
+}
+
 function teacherNames(course: any): string[] {
-  return Array.isArray(course?.teachers)
-    ? course.teachers
-        .map((teacher: any) => teacher?.fullName || teacher?.teacherId)
-        .filter((value: unknown): value is string => Boolean(value))
-    : [];
+  return courseTeachers(course)
+    .map((teacher: any) => teacher?.fullName || teacher?.teacherId)
+    .filter((value: unknown): value is string => Boolean(value));
 }
 
 function postTypeLabel(type: string): string {
@@ -102,6 +106,18 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
     queryFn: () =>
       api.get(`/courses/${courseId}/enrollments`).then((response) => response.data),
     enabled: Boolean(courseId) && role === 'teacher',
+  });
+  const { data: labClasses = [] } = useQuery({
+    queryKey: [role, 'course-lab-classes', courseId],
+    queryFn: () =>
+      api.get(`/courses/${courseId}/lab-classes`).then((response) => response.data),
+    enabled: Boolean(courseId),
+  });
+  const { data: labActivities = [] } = useQuery({
+    queryKey: [role, 'course-lab-activities', courseId],
+    queryFn: () =>
+      api.get(`/lab-tests/course/${courseId}`).then((response) => response.data),
+    enabled: Boolean(courseId),
   });
 
   const createPostMutation = useMutation({
@@ -192,7 +208,13 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
   );
 
   const getSheetHref = (sheet: any) =>
-    `${basePath}/${sheet.courseId ?? courseId}?sheetId=${sheet.id}`;
+    `${basePath}/${sheet.courseId ?? courseId}/materials/${sheet.id}`;
+  const getLabClassHref = (labClass: any) =>
+    `${basePath}/${labClass.courseId ?? courseId}/lab-classes/${labClass.id}`;
+  const getActivityHref = (activity: any) =>
+    `/student/lab-tests/${activity.id}?courseId=${activity.courseId ?? courseId}&kind=${
+      activity.activityKind ?? 'lab_test'
+    }`;
 
   return (
     <div className="w-full max-w-[1520px] 2xl:max-w-[1680px]">
@@ -243,9 +265,23 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                 </div>
                 <p className="font-semibold text-slate-900">{courseCode(course)}</p>
                 <p className="text-sm text-slate-600 mt-1">{courseTitle(course)}</p>
-                <p className="text-xs text-slate-500 mt-3">
-                  {teacherNames(course).join(', ') || 'Teacher not assigned yet'}
-                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {courseTeachers(course).length ? (
+                    courseTeachers(course).slice(0, 3).map((teacher: any) => (
+                      <div
+                        key={teacher.id ?? teacher.teacherId ?? teacher.fullName}
+                        className="inline-flex items-center gap-2 rounded-full bg-slate-50 px-2.5 py-1.5"
+                      >
+                        <TeacherAvatar teacher={teacher} size="sm" />
+                        <span className="max-w-[9rem] truncate text-xs font-medium text-slate-600">
+                          {teacher.fullName || teacher.teacherId}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-500">Teacher not assigned yet</p>
+                  )}
+                </div>
               </Link>
             ))}
 
@@ -267,10 +303,30 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                   <h2 className="text-2xl font-semibold text-slate-900 mt-2">
                     {courseTitle(selectedCourse)}
                   </h2>
-                  <p className="text-sm text-slate-500 mt-2">
-                    {teacherNames(selectedCourse).join(', ') ||
-                      'Teacher not assigned yet'}
-                  </p>
+                  {courseTeachers(selectedCourse).length ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {courseTeachers(selectedCourse).map((teacher: any) => (
+                        <div
+                          key={teacher.id ?? teacher.teacherId ?? teacher.fullName}
+                          className="inline-flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-2"
+                        >
+                          <TeacherAvatar teacher={teacher} size="sm" />
+                          <div>
+                            <p className="text-sm font-medium text-slate-900">
+                              {teacher.fullName || teacher.teacherId}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {teacher.designation || teacher.teacherId || 'Teacher'}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500 mt-2">
+                      Teacher not assigned yet
+                    </p>
+                  )}
                 </div>
                 <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
                   {selectedCourse.semester?.name?.replace(/_/g, ' ') ||
@@ -360,8 +416,10 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                           : 'border-slate-100'
                       }`}
                     >
-                      <Link
-                        to={getSheetHref(sheet)}
+                      <a
+                        href={getSheetHref(sheet)}
+                        target="_blank"
+                        rel="noreferrer"
                         className="block rounded-2xl transition-colors hover:bg-slate-50"
                       >
                         <div className="flex items-start gap-3">
@@ -391,7 +449,7 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                             )}
                           </div>
                         </div>
-                      </Link>
+                      </a>
                       {!!sheet.links?.length && (
                         <div className="mt-4 flex flex-wrap gap-2">
                           {sheet.links.map((link: any, index: number) => (
@@ -540,14 +598,112 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                 </p>
               ) : (
                 <div className="mt-3 space-y-2">
-                  {teacherNames(selectedCourse).map((name) => (
+                  {courseTeachers(selectedCourse).map((teacher: any) => (
                     <div
-                      key={name}
-                      className="rounded-2xl bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-800"
+                      key={teacher.id ?? teacher.teacherId ?? teacher.fullName}
+                      className="flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-2.5"
                     >
-                      {name}
+                      <TeacherAvatar teacher={teacher} size="sm" />
+                      <div>
+                        <p className="text-sm font-medium text-slate-800">
+                          {teacher.fullName || teacher.teacherId}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {teacher.designation || teacher.teacherId || 'Teacher'}
+                        </p>
+                      </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </section>
+            <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+              <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                <FlaskConical size={16} className="text-slate-500" />
+                Lab Classes
+              </h3>
+              {!(labClasses as any[]).length ? (
+                <p className="text-sm text-slate-400 mt-3">
+                  No lab classes added yet.
+                </p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {(labClasses as any[])
+                    .slice()
+                    .sort(
+                      (left: any, right: any) =>
+                        Number(left?.labNumber ?? 0) - Number(right?.labNumber ?? 0),
+                    )
+                    .map((labClass: any) => (
+                      <Link
+                        key={labClass.id}
+                        to={getLabClassHref(labClass)}
+                        className="flex items-start justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-3 transition-colors hover:bg-slate-100"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-800">
+                            Lab {labClass.labNumber}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            {labClass.title}
+                          </p>
+                        </div>
+                        <ExternalLink
+                          size={14}
+                          className="mt-0.5 shrink-0 text-slate-400"
+                        />
+                      </Link>
+                    ))}
+                </div>
+              )}
+            </section>
+            <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+              <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                <BookOpen size={16} className="text-slate-500" />
+                Lab Activities
+              </h3>
+              {!(labActivities as any[]).length ? (
+                <p className="text-sm text-slate-400 mt-3">
+                  No lab tasks or tests posted yet.
+                </p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {(labActivities as any[])
+                    .slice()
+                    .sort(
+                      (left: any, right: any) =>
+                        new Date(right?.startTime ?? 0).getTime() -
+                        new Date(left?.startTime ?? 0).getTime(),
+                    )
+                    .map((activity: any) => (
+                      <a
+                        key={activity.id}
+                        href={getActivityHref(activity)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-start justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-3 transition-colors hover:bg-slate-100"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-slate-800">
+                              {activity.title}
+                            </p>
+                            <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200">
+                              {activity.activityKind === 'lab_task'
+                                ? 'Task'
+                                : 'Test'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-1">
+                            {formatDateTime(activity.endTime)}
+                          </p>
+                        </div>
+                        <ExternalLink
+                          size={14}
+                          className="mt-0.5 shrink-0 text-slate-400"
+                        />
+                      </a>
+                    ))}
                 </div>
               )}
             </section>
@@ -560,9 +716,11 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
               ) : (
                 <div className="mt-3 space-y-3">
                   {(sheets as any[]).slice(0, 6).map((sheet: any) => (
-                    <Link
+                    <a
                       key={sheet.id}
-                      to={getSheetHref(sheet)}
+                      href={getSheetHref(sheet)}
+                      target="_blank"
+                      rel="noreferrer"
                       className="flex items-start justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-3 transition-colors hover:bg-slate-100"
                     >
                       <div className="min-w-0">
@@ -577,7 +735,7 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                         size={14}
                         className="mt-0.5 shrink-0 text-slate-400"
                       />
-                    </Link>
+                    </a>
                   ))}
                 </div>
               )}

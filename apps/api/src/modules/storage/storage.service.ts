@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { existsSync, mkdirSync, unlinkSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync } from 'fs';
 import { join, extname } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -68,5 +68,11 @@ export class StorageService {
     } catch {
       // ignore
     }
+  }
+
+  readTextFileByUrl(url: string): string {
+    const relativePath = `${url ?? ''}`.replace(/^\/+/, '');
+    const absolutePath = join(process.cwd(), relativePath);
+    return readFileSync(absolutePath, 'utf8');
   }
 }

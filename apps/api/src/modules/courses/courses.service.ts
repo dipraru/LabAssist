@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
@@ -24,6 +25,10 @@ import { Teacher } from '../users/entities/teacher.entity';
 import { Batch } from '../office/entities/batch.entity';
 import { UserRole } from '../../common/enums/role.enum';
 import {
+  ManualVerdict,
+  SubmissionStatus,
+} from '../../common/enums';
+import {
   CreateCourseDto,
   UpdateCourseDto,
   EnrollStudentsDto,
@@ -40,6 +45,11 @@ import {
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { StorageService } from '../storage/storage.service';
+import { Assignment } from '../assignments/entities/assignment.entity';
+import { AssignmentSubmission } from '../assignments/entities/assignment-submission.entity';
+import { LabTest } from '../lab-tests/entities/lab-test.entity';
+import { LabSubmission } from '../lab-tests/entities/lab-submission.entity';
+import { CourseReportPdfService } from './course-report-pdf.service';
 
 function batchYearVariants(batchYear: string): string[] {
   const digits = batchYear.replace(/\D/g, '');
@@ -130,6 +140,8 @@ function studentIdFallsInsideSection(
 
 @Injectable()
 export class CoursesService {
+  private readonly logger = new Logger(CoursesService.name);
+
   constructor(
     @InjectRepository(Course) private courseRepo: Repository<Course>,
     @InjectRepository(Semester) private semesterRepo: Repository<Semester>,
@@ -150,8 +162,16 @@ export class CoursesService {
     @InjectRepository(Student) private studentRepo: Repository<Student>,
     @InjectRepository(Teacher) private teacherRepo: Repository<Teacher>,
     @InjectRepository(Batch) private batchRepo: Repository<Batch>,
+    @InjectRepository(Assignment)
+    private assignmentRepo: Repository<Assignment>,
+    @InjectRepository(AssignmentSubmission)
+    private assignmentSubmissionRepo: Repository<AssignmentSubmission>,
+    @InjectRepository(LabTest) private labTestRepo: Repository<LabTest>,
+    @InjectRepository(LabSubmission)
+    private labSubmissionRepo: Repository<LabSubmission>,
     private readonly notificationsService: NotificationsService,
     private readonly storageService: StorageService,
+    private readonly courseReportPdfService: CourseReportPdfService,
   ) {}
 
   private isCourseArchived(course: Pick<Course, 'semester'>): boolean {
@@ -200,6 +220,53 @@ export class CoursesService {
     }
 
     return { teacher, course };
+  }
+
+  private async getStudentWithCourseAccess(
+    courseId: string,
+    studentUserId: string,
+  ): Promise<{
+    student: Student;
+    course: Course & { batchSections: any[] };
+    sectionName: string;
+  }> {
+    const student = await this.studentRepo.findOne({
+      where: { userId: studentUserId },
+    });
+    if (!student) throw new NotFoundException('Student not found');
+
+    const course = await this.courseRepo.findOne({
+      where: { id: courseId, isActive: true },
+      relations: ['semester', 'teachers', 'schedules'],
+    });
+    if (!course) throw new NotFoundException('Course not found');
+
+    const enrollment = await this.enrollmentRepo.findOne({
+      where: { courseId, studentId: student.id, isActive: true },
+    });
+    if (!enrollment) {
+      throw new ForbiddenException('You are not enrolled in this course');
+    }
+
+    const batchSections = await this.getCourseBatchSections(course);
+    const sectionName =
+      batchSections.find((section) =>
+        studentIdFallsInsideSection(
+          student.studentId,
+          section.fromStudentId,
+          section.toStudentId,
+        ),
+      )?.name ?? 'All Students';
+
+    return {
+      student,
+      course: Object.assign(course, {
+        batchSections: batchSections.sort((left, right) =>
+          compareSectionNames(left.name, right.name),
+        ),
+      }),
+      sectionName,
+    };
   }
 
   private async getCourseBatchSections(course: Course) {
@@ -855,6 +922,56 @@ export class CoursesService {
     return labClass;
   }
 
+  async getLabClassesForStudent(
+    courseId: string,
+    studentUserId: string,
+  ): Promise<LabClass[]> {
+    await this.getStudentWithCourseAccess(courseId, studentUserId);
+
+    const labClasses = await this.labClassRepo.find({
+      where: { courseId },
+      relations: ['sections'],
+      order: { labNumber: 'DESC', createdAt: 'DESC' },
+    });
+
+    return labClasses.map((labClass) => ({
+      ...labClass,
+      sections: [...(labClass.sections ?? [])].sort((left, right) =>
+        compareSectionNames(left.sectionName, right.sectionName),
+      ),
+    }));
+  }
+
+  async getLabClassByIdForStudent(
+    courseId: string,
+    labClassId: string,
+    studentUserId: string,
+  ): Promise<LabClass & { course: Course; viewerSectionName: string }> {
+    const { course, sectionName } = await this.getStudentWithCourseAccess(
+      courseId,
+      studentUserId,
+    );
+
+    const labClass = await this.labClassRepo.findOne({
+      where: { id: labClassId },
+      relations: ['sections', 'course', 'course.teachers', 'course.semester', 'course.schedules'],
+    });
+    if (!labClass || labClass.courseId !== courseId) {
+      throw new NotFoundException('Lab class not found');
+    }
+
+    labClass.course = Object.assign(labClass.course, {
+      batchSections: course.batchSections,
+    });
+    labClass.sections = [...(labClass.sections ?? [])].sort((left, right) =>
+      compareSectionNames(left.sectionName, right.sectionName),
+    );
+
+    return Object.assign(labClass, {
+      viewerSectionName: sectionName,
+    });
+  }
+
   async updateLabClassSectionSchedule(
     courseId: string,
     labClassId: string,
@@ -1051,7 +1168,7 @@ export class CoursesService {
       title: `New Lecture Sheet: ${dto.title}`,
       body: `A new lecture sheet has been posted in your course.`,
       referenceId: saved.id,
-      targetPath: `/student/courses/${courseId}?sheetId=${saved.id}`,
+      targetPath: `/student/courses/${courseId}/materials/${saved.id}`,
     });
 
     return saved;
@@ -1122,7 +1239,10 @@ export class CoursesService {
     dto: CreateCoursePostCommentDto,
     user: { id: string; role: UserRole },
   ): Promise<CoursePostComment> {
-    const post = await this.coursePostRepo.findOne({ where: { id: postId } });
+    const post = await this.coursePostRepo.findOne({
+      where: { id: postId },
+      relations: ['course'],
+    });
     if (!post) throw new NotFoundException('Course post not found');
 
     const actor = await this.resolveCourseActor(post.courseId, user);
@@ -1138,16 +1258,24 @@ export class CoursesService {
     const saved = await this.coursePostCommentRepo.save(comment);
 
     if (post.postedByUserId !== actor.userId) {
-      await this.notificationsService.createBulk([post.postedByUserId], {
-        type: NotificationType.SYSTEM,
-        title: `New comment in ${post.course.courseCode ?? 'course'}`,
-        body: `${actor.displayName} commented on your course post.`,
-        referenceId: post.id,
-        targetPath:
-          post.postedByRole === UserRole.TEACHER
-            ? `/teacher/courses/${post.courseId}`
-            : `/student/courses/${post.courseId}`,
-      });
+      try {
+        await this.notificationsService.createBulk([post.postedByUserId], {
+          type: NotificationType.SYSTEM,
+          title: `New comment in ${post.course?.courseCode ?? 'course'}`,
+          body: `${actor.displayName} commented on your course post.`,
+          referenceId: post.id,
+          targetPath:
+            post.postedByRole === UserRole.TEACHER
+              ? `/teacher/courses/${post.courseId}`
+              : `/student/courses/${post.courseId}`,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown notification error';
+        this.logger.warn(
+          `Failed to notify course post author ${post.postedByUserId}: ${message}`,
+        );
+      }
     }
 
     return saved;
@@ -1240,8 +1368,249 @@ export class CoursesService {
       where: { courseId, isActive: true },
       relations: ['student', 'student.user'],
     });
-    const userIds = enrollments.map((e) => e.student.userId);
-    await this.notificationsService.createBulk(userIds, payload);
+    const userIds = Array.from(
+      new Set(
+        enrollments
+          .map((enrollment) => enrollment.student?.userId)
+          .filter((userId): userId is string => Boolean(userId)),
+      ),
+    );
+
+    if (!userIds.length) return;
+
+    try {
+      await this.notificationsService.createBulk(userIds, payload);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown notification error';
+      this.logger.warn(
+        `Failed to notify enrolled students for course ${courseId}: ${message}`,
+      );
+    }
+  }
+
+  async generateCourseProgressPdf(
+    courseId: string,
+    teacherUserId: string,
+  ): Promise<{ pdf: string; fileName: string }> {
+    const { course } = await this.getTeacherWithCourseAccess(courseId, teacherUserId);
+    const batchSections = (await this.getCourseBatchSections(course)).sort((left, right) =>
+      compareSectionNames(left.name, right.name),
+    );
+    const courseWithSections = Object.assign(course, { batchSections });
+    const students = (course.enrollments ?? [])
+      .filter((enrollment) => enrollment.isActive !== false)
+      .map((enrollment) => enrollment.student)
+      .filter((student): student is Student => Boolean(student))
+      .sort((left, right) =>
+        left.studentId.localeCompare(right.studentId, undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        }),
+      );
+
+    const now = new Date();
+    const today = startOfToday();
+
+    const labClasses = await this.labClassRepo.find({
+      where: { courseId },
+      relations: ['sections'],
+      order: { labNumber: 'ASC', createdAt: 'ASC' },
+    });
+    const assignments = await this.assignmentRepo.find({
+      where: { courseId },
+      order: { createdAt: 'ASC' },
+    });
+    const assignmentIds = assignments.map((assignment) => assignment.id);
+    const assignmentSubmissions = assignmentIds.length
+      ? await this.assignmentSubmissionRepo.find({
+          where: { assignmentId: In(assignmentIds) },
+          relations: ['student'],
+          order: { updatedAt: 'DESC' },
+        })
+      : [];
+    const labTests = await this.labTestRepo.find({
+      where: { courseId },
+      relations: ['problems'],
+      order: { startTime: 'ASC', createdAt: 'ASC' } as any,
+    });
+    const problemIds = labTests.flatMap((labTest) =>
+      (labTest.problems ?? []).map((problem: any) => problem.id),
+    );
+    const labSubmissions = problemIds.length
+      ? await this.labSubmissionRepo.find({
+          where: { problemId: In(problemIds) },
+          relations: ['problem', 'problem.labTest', 'student'],
+          order: { updatedAt: 'DESC' },
+        })
+      : [];
+
+    const attendanceColumns = labClasses
+      .filter((labClass) => {
+        const labDate = labClass.classDate ? new Date(labClass.classDate) : null;
+        return !labDate || labDate <= today;
+      })
+      .map((labClass) => {
+        const values: Record<string, string> = {};
+
+        for (const student of students) {
+          const sectionName =
+            batchSections.find((section) =>
+              studentIdFallsInsideSection(
+                student.studentId,
+                section.fromStudentId,
+                section.toStudentId,
+              ),
+            )?.name ?? 'All Students';
+          const matchingSection =
+            (labClass.sections ?? []).find(
+              (section) => normalizeSectionName(section.sectionName) === sectionName,
+            ) ??
+            (labClass.sections ?? []).find(
+              (section) => normalizeSectionName(section.sectionName) === 'All Students',
+            );
+          const attendanceRecord = matchingSection?.attendanceRecords?.find(
+            (record) => record.studentId === student.id,
+          );
+          values[student.studentId] = attendanceRecord
+            ? attendanceRecord.isPresent
+              ? 'P'
+              : 'A'
+            : '—';
+        }
+
+        return {
+          label: `L${labClass.labNumber}`,
+          values,
+        };
+      });
+
+    const assignmentSubmissionMap = new Map<string, AssignmentSubmission>();
+    for (const submission of assignmentSubmissions) {
+      const key = `${submission.assignmentId}:${submission.studentId}`;
+      if (!assignmentSubmissionMap.has(key)) {
+        assignmentSubmissionMap.set(key, submission);
+      }
+    }
+    const assignmentColumns = assignments
+      .filter((assignment) => assignment.createdAt <= now)
+      .map((assignment, index) => {
+        const values: Record<string, number | null> = {};
+        for (const student of students) {
+          const submission = assignmentSubmissionMap.get(`${assignment.id}:${student.id}`);
+          values[student.studentId] = submission?.score ?? null;
+        }
+        return {
+          label: `A${index + 1}`,
+          maxMarks: Number(assignment.totalMarks ?? 0),
+          values,
+        };
+      });
+
+    const bestLabScores = new Map<string, number>();
+    for (const submission of labSubmissions) {
+      const key = `${submission.problem?.labTestId}:${submission.problemId}:${submission.studentId}`;
+      const marksFromVerdict =
+        submission.score != null
+          ? Number(submission.score)
+          : this.deriveLabSubmissionScore(submission);
+      const current = bestLabScores.get(key);
+      if (current == null || marksFromVerdict > current) {
+        bestLabScores.set(key, marksFromVerdict);
+      }
+    }
+    const labTaskColumns = labTests
+      .filter((labTest) => labTest.createdAt <= now)
+      .map((labTest, index) => {
+        const values: Record<string, number | null> = {};
+        for (const student of students) {
+          const total = (labTest.problems ?? []).reduce((sum: number, problem: any) => {
+            return (
+              sum + (bestLabScores.get(`${labTest.id}:${problem.id}:${student.id}`) ?? 0)
+            );
+          }, 0);
+          values[student.studentId] = total > 0 ? Number(total.toFixed(2)) : null;
+        }
+        const maxMarks =
+          Number(labTest.totalMarks ?? 0) ||
+          (labTest.problems ?? []).reduce(
+            (sum: number, problem: any) => sum + Number(problem.marks ?? 0),
+            0,
+          );
+        return {
+          label: `LT${index + 1}`,
+          maxMarks,
+          values,
+        };
+      });
+
+    const rows = students.map((student) => {
+      const sectionName =
+        batchSections.find((section) =>
+          studentIdFallsInsideSection(
+            student.studentId,
+            section.fromStudentId,
+            section.toStudentId,
+          ),
+        )?.name ?? 'All Students';
+      const attendanceMarks = attendanceColumns.map(
+        (column) => column.values[student.studentId] ?? '—',
+      );
+      const attendancePresent = attendanceMarks.filter((value) => value === 'P').length;
+      const attendanceTotal = attendanceMarks.filter((value) => value !== '—').length;
+      const assignmentTotal = assignmentColumns.reduce(
+        (sum, column) => sum + Number(column.values[student.studentId] ?? 0),
+        0,
+      );
+      const labTaskTotal = labTaskColumns.reduce(
+        (sum, column) => sum + Number(column.values[student.studentId] ?? 0),
+        0,
+      );
+
+      return {
+        studentId: student.studentId,
+        name:
+          student.fullName ||
+          student.user?.username ||
+          student.studentId,
+        sectionName,
+        attendancePresent,
+        attendanceTotal,
+        assignmentTotal: Number(assignmentTotal.toFixed(2)),
+        labTaskTotal: Number(labTaskTotal.toFixed(2)),
+      };
+    });
+
+    const pdf = await this.courseReportPdfService.generateCourseProgressPdf({
+      courseCode: course.courseCode,
+      courseTitle: course.title,
+      semesterLabel: course.semester?.name?.replace(/_/g, ' ') ?? 'Semester',
+      generatedAt: new Date().toLocaleString(),
+      rows,
+      attendanceColumns,
+      assignmentColumns,
+      labTaskColumns,
+    });
+
+    return {
+      pdf,
+      fileName: `${course.courseCode}_progress_report.pdf`,
+    };
+  }
+
+  private deriveLabSubmissionScore(submission: LabSubmission): number {
+    if (submission.score != null) {
+      return Number(submission.score);
+    }
+
+    const accepted =
+      submission.manualVerdict === ManualVerdict.ACCEPTED ||
+      submission.submissionStatus === SubmissionStatus.ACCEPTED;
+    if (!accepted) {
+      return 0;
+    }
+
+    return Number(submission.problem?.marks ?? 0);
   }
 
   async getAllCourses(): Promise<Course[]> {
@@ -1335,13 +1704,21 @@ export class CoursesService {
         .map((enrollment) => enrollment.student?.userId)
         .filter((userId): userId is string => Boolean(userId));
 
-      await this.notificationsService.createBulk(recipientUserIds, {
-        type: NotificationType.SYSTEM,
-        title: `${actor.course.courseCode}: ${post.title || 'New class post'}`,
-        body: `${actor.displayName} posted an update in ${actor.course.title}.`,
-        referenceId: post.id,
-        targetPath: `/student/courses/${post.courseId}`,
-      });
+      try {
+        await this.notificationsService.createBulk(recipientUserIds, {
+          type: NotificationType.SYSTEM,
+          title: `${actor.course.courseCode}: ${post.title || 'New class post'}`,
+          body: `${actor.displayName} posted an update in ${actor.course.title}.`,
+          referenceId: post.id,
+          targetPath: `/student/courses/${post.courseId}`,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown notification error';
+        this.logger.warn(
+          `Failed to notify enrolled students about course post ${post.id}: ${message}`,
+        );
+      }
       return;
     }
 
@@ -1350,13 +1727,21 @@ export class CoursesService {
         .map((teacher) => teacher.userId)
         .filter((userId): userId is string => Boolean(userId));
 
-      await this.notificationsService.createBulk(teacherUserIds, {
-        type: NotificationType.SYSTEM,
-        title: `${actor.course.courseCode}: new student question`,
-        body: `${actor.displayName} posted in ${actor.course.title}.`,
-        referenceId: post.id,
-        targetPath: `/teacher/courses/${post.courseId}`,
-      });
+      try {
+        await this.notificationsService.createBulk(teacherUserIds, {
+          type: NotificationType.SYSTEM,
+          title: `${actor.course.courseCode}: new student question`,
+          body: `${actor.displayName} posted in ${actor.course.title}.`,
+          referenceId: post.id,
+          targetPath: `/teacher/courses/${post.courseId}`,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown notification error';
+        this.logger.warn(
+          `Failed to notify teachers about course post ${post.id}: ${message}`,
+        );
+      }
     }
   }
 }

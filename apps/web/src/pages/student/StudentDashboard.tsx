@@ -158,7 +158,7 @@ export function StudentDashboard() {
             title: lab.title ?? 'Untitled Lab Test',
             kind: 'lab-test',
             dueAt,
-            href: '/student/lab-tests',
+            href: `/student/lab-tests/${lab.id}`,
             courseCode: courseCode(course),
           });
         }
@@ -176,16 +176,18 @@ export function StudentDashboard() {
 
   return (
     <AppShell>
-      <div className="max-w-4xl">
+      <div className="mx-auto max-w-[1520px]">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-slate-900">
-            Hello, {profile?.fullName ?? user?.username} 👋
+          <h1 className="text-3xl font-semibold text-slate-900">
+            Hello, {profile?.fullName ?? user?.username}
           </h1>
-          <p className="text-slate-500 text-sm mt-0.5">Here's your overview</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Here&apos;s your student workspace overview.
+          </p>
         </div>
 
         {coursesLoading || notificationsLoading ? (
-          <div className="grid grid-cols-3 gap-4 mb-8">
+          <div className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {[1, 2, 3].map((k) => (
               <div key={k} className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 animate-pulse">
                 <div className="w-10 h-10 bg-slate-100 rounded-xl mb-3" />
@@ -195,7 +197,7 @@ export function StudentDashboard() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-4 mb-8">
+          <div className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Link to="/student/courses">
               <StatCard icon={<BookOpen className="text-indigo-500" size={22} />} label="Enrolled Courses" value={(courses as any[]).length} />
             </Link>
@@ -224,18 +226,41 @@ export function StudentDashboard() {
           ) : (
             <div className="space-y-2">
               {(upcomingDeadlines as any[]).map((item: any) => (
-                <Link key={`${item.kind}-${item.id}`} to={item.href}
-                  className="block bg-white rounded-xl border border-slate-100 shadow-sm p-4 hover:border-indigo-300 transition-colors">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-slate-800 text-sm">{item.title}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        {item.kind === 'assignment' ? 'Assignment' : 'Lab Test'} · {item.courseCode}
-                      </p>
+                item.kind === 'lab-test' ? (
+                  <a
+                    key={`${item.kind}-${item.id}`}
+                    href={item.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block bg-white rounded-xl border border-slate-100 shadow-sm p-4 hover:border-indigo-300 transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-slate-800 text-sm">{item.title}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {item.kind === 'assignment' ? 'Assignment' : 'Lab Test'} · {item.courseCode}
+                        </p>
+                      </div>
+                      <p className="text-xs text-slate-600 whitespace-nowrap">{formatShortDateTime(item.dueAt)}</p>
                     </div>
-                    <p className="text-xs text-slate-600 whitespace-nowrap">{formatShortDateTime(item.dueAt)}</p>
-                  </div>
-                </Link>
+                  </a>
+                ) : (
+                  <Link
+                    key={`${item.kind}-${item.id}`}
+                    to={item.href}
+                    className="block bg-white rounded-xl border border-slate-100 shadow-sm p-4 hover:border-indigo-300 transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-slate-800 text-sm">{item.title}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {item.kind === 'assignment' ? 'Assignment' : 'Lab Test'} · {item.courseCode}
+                        </p>
+                      </div>
+                      <p className="text-xs text-slate-600 whitespace-nowrap">{formatShortDateTime(item.dueAt)}</p>
+                    </div>
+                  </Link>
+                )
               ))}
             </div>
           )}
@@ -278,7 +303,7 @@ export function StudentDashboard() {
         ) : (courses as any[]).length === 0 ? (
           <p className="text-slate-400 text-sm">Not enrolled in any courses yet.</p>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {(courses as any[]).map((c: any) => (
               <Link
                 key={c.id}

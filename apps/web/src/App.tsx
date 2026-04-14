@@ -86,6 +86,10 @@ export default function App() {
       <Route element={<ProtectedRoute allowedRoles={['teacher']} />}>
         <Route path="/teacher" element={<TeacherDashboard />} />
         <Route path="/teacher/courses" element={<TeacherCourses />} />
+        <Route
+          path="/teacher/courses/:courseId/materials/:sheetId"
+          element={<TeacherCourses />}
+        />
         <Route path="/teacher/courses/:courseId/lab-classes/:labClassId" element={<TeacherCourses />} />
         <Route path="/teacher/courses/:courseId" element={<TeacherCourses />} />
         <Route path="/teacher/assignments" element={<AssignmentManage />} />
@@ -100,9 +104,18 @@ export default function App() {
       <Route element={<ProtectedRoute allowedRoles={['student']} />}>
         <Route path="/student" element={<StudentDashboard />} />
         <Route path="/student/courses" element={<StudentCourses />} />
+        <Route
+          path="/student/courses/:courseId/materials/:sheetId"
+          element={<StudentCourses />}
+        />
+        <Route
+          path="/student/courses/:courseId/lab-classes/:labClassId"
+          element={<StudentCourses />}
+        />
         <Route path="/student/courses/:courseId" element={<StudentCourses />} />
         <Route path="/student/assignments" element={<StudentAssignments />} />
         <Route path="/student/lab-tests" element={<StudentLabTests />} />
+        <Route path="/student/lab-tests/:labTestId" element={<StudentLabTests />} />
         <Route path="/student/profile" element={<StudentProfile />} />
         <Route path="/student/notifications" element={<StudentNotifications />} />
         <Route path="/student/change-password" element={<ChangePasswordPage />} />

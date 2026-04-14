@@ -15,6 +15,12 @@ import { Student } from '../users/entities/student.entity';
 import { Teacher } from '../users/entities/teacher.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { Batch } from '../office/entities/batch.entity';
+import { Assignment } from '../assignments/entities/assignment.entity';
+import { AssignmentSubmission } from '../assignments/entities/assignment-submission.entity';
+import { LabTest } from '../lab-tests/entities/lab-test.entity';
+import { LabTestProblem } from '../lab-tests/entities/lab-test-problem.entity';
+import { LabSubmission } from '../lab-tests/entities/lab-submission.entity';
+import { CourseReportPdfService } from './course-report-pdf.service';
 
 @Module({
   imports: [
@@ -31,11 +37,16 @@ import { Batch } from '../office/entities/batch.entity';
       Student,
       Teacher,
       Batch,
+      Assignment,
+      AssignmentSubmission,
+      LabTest,
+      LabTestProblem,
+      LabSubmission,
     ]),
     NotificationsModule,
   ],
   controllers: [CoursesController],
-  providers: [CoursesService],
+  providers: [CoursesService, CourseReportPdfService],
   exports: [CoursesService, TypeOrmModule],
 })
 export class CoursesModule {}

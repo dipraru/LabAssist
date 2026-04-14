@@ -73,24 +73,28 @@ export class CoursesController {
   }
 
   @UseGuards(RolesGuard)
-  @Roles(UserRole.TEACHER)
+  @Roles(UserRole.TEACHER, UserRole.STUDENT)
   @Get(':courseId/lab-classes')
   getLabClasses(
     @Param('courseId') courseId: string,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: UserRole },
   ) {
-    return this.coursesService.getLabClasses(courseId, user.id);
+    return user.role === UserRole.TEACHER
+      ? this.coursesService.getLabClasses(courseId, user.id)
+      : this.coursesService.getLabClassesForStudent(courseId, user.id);
   }
 
   @UseGuards(RolesGuard)
-  @Roles(UserRole.TEACHER)
+  @Roles(UserRole.TEACHER, UserRole.STUDENT)
   @Get(':courseId/lab-classes/:labClassId')
   getLabClass(
     @Param('courseId') courseId: string,
     @Param('labClassId') labClassId: string,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: UserRole },
   ) {
-    return this.coursesService.getLabClassById(courseId, labClassId, user.id);
+    return user.role === UserRole.TEACHER
+      ? this.coursesService.getLabClassById(courseId, labClassId, user.id)
+      : this.coursesService.getLabClassByIdForStudent(courseId, labClassId, user.id);
   }
 
   @UseGuards(RolesGuard)
@@ -316,6 +320,16 @@ export class CoursesController {
     @CurrentUser() user: { id: string },
   ) {
     return this.coursesService.deleteLectureSheet(id, user.id);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.TEACHER)
+  @Get(':courseId/reports/progress-pdf')
+  getCourseProgressPdf(
+    @Param('courseId') courseId: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.coursesService.generateCourseProgressPdf(courseId, user.id);
   }
 
   @UseGuards(RolesGuard)

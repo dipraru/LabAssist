@@ -4,19 +4,23 @@ import { FolderArchive, Layers3 } from 'lucide-react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { AppShell } from '../../components/AppShell';
 import { api } from '../../lib/api';
+import { CourseMaterialDetail } from '../../components/CourseMaterialDetail';
 import { TeacherCourseDetail } from './TeacherCourseDetail';
 import { TeacherLabClassWorkspace } from './TeacherLabClassWorkspace';
 import { TeacherCourseCard, splitTeacherCourses } from './teacher.shared';
 
 export function TeacherCourses() {
-  const { courseId, labClassId } = useParams<{
+  const { courseId, labClassId, sheetId } = useParams<{
     courseId: string;
     labClassId: string;
+    sheetId: string;
   }>();
 
   return (
     <AppShell>
-      {labClassId ? (
+      {sheetId ? (
+        <CourseMaterialDetail role="teacher" />
+      ) : labClassId ? (
         <TeacherLabClassWorkspace />
       ) : courseId ? (
         <TeacherCourseDetail />

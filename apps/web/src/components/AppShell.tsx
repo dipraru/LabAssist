@@ -43,6 +43,8 @@ const roleNavItems: Record<string, { label: string; href: string; icon: ReactNod
   ],
   teacher: [
     { label: 'Dashboard', href: '/teacher', icon: <LayoutDashboard size={18} /> },
+    { label: 'Courses', href: '/teacher/courses', icon: <BookOpen size={18} /> },
+    { label: 'Lab Tests', href: '/teacher/lab-tests', icon: <FlaskConical size={18} /> },
   ],
   student: [
     { label: 'Dashboard', href: '/student', icon: <LayoutDashboard size={18} /> },
@@ -127,10 +129,23 @@ function getTeacherHeaderLabel(pathname: string): string {
   }
   if (pathname.startsWith('/teacher/courses/')) return 'Course Workspace';
   if (pathname.startsWith('/teacher/courses')) return 'Courses';
+  if (pathname.startsWith('/teacher/lab-tests')) return 'Lab Tests';
   if (pathname.startsWith('/teacher/notifications')) return 'Notifications';
   if (pathname.startsWith('/teacher/profile')) return 'Profile';
   if (pathname.startsWith('/teacher/change-password')) return 'Account';
   return 'Teacher Workspace';
+}
+
+function getStudentHeaderLabel(pathname: string): string {
+  if (pathname === '/student') return 'Dashboard';
+  if (pathname.startsWith('/student/courses/')) return 'Course Workspace';
+  if (pathname.startsWith('/student/courses')) return 'Courses';
+  if (pathname.startsWith('/student/assignments')) return 'Assignments';
+  if (pathname.startsWith('/student/lab-tests')) return 'Lab Tests';
+  if (pathname.startsWith('/student/notifications')) return 'Notifications';
+  if (pathname.startsWith('/student/profile')) return 'Profile';
+  if (pathname.startsWith('/student/change-password')) return 'Account';
+  return 'Student Workspace';
 }
 
 function NotificationMenu({
@@ -268,12 +283,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   const profilePhoto =
     (user?.profile as { profilePhoto?: string } | undefined)?.profilePhoto ?? null;
   const isTeacherLayout = user?.role === 'teacher';
+  const isStudentLayout = user?.role === 'student';
   const navItems = user ? roleNavItems[user.role] ?? [] : [];
   const sidebarStorageKey = user ? `labassist:${user.role}:sidebar-open` : null;
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     const role = useAuthStore.getState().user?.role;
-    if (!role || role === 'teacher') return false;
+    if (!role || role === 'teacher' || role === 'student') return false;
     return localStorage.getItem(`labassist:${role}:sidebar-open`) === '1';
   });
 
@@ -314,15 +330,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    if (!sidebarStorageKey || isTeacherLayout) return;
+    if (!sidebarStorageKey || isTeacherLayout || isStudentLayout) return;
     const storedValue = localStorage.getItem(sidebarStorageKey);
     setSidebarOpen(storedValue === '1');
-  }, [isTeacherLayout, sidebarStorageKey]);
+  }, [isStudentLayout, isTeacherLayout, sidebarStorageKey]);
 
   useEffect(() => {
-    if (!sidebarStorageKey || isTeacherLayout) return;
+    if (!sidebarStorageKey || isTeacherLayout || isStudentLayout) return;
     localStorage.setItem(sidebarStorageKey, sidebarOpen ? '1' : '0');
-  }, [isTeacherLayout, sidebarOpen, sidebarStorageKey]);
+  }, [isStudentLayout, isTeacherLayout, sidebarOpen, sidebarStorageKey]);
 
   useEffect(() => {
     setUserMenuOpen(false);
@@ -409,19 +425,48 @@ export function AppShell({ children }: { children: ReactNode }) {
     </div>
   );
 
-  if (isTeacherLayout) {
+  if (isTeacherLayout || isStudentLayout) {
+    const shellTitle = isTeacherLayout
+      ? getTeacherHeaderLabel(location.pathname)
+      : getStudentHeaderLabel(location.pathname);
+    const shellSubtitle = isTeacherLayout ? 'Teacher account' : 'Student account';
+    const homeHref = isTeacherLayout ? '/teacher' : '/student';
+    const appSubtitle = isTeacherLayout ? 'Teacher workspace' : 'Student workspace';
+    const userMenuLinks = isTeacherLayout
+      ? [
+          { label: 'Dashboard', href: '/teacher' },
+          { label: 'Courses', href: '/teacher/courses' },
+          { label: 'Lab Tests', href: '/teacher/lab-tests' },
+          { label: 'Notifications', href: '/teacher/notifications' },
+          profileHref
+            ? { label: 'My Profile', href: profileHref }
+            : null,
+          { label: 'Change Password', href: changePasswordHref },
+        ].filter(Boolean) as { label: string; href: string }[]
+      : [
+          { label: 'Dashboard', href: '/student' },
+          { label: 'Courses', href: '/student/courses' },
+          { label: 'Assignments', href: '/student/assignments' },
+          { label: 'Lab Tests', href: '/student/lab-tests' },
+          { label: 'Notifications', href: '/student/notifications' },
+          profileHref
+            ? { label: 'My Profile', href: profileHref }
+            : null,
+          { label: 'Change Password', href: changePasswordHref },
+        ].filter(Boolean) as { label: string; href: string }[];
+
     return (
       <div className="min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#edf4ff_42%,#f8fafc_100%)] text-slate-900">
         <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl">
           <div className="mx-auto grid max-w-[1520px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 px-5 py-4 sm:px-8">
             <div className="flex min-w-0 items-center gap-4 justify-self-start">
-              <Link to="/teacher" className="flex items-center gap-3">
+              <Link to={homeHref} className="flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-lg shadow-slate-900/10">
                   <FlaskConical size={20} />
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-900">LabAssist</p>
-                  <p className="truncate text-xs text-slate-500">Teacher workspace</p>
+                  <p className="truncate text-xs text-slate-500">{appSubtitle}</p>
                 </div>
               </Link>
             </div>
@@ -429,7 +474,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="hidden justify-self-center sm:block">
               <div className="rounded-full border border-slate-200 bg-[linear-gradient(180deg,#f8fbff_0%,#eef5ff_100%)] px-6 py-2 shadow-sm">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-sky-700">
-                  {getTeacherHeaderLabel(location.pathname)}
+                  {shellTitle}
                 </p>
               </div>
             </div>
@@ -458,7 +503,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     <p className="max-w-44 truncate text-sm font-semibold text-slate-900">
                       {displayName}
                     </p>
-                    <p className="text-xs text-slate-500">Teacher account</p>
+                    <p className="text-xs text-slate-500">{shellSubtitle}</p>
                   </div>
                   <ChevronDown
                     size={16}
@@ -470,20 +515,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 
                 {userMenuOpen && (
                   <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-56 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl shadow-slate-900/10">
-                    {profileHref && (
+                    {userMenuLinks.map((item) => (
                       <Link
-                        to={profileHref}
+                        key={item.href}
+                        to={item.href}
                         className="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
                       >
-                        My Profile
+                        {item.label}
                       </Link>
-                    )}
-                    <Link
-                      to={changePasswordHref}
-                      className="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
-                    >
-                      Change Password
-                    </Link>
+                    ))}
                     <div className="my-2 border-t border-slate-100" />
                     <button
                       type="button"

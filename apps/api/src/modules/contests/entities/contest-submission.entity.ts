@@ -88,6 +88,37 @@ export class ContestSubmission {
   @Column({ type: 'int', nullable: true })
   memoryUsedKb: number | null;
 
+  @Column({ type: 'int', default: 0 })
+  judgeAttemptCount: number;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  judgeClaimedAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  judgedAt: Date | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  judgeServerName: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  judgeError: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  judgeMessage: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  compileOutput: string | null;
+
+  @Column({ type: 'jsonb', default: '[]' })
+  testcaseResults: {
+    index: number;
+    isSample: boolean;
+    verdict: string;
+    timeMs: number | null;
+    memoryKb: number | null;
+    message?: string | null;
+  }[];
+
   // For future judge webhook: POST /judge/submit + callback POST /api/submissions/{id}/result
   @Column({ type: 'varchar', nullable: true })
   judgeToken: string | null;

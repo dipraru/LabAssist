@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -20,11 +21,13 @@ import { LabTestsService } from './lab-tests.service';
 import {
   CreateProblemDto,
   CreateLabTestDto,
+  ImportProblemDto,
   JudgeResultCallbackDto,
   ManualGradeDto,
+  RunLabCodeDto,
   SubmitLabCodeDto,
 } from './dto/lab-tests.dto';
-import { LabTestStatus } from './entities/lab-test.entity';
+import { LabActivityKind, LabTestStatus } from './entities/lab-test.entity';
 import { SubmissionStatus } from '../../common/enums';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -37,7 +40,7 @@ export class LabTestsController {
   @Roles(UserRole.TEACHER)
   @Post()
   create(@Body() dto: CreateLabTestDto, @CurrentUser() user: any) {
-    return this.svc.createLabTest(dto, user.userId);
+    return this.svc.createLabTest(dto, user.id);
   }
 
   @Roles(UserRole.TEACHER)
@@ -47,13 +50,35 @@ export class LabTestsController {
     @Body('status') status: LabTestStatus,
     @CurrentUser() user: any,
   ) {
-    return this.svc.updateLabTestStatus(id, status, user.userId);
+    return this.svc.updateLabTestStatus(id, status, user.id);
   }
 
   @Roles(UserRole.TEACHER)
+  @Patch(':id/start')
+  start(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.svc.startLabTest(id, user.id);
+  }
+
+  @Roles(UserRole.TEACHER)
+  @Patch(':id/end')
+  end(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.svc.endLabTest(id, user.id);
+  }
+
+  @Roles(UserRole.TEACHER, UserRole.STUDENT)
   @Get('course/:courseId')
-  getByCourse(@Param('courseId') courseId: string) {
-    return this.svc.getLabTestsByCourse(courseId);
+  getByCourse(
+    @Param('courseId') courseId: string,
+    @CurrentUser() user: any,
+    @Query('kind') kind?: LabActivityKind,
+  ) {
+    return this.svc.getLabTestsByCourse(courseId, user.id, user.role, kind);
+  }
+
+  @Roles(UserRole.TEACHER)
+  @Get('problem-bank')
+  problemBank(@CurrentUser() user: any) {
+    return this.svc.listReusableProblems(user.id);
   }
 
   @Roles(UserRole.TEACHER)
@@ -63,13 +88,23 @@ export class LabTestsController {
     @Body() dto: CreateProblemDto,
     @CurrentUser() user: any,
   ) {
-    return this.svc.addProblem(id, dto, user.userId);
+    return this.svc.addProblem(id, dto, user.id);
+  }
+
+  @Roles(UserRole.TEACHER)
+  @Post(':id/problems/import')
+  importProblem(
+    @Param('id') id: string,
+    @Body() dto: ImportProblemDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.svc.importProblem(id, dto, user.id);
   }
 
   @Roles(UserRole.TEACHER)
   @Get(':id/submissions')
   getAllSubmissions(@Param('id') id: string, @CurrentUser() user: any) {
-    return this.svc.getAllSubmissionsForLabTest(id, user.userId);
+    return this.svc.getAllSubmissionsForLabTest(id, user.id);
   }
 
   @Roles(UserRole.TEACHER)
@@ -78,7 +113,7 @@ export class LabTestsController {
     @Param('problemId') pId: string,
     @CurrentUser() user: any,
   ) {
-    return this.svc.getSubmissionsForProblem(pId, user.userId);
+    return this.svc.getSubmissionsForProblem(pId, user.id);
   }
 
   @Roles(UserRole.TEACHER)
@@ -88,7 +123,7 @@ export class LabTestsController {
     @Body() dto: ManualGradeDto,
     @CurrentUser() user: any,
   ) {
-    return this.svc.gradeSubmission(id, dto, user.userId);
+    return this.svc.gradeSubmission(id, dto, user.id);
   }
 
   // ─── STUDENT ────────────────────────────────────────────────────────────────
@@ -96,19 +131,41 @@ export class LabTestsController {
   @Roles(UserRole.STUDENT)
   @Get('running')
   getRunning(@CurrentUser() user: any) {
-    return this.svc.getRunningLabTestsForStudent(user.userId);
+    return this.svc.getRunningLabTestsForStudent(user.id);
   }
 
-  @Roles(UserRole.STUDENT)
+  @Roles(UserRole.TEACHER, UserRole.STUDENT)
   @Get(':id')
-  getById(@Param('id') id: string) {
-    return this.svc.getLabTestById(id);
+  getById(@Param('id') id: string, @CurrentUser() user: any) {
+    if (user.role === UserRole.TEACHER) {
+      return this.svc.getLabTestByIdForTeacher(id, user.id);
+    }
+    return this.svc.getLabTestByIdForStudent(id, user.id);
+  }
+
+  @Roles(UserRole.TEACHER, UserRole.STUDENT)
+  @Get(':id/problems')
+  getProblems(@Param('id') id: string, @CurrentUser() user: any) {
+    if (user.role === UserRole.TEACHER) {
+      return this.svc.getProblemsForTeacher(id, user.id);
+    }
+    return this.svc.getProblemsForStudent(id, user.id);
   }
 
   @Roles(UserRole.STUDENT)
-  @Get(':id/problems')
-  getProblems(@Param('id') id: string) {
-    return this.svc.getProblemsForStudent(id);
+  @Post('problems/:problemId/run')
+  run(@Param('problemId') pId: string, @Body() dto: RunLabCodeDto, @CurrentUser() user: any) {
+    return this.svc.runCode(pId, user.id, dto);
+  }
+
+  @Roles(UserRole.STUDENT)
+  @Post(':labTestId/problems/:problemId/run')
+  runFromLabTest(
+    @Param('problemId') pId: string,
+    @Body() dto: RunLabCodeDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.svc.runCode(pId, user.id, dto);
   }
 
   @Roles(UserRole.STUDENT)
@@ -120,13 +177,31 @@ export class LabTestsController {
     @CurrentUser() user: any,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    return this.svc.submitCode(pId, user.userId, dto, file);
+    return this.svc.submitCode(pId, user.id, dto, file);
+  }
+
+  @Roles(UserRole.STUDENT)
+  @Post(':labTestId/problems/:problemId/submit')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  submitFromLabTest(
+    @Param('problemId') pId: string,
+    @Body() dto: SubmitLabCodeDto,
+    @CurrentUser() user: any,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.svc.submitCode(pId, user.id, dto, file);
   }
 
   @Roles(UserRole.STUDENT)
   @Get('problems/:problemId/my-submissions')
   mySubmissions(@Param('problemId') pId: string, @CurrentUser() user: any) {
-    return this.svc.getMySubmissionsForProblem(pId, user.userId);
+    return this.svc.getMySubmissionsForProblem(pId, user.id);
+  }
+
+  @Roles(UserRole.STUDENT)
+  @Get(':id/my-submissions')
+  mySubmissionsForLabTest(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.svc.getMySubmissionsForLabTest(id, user.id);
   }
 
   // ─── JUDGE WEBHOOK (future integration) ─────────────────────────────────────

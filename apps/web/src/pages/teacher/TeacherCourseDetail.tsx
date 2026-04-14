@@ -8,12 +8,15 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   BookOpen,
+  Download,
   FilePlus2,
   Files,
   FlaskConical,
   FolderArchive,
   Link2,
+  PencilLine,
   Plus,
+  Trash2,
   Users,
 } from 'lucide-react';
 import { api } from '../../lib/api';
@@ -72,6 +75,22 @@ const materialSchema = z
     path: ['labClassId'],
   });
 
+const editMaterialSchema = z
+  .object({
+    title: z.string().trim().min(2, 'Material title is required'),
+    description: z.string().optional(),
+    links: z.array(
+      z.object({
+        url: z.string().trim().url('Enter a valid URL').or(z.literal('')),
+        label: z.string().optional(),
+      }),
+    ),
+  })
+  .refine((value) => value.links.some((link) => link.url.trim()), {
+    message: 'Add at least one material link',
+    path: ['links'],
+  });
+
 type CourseTab =
   | 'lab-classes'
   | 'lecture-materials'
@@ -83,6 +102,7 @@ type CourseTab =
 type LabClassFormValues = z.infer<typeof labClassSchema>;
 type AssignmentFormValues = z.infer<typeof assignmentSchema>;
 type MaterialFormValues = z.infer<typeof materialSchema>;
+type EditMaterialFormValues = z.infer<typeof editMaterialSchema>;
 
 const tabItems: { key: CourseTab; label: string; icon: ReactNode }[] = [
   { key: 'lab-classes', label: 'Lab Classes', icon: <FlaskConical size={16} /> },
@@ -103,6 +123,10 @@ function getMaterialPlacementLabel(sheet: any) {
   return 'Universal';
 }
 
+function getMaterialHref(courseId: string, sheetId: string): string {
+  return `/teacher/courses/${courseId}/materials/${sheetId}`;
+}
+
 export function TeacherCourseDetail() {
   const { courseId } = useParams<{ courseId: string }>();
   const queryClient = useQueryClient();
@@ -110,6 +134,7 @@ export function TeacherCourseDetail() {
   const [showLabClassModal, setShowLabClassModal] = useState(false);
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const [showMaterialModal, setShowMaterialModal] = useState(false);
+  const [editingMaterial, setEditingMaterial] = useState<any | null>(null);
   const [memberSectionFilter, setMemberSectionFilter] = useState('All Students');
   const [materialFiles, setMaterialFiles] = useState<File[]>([]);
 
@@ -137,6 +162,22 @@ export function TeacherCourseDetail() {
   const { data: assignments = [] } = useQuery({
     queryKey: ['teacher-course-assignments', courseId],
     queryFn: () => api.get(`/assignments/course/${courseId}`).then((response) => response.data),
+    enabled: Boolean(courseId),
+  });
+  const { data: courseLabTests = [] } = useQuery({
+    queryKey: ['teacher-course-lab-tests', courseId],
+    queryFn: () =>
+      api
+        .get(`/lab-tests/course/${courseId}`, { params: { kind: 'lab_test' } })
+        .then((response) => response.data),
+    enabled: Boolean(courseId),
+  });
+  const { data: courseLabTasks = [] } = useQuery({
+    queryKey: ['teacher-course-lab-tasks', courseId],
+    queryFn: () =>
+      api
+        .get(`/lab-tests/course/${courseId}`, { params: { kind: 'lab_task' } })
+        .then((response) => response.data),
     enabled: Boolean(courseId),
   });
 
@@ -199,6 +240,22 @@ export function TeacherCourseDetail() {
     remove: removeMaterialLink,
   } = useFieldArray({
     control: materialForm.control,
+    name: 'links',
+  });
+  const editMaterialForm = useForm<EditMaterialFormValues>({
+    resolver: zodResolver(editMaterialSchema),
+    defaultValues: {
+      title: '',
+      description: '',
+      links: [{ url: '', label: '' }],
+    },
+  });
+  const {
+    fields: editMaterialLinkFields,
+    append: appendEditMaterialLink,
+    remove: removeEditMaterialLink,
+  } = useFieldArray({
+    control: editMaterialForm.control,
     name: 'links',
   });
 
@@ -304,6 +361,68 @@ export function TeacherCourseDetail() {
       toast.error(error.response?.data?.message ?? 'Failed to add lecture material'),
   });
 
+  const deleteMaterialMutation = useMutation({
+    mutationFn: (sheetId: string) =>
+      api.delete(`/courses/lecture-sheets/${sheetId}`),
+    onSuccess: () => {
+      toast.success('Lecture material deleted');
+      queryClient.invalidateQueries({
+        queryKey: ['teacher-course-lecture-materials', courseId],
+      });
+    },
+    onError: (error: any) =>
+      toast.error(
+        error.response?.data?.message ?? 'Failed to delete lecture material',
+      ),
+  });
+  const updateMaterialMutation = useMutation({
+    mutationFn: (values: EditMaterialFormValues) =>
+      api.patch(`/courses/lecture-sheets/${editingMaterial.id}`, {
+        title: values.title.trim(),
+        description: values.description?.trim() || undefined,
+        links: values.links
+          .filter((link) => link.url.trim())
+          .map((link) => ({
+            url: link.url.trim(),
+            label: link.label?.trim() || undefined,
+          })),
+      }),
+    onSuccess: () => {
+      toast.success('Lecture material updated');
+      queryClient.invalidateQueries({
+        queryKey: ['teacher-course-lecture-materials', courseId],
+      });
+      setEditingMaterial(null);
+      editMaterialForm.reset({
+        title: '',
+        description: '',
+        links: [{ url: '', label: '' }],
+      });
+    },
+    onError: (error: any) =>
+      toast.error(
+        error.response?.data?.message ?? 'Failed to update lecture material',
+      ),
+  });
+  const progressReportMutation = useMutation({
+    mutationFn: () =>
+      api.get(`/courses/${courseId}/reports/progress-pdf`).then((response) => response.data),
+    onSuccess: (data: { pdf?: string; fileName?: string }) => {
+      if (!data?.pdf) {
+        toast.error('Could not generate the PDF report');
+        return;
+      }
+
+      const link = document.createElement('a');
+      link.href = `data:application/pdf;base64,${data.pdf}`;
+      link.download = data.fileName ?? 'course_progress_report.pdf';
+      link.click();
+      toast.success('Course report downloaded');
+    },
+    onError: (error: any) =>
+      toast.error(error.response?.data?.message ?? 'Failed to download report'),
+  });
+
   if (!courseId) return null;
 
   if (courseLoading) {
@@ -389,6 +508,16 @@ export function TeacherCourseDetail() {
           </div>
 
           <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => progressReportMutation.mutate()}
+              disabled={progressReportMutation.isPending}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Download size={16} />
+              {progressReportMutation.isPending ? 'Preparing report...' : 'Download PDF report'}
+            </button>
+
             {activeTab === 'lab-classes' && course?.type === 'lab' ? (
               <button
                 type="button"
@@ -534,6 +663,49 @@ export function TeacherCourseDetail() {
                         <span className="text-xs font-medium text-slate-400">
                           {formatDateTime(sheet.createdAt)}
                         </span>
+                        <a
+                          href={getMaterialHref(courseId, sheet.id)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-50"
+                        >
+                          <Files size={12} />
+                          Open
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingMaterial(sheet);
+                            editMaterialForm.reset({
+                              title: sheet.title ?? '',
+                              description: sheet.description ?? '',
+                              links:
+                                Array.isArray(sheet.links) && sheet.links.length
+                                  ? sheet.links.map((link: any) => ({
+                                      url: link.url ?? '',
+                                      label: link.label ?? '',
+                                    }))
+                                  : [{ url: '', label: '' }],
+                            });
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                        >
+                          <PencilLine size={12} />
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (deleteMaterialMutation.isPending) return;
+                            if (!window.confirm('Delete this lecture material?')) return;
+                            deleteMaterialMutation.mutate(sheet.id);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={deleteMaterialMutation.isPending}
+                        >
+                          <Trash2 size={12} />
+                          Delete
+                        </button>
                       </div>
                       <h3 className="mt-3 text-lg font-semibold text-slate-900">{sheet.title}</h3>
                       {sheet.description ? (
@@ -671,11 +843,27 @@ export function TeacherCourseDetail() {
       ) : null}
 
       {activeTab === 'lab-tests' ? (
-        <PlaceholderPanel title="Lab tests will be added later." />
+        <CourseLabActivitiesPanel
+          title="Lab Tests"
+          description="Create contest-style lab exams with multiple problems and remote judge verdicts."
+          emptyTitle="No lab tests created for this course yet"
+          courseId={courseId}
+          kind="lab_test"
+          activities={courseLabTests as any[]}
+          archived={archived}
+        />
       ) : null}
 
       {activeTab === 'lab-tasks' ? (
-        <PlaceholderPanel title="Lab tasks will be added later." />
+        <CourseLabActivitiesPanel
+          title="Lab Tasks"
+          description="Create solo timed problem-solving tasks directly for this course."
+          emptyTitle="No lab tasks created for this course yet"
+          courseId={courseId}
+          kind="lab_task"
+          activities={courseLabTasks as any[]}
+          archived={archived}
+        />
       ) : null}
 
       <Modal
@@ -984,6 +1172,95 @@ export function TeacherCourseDetail() {
           </div>
         </form>
       </Modal>
+
+      <Modal
+        open={Boolean(editingMaterial)}
+        onClose={() => {
+          setEditingMaterial(null);
+          editMaterialForm.reset({
+            title: '',
+            description: '',
+            links: [{ url: '', label: '' }],
+          });
+        }}
+        title="Edit Lecture Material"
+        maxWidthClass="max-w-2xl"
+      >
+        <form
+          onSubmit={editMaterialForm.handleSubmit((values) =>
+            updateMaterialMutation.mutate(values),
+          )}
+          className="space-y-4"
+        >
+          <Field label="Title" error={editMaterialForm.formState.errors.title?.message}>
+            <input
+              {...editMaterialForm.register('title')}
+              className={inputClass}
+              placeholder="Material title"
+            />
+          </Field>
+
+          <Field
+            label="Description"
+            error={editMaterialForm.formState.errors.description?.message}
+          >
+            <textarea
+              {...editMaterialForm.register('description')}
+              className={`${inputClass} min-h-24`}
+              placeholder="Optional"
+            />
+          </Field>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-slate-900">Links</p>
+              <button
+                type="button"
+                onClick={() => appendEditMaterialLink({ url: '', label: '' })}
+                className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                Add link
+              </button>
+            </div>
+            {editMaterialLinkFields.map((field, index) => (
+              <div key={field.id} className="grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem_auto]">
+                <input
+                  {...editMaterialForm.register(`links.${index}.url`)}
+                  className={inputClass}
+                  placeholder="https://..."
+                />
+                <input
+                  {...editMaterialForm.register(`links.${index}.label`)}
+                  className={inputClass}
+                  placeholder="Label"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeEditMaterialLink(index)}
+                  className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            {editMaterialForm.formState.errors.links?.message ? (
+              <p className="text-xs text-rose-500">
+                {String(editMaterialForm.formState.errors.links.message)}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={updateMaterialMutation.isPending}
+              className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {updateMaterialMutation.isPending ? 'Saving...' : 'Save changes'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
@@ -1016,12 +1293,108 @@ function EmptyState({ title }: { title: string }) {
   );
 }
 
-function PlaceholderPanel({ title }: { title: string }) {
+function CourseLabActivitiesPanel({
+  title,
+  description,
+  emptyTitle,
+  courseId,
+  kind,
+  activities,
+  archived,
+}: {
+  title: string;
+  description: string;
+  emptyTitle: string;
+  courseId: string;
+  kind: 'lab_test' | 'lab_task';
+  activities: any[];
+  archived: boolean;
+}) {
   return (
     <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
-      <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-12 text-center text-sm text-slate-500">
-        {title}
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+            {title}
+          </p>
+          <h3 className="mt-2 text-2xl font-semibold text-slate-900">{title}</h3>
+          <p className="mt-2 max-w-2xl text-sm text-slate-500">{description}</p>
+        </div>
+
+        <Link
+          to={`/teacher/lab-tests?courseId=${courseId}&kind=${kind}`}
+          className={`inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium transition ${
+            archived
+              ? 'border border-slate-200 bg-slate-100 text-slate-400'
+              : 'bg-slate-900 text-white hover:bg-slate-800'
+          }`}
+        >
+          <Plus size={16} />
+          Open {kind === 'lab_task' ? 'Task' : 'Test'} Manager
+        </Link>
       </div>
+
+      {activities.length ? (
+        <div className="mt-6 grid gap-4 xl:grid-cols-2">
+          {activities.map((activity) => (
+            <div
+              key={activity.id}
+              className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-5"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-lg font-semibold text-slate-900">
+                    {activity.title}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {String(activity.type ?? '')
+                      .replace(/_/g, ' ')
+                      .replace(/\b\w/g, (char: string) => char.toUpperCase())}{' '}
+                    · {activity.totalMarks ?? 'N/A'} marks
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                    activity.status === 'running'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : activity.status === 'ended'
+                        ? 'bg-slate-100 text-slate-600'
+                        : 'bg-amber-100 text-amber-700'
+                  }`}
+                >
+                  {String(activity.status ?? '')
+                    .replace(/_/g, ' ')
+                    .replace(/\b\w/g, (char: string) => char.toUpperCase())}
+                </span>
+              </div>
+
+              {activity.description ? (
+                <p className="mt-3 line-clamp-3 text-sm text-slate-600">
+                  {activity.description}
+                </p>
+              ) : null}
+
+              <div className="mt-4 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
+                <p>Starts: {formatDateTime(activity.startTime)}</p>
+                <p>Ends: {formatDateTime(activity.endTime)}</p>
+              </div>
+
+              <div className="mt-4 flex justify-end">
+                <Link
+                  to={`/teacher/lab-tests?courseId=${courseId}&kind=${kind}`}
+                  className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                >
+                  Manage
+                </Link>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-6 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-12 text-center text-sm text-slate-500">
+          {emptyTitle}
+        </div>
+      )}
     </section>
   );
 }

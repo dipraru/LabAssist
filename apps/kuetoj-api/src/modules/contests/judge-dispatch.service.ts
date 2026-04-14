@@ -25,7 +25,9 @@ export class JudgeDispatchService implements OnModuleInit, OnModuleDestroy {
     private readonly gateway: NotificationsGateway,
   ) {}
 
-  onModuleInit() {
+  async onModuleInit() {
+    await this.ensureJudgeSubmissionSchema();
+
     if (!this.judgeRemote.isEnabled()) {
       this.logger.log('Remote judge dispatcher is disabled');
       return;
@@ -62,6 +64,37 @@ export class JudgeDispatchService implements OnModuleInit, OnModuleDestroy {
 
   private getMaxRetryCount(): number {
     return Number(this.config.get<string>('JUDGE_MAX_RETRY_COUNT')) || 3;
+  }
+
+  private async ensureJudgeSubmissionSchema() {
+    await this.submissionRepo.query(`
+      ALTER TABLE "contest_submissions"
+      ADD COLUMN IF NOT EXISTS "judgeAttemptCount" integer NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS "judgeClaimedAt" timestamptz NULL,
+      ADD COLUMN IF NOT EXISTS "judgeServerName" varchar NULL,
+      ADD COLUMN IF NOT EXISTS "judgeError" text NULL,
+      ADD COLUMN IF NOT EXISTS "judgeMessage" text NULL,
+      ADD COLUMN IF NOT EXISTS "compileOutput" text NULL,
+      ADD COLUMN IF NOT EXISTS "testcaseResults" jsonb NOT NULL DEFAULT '[]'::jsonb
+    `);
+
+    await this.submissionRepo.query(`
+      UPDATE "contest_submissions"
+      SET "judgeAttemptCount" = 0
+      WHERE "judgeAttemptCount" IS NULL
+    `);
+
+    await this.submissionRepo.query(`
+      UPDATE "contest_submissions"
+      SET "testcaseResults" = '[]'::jsonb
+      WHERE "testcaseResults" IS NULL
+    `);
+
+    await this.submissionRepo.query(`
+      ALTER TABLE "contest_submissions"
+      ALTER COLUMN "judgeAttemptCount" SET DEFAULT 0,
+      ALTER COLUMN "testcaseResults" SET DEFAULT '[]'::jsonb
+    `);
   }
 
   private inferLanguageFromFileName(

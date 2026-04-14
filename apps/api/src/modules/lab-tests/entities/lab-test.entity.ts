@@ -12,6 +12,11 @@ import { Course } from '../../courses/entities/course.entity';
 import { LabTestProblem } from './lab-test-problem.entity';
 import { LabTestType } from '../../../common/enums';
 
+export enum LabActivityKind {
+  LAB_TEST = 'lab_test',
+  LAB_TASK = 'lab_task',
+}
+
 export enum LabTestStatus {
   DRAFT = 'draft',
   RUNNING = 'running',
@@ -28,6 +33,13 @@ export class LabTest {
 
   @Column({ type: 'text', nullable: true })
   description: string | null;
+
+  @Column({
+    type: 'enum',
+    enum: LabActivityKind,
+    default: LabActivityKind.LAB_TEST,
+  })
+  activityKind: LabActivityKind;
 
   @Column({ type: 'enum', enum: LabTestType })
   type: LabTestType;

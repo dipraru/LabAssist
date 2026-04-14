@@ -89,6 +89,22 @@ export class LabSubmission {
   @Column({ type: 'varchar', nullable: true })
   judgeToken: string | null; // token for callback POST /api/submissions/{id}/result
 
+  @Column({ type: 'text', nullable: true })
+  judgeMessage: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  compileOutput: string | null;
+
+  @Column({ type: 'jsonb', default: '[]' })
+  testcaseResults: {
+    index: number;
+    isSample: boolean;
+    verdict: SubmissionStatus;
+    timeMs?: number | null;
+    memoryKb?: number | null;
+    message?: string | null;
+  }[];
+
   @CreateDateColumn()
   submittedAt: Date;
 

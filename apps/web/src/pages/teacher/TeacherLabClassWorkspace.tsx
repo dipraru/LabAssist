@@ -15,6 +15,7 @@ import {
   PencilLine,
   Plus,
   Search,
+  Trash2,
   TriangleAlert,
   UserPlus,
   X,
@@ -53,7 +54,24 @@ const materialSchema = z
     path: ['links'],
   });
 
+const editMaterialSchema = z
+  .object({
+    title: z.string().trim().min(2, 'Material title is required'),
+    description: z.string().optional(),
+    links: z.array(
+      z.object({
+        url: z.string().trim().url('Enter a valid URL').or(z.literal('')),
+        label: z.string().optional(),
+      }),
+    ),
+  })
+  .refine((value) => value.links.some((link) => link.url.trim()), {
+    message: 'Add at least one material link',
+    path: ['links'],
+  });
+
 type MaterialFormValues = z.infer<typeof materialSchema>;
+type EditMaterialFormValues = z.infer<typeof editMaterialSchema>;
 
 type AttendanceEntry = {
   student: any;
@@ -177,6 +195,10 @@ function matchesStudentSearch(student: any, query: string): boolean {
     .some((value) => String(value).toLowerCase().includes(normalizedQuery));
 }
 
+function getMaterialHref(courseId: string, sheetId: string): string {
+  return `/teacher/courses/${courseId}/materials/${sheetId}`;
+}
+
 export function TeacherLabClassWorkspace() {
   const { courseId, labClassId } = useParams<{
     courseId: string;
@@ -186,6 +208,7 @@ export function TeacherLabClassWorkspace() {
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [attendanceEntries, setAttendanceEntries] = useState<AttendanceEntry[]>([]);
   const [showMaterialModal, setShowMaterialModal] = useState(false);
+  const [editingMaterial, setEditingMaterial] = useState<any | null>(null);
   const [showExtraStudentModal, setShowExtraStudentModal] = useState(false);
   const [showAttendanceConfirmModal, setShowAttendanceConfirmModal] = useState(false);
   const [materialFiles, setMaterialFiles] = useState<File[]>([]);
@@ -297,6 +320,22 @@ export function TeacherLabClassWorkspace() {
     control: materialForm.control,
     name: 'links',
   });
+  const editMaterialForm = useForm<EditMaterialFormValues>({
+    resolver: zodResolver(editMaterialSchema),
+    defaultValues: {
+      title: '',
+      description: '',
+      links: [{ url: '', label: '' }],
+    },
+  });
+  const {
+    fields: editMaterialLinkFields,
+    append: appendEditMaterialLink,
+    remove: removeEditMaterialLink,
+  } = useFieldArray({
+    control: editMaterialForm.control,
+    name: 'links',
+  });
 
   const takeAttendanceMutation = useMutation({
     mutationFn: () =>
@@ -375,6 +414,50 @@ export function TeacherLabClassWorkspace() {
     },
     onError: (error: any) =>
       toast.error(error.response?.data?.message ?? 'Failed to add lecture material'),
+  });
+
+  const deleteMaterialMutation = useMutation({
+    mutationFn: (sheetId: string) =>
+      api.delete(`/courses/lecture-sheets/${sheetId}`),
+    onSuccess: () => {
+      toast.success('Lecture material deleted');
+      queryClient.invalidateQueries({
+        queryKey: ['teacher-course-lecture-materials', courseId],
+      });
+    },
+    onError: (error: any) =>
+      toast.error(
+        error.response?.data?.message ?? 'Failed to delete lecture material',
+      ),
+  });
+  const updateMaterialMutation = useMutation({
+    mutationFn: (values: EditMaterialFormValues) =>
+      api.patch(`/courses/lecture-sheets/${editingMaterial.id}`, {
+        title: values.title.trim(),
+        description: values.description?.trim() || undefined,
+        links: values.links
+          .filter((link) => link.url.trim())
+          .map((link) => ({
+            url: link.url.trim(),
+            label: link.label?.trim() || undefined,
+          })),
+      }),
+    onSuccess: () => {
+      toast.success('Lecture material updated');
+      queryClient.invalidateQueries({
+        queryKey: ['teacher-course-lecture-materials', courseId],
+      });
+      setEditingMaterial(null);
+      editMaterialForm.reset({
+        title: '',
+        description: '',
+        links: [{ url: '', label: '' }],
+      });
+    },
+    onError: (error: any) =>
+      toast.error(
+        error.response?.data?.message ?? 'Failed to update lecture material',
+      ),
   });
 
   const availableExtraStudents = useMemo(() => {
@@ -795,6 +878,49 @@ export function TeacherLabClassWorkspace() {
                       <span className="text-xs font-medium text-slate-400">
                         {formatDateTime(sheet.createdAt)}
                       </span>
+                      <a
+                        href={getMaterialHref(courseId, sheet.id)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-50"
+                      >
+                        <Link2 size={12} />
+                        Open
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingMaterial(sheet);
+                          editMaterialForm.reset({
+                            title: sheet.title ?? '',
+                            description: sheet.description ?? '',
+                            links:
+                              Array.isArray(sheet.links) && sheet.links.length
+                                ? sheet.links.map((link: any) => ({
+                                    url: link.url ?? '',
+                                    label: link.label ?? '',
+                                  }))
+                                : [{ url: '', label: '' }],
+                          });
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                      >
+                        <PencilLine size={12} />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (deleteMaterialMutation.isPending) return;
+                          if (!window.confirm('Delete this lecture material?')) return;
+                          deleteMaterialMutation.mutate(sheet.id);
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={deleteMaterialMutation.isPending}
+                      >
+                        <Trash2 size={12} />
+                        Delete
+                      </button>
                     </div>
                     <h3 className="mt-3 text-lg font-semibold text-slate-900">{sheet.title}</h3>
                     {sheet.description ? (
@@ -1134,6 +1260,98 @@ export function TeacherLabClassWorkspace() {
             </button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(editingMaterial)}
+        onClose={() => {
+          setEditingMaterial(null);
+          editMaterialForm.reset({
+            title: '',
+            description: '',
+            links: [{ url: '', label: '' }],
+          });
+        }}
+        title="Edit Lecture Material"
+        maxWidthClass="max-w-2xl"
+      >
+        <form
+          onSubmit={editMaterialForm.handleSubmit((values) =>
+            updateMaterialMutation.mutate(values),
+          )}
+          className="space-y-4"
+        >
+          <Field label="Title" error={editMaterialForm.formState.errors.title?.message}>
+            <input
+              {...editMaterialForm.register('title')}
+              className={inputClass}
+              placeholder="Material title"
+            />
+          </Field>
+
+          <Field
+            label="Description"
+            error={editMaterialForm.formState.errors.description?.message}
+          >
+            <textarea
+              {...editMaterialForm.register('description')}
+              className={`${inputClass} min-h-24`}
+              placeholder="Optional"
+            />
+          </Field>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-slate-900">Links</p>
+              <button
+                type="button"
+                onClick={() => appendEditMaterialLink({ url: '', label: '' })}
+                className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                Add link
+              </button>
+            </div>
+            {editMaterialLinkFields.map((field, index) => (
+              <div
+                key={field.id}
+                className="grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem_auto]"
+              >
+                <input
+                  {...editMaterialForm.register(`links.${index}.url`)}
+                  className={inputClass}
+                  placeholder="https://..."
+                />
+                <input
+                  {...editMaterialForm.register(`links.${index}.label`)}
+                  className={inputClass}
+                  placeholder="Label"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeEditMaterialLink(index)}
+                  className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            {editMaterialForm.formState.errors.links?.message ? (
+              <p className="text-xs text-rose-500">
+                {String(editMaterialForm.formState.errors.links.message)}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={updateMaterialMutation.isPending}
+              className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {updateMaterialMutation.isPending ? 'Saving...' : 'Save changes'}
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );
