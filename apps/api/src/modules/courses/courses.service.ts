@@ -1410,7 +1410,6 @@ export class CoursesService {
       );
 
     const now = new Date();
-    const today = startOfToday();
 
     const labClasses = await this.labClassRepo.find({
       where: { courseId },
@@ -1448,7 +1447,7 @@ export class CoursesService {
     const attendanceColumns = labClasses
       .filter((labClass) => {
         const labDate = labClass.classDate ? new Date(labClass.classDate) : null;
-        return !labDate || labDate <= today;
+        return !labDate || labDate <= now;
       })
       .map((labClass) => {
         const values: Record<string, string> = {};

@@ -31,6 +31,7 @@ import { AssignmentSubmission } from './modules/assignments/entities/assignment-
 import { LabTest } from './modules/lab-tests/entities/lab-test.entity';
 import { LabTestProblem } from './modules/lab-tests/entities/lab-test-problem.entity';
 import { LabSubmission } from './modules/lab-tests/entities/lab-submission.entity';
+import { LabProctoringEvent } from './modules/lab-tests/entities/lab-proctoring-event.entity';
 import { Contest } from './modules/contests/entities/contest.entity';
 import { Problem } from './modules/contests/entities/problem.entity';
 import { ContestProblem } from './modules/contests/entities/contest-problem.entity';
@@ -74,6 +75,7 @@ import { Batch } from './modules/office/entities/batch.entity';
           LabTest,
           LabTestProblem,
           LabSubmission,
+          LabProctoringEvent,
           Contest,
           Problem,
           ContestProblem,

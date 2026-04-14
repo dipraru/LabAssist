@@ -11,10 +11,15 @@ import { LabTest, LabActivityKind, LabTestStatus } from './entities/lab-test.ent
 import { LabTestProblem } from './entities/lab-test-problem.entity';
 import { LabSubmission } from './entities/lab-submission.entity';
 import {
+  LabProctoringEvent,
+  LabProctoringEventType,
+} from './entities/lab-proctoring-event.entity';
+import {
   CreateLabTestDto,
   CreateProblemDto,
   ImportProblemDto,
   ManualGradeDto,
+  ReportLabProctoringEventDto,
   RunLabCodeDto,
   SubmitLabCodeDto,
 } from './dto/lab-tests.dto';
@@ -43,6 +48,8 @@ export class LabTestsService {
     private problemRepo: Repository<LabTestProblem>,
     @InjectRepository(LabSubmission)
     private submissionRepo: Repository<LabSubmission>,
+    @InjectRepository(LabProctoringEvent)
+    private proctoringEventRepo: Repository<LabProctoringEvent>,
     @InjectRepository(Problem)
     private problemBankRepo: Repository<Problem>,
     @InjectRepository(Course) private courseRepo: Repository<Course>,
@@ -122,6 +129,29 @@ export class LabTestsService {
       referenceId: labTest.id,
       targetPath: `/student/lab-tests/${labTest.id}`,
     });
+  }
+
+  private buildTeacherActivityHref(labTest: LabTest): string {
+    return `/teacher/lab-tests?courseId=${labTest.courseId}&kind=${labTest.activityKind}&activityId=${labTest.id}`;
+  }
+
+  private describeProctoringEvent(eventType: LabProctoringEventType): string {
+    switch (eventType) {
+      case LabProctoringEventType.FULLSCREEN_EXIT:
+        return 'left fullscreen mode';
+      case LabProctoringEventType.TAB_HIDDEN:
+        return 'switched away from the lab tab';
+      case LabProctoringEventType.WINDOW_BLUR:
+        return 'moved focus away from the lab window';
+      case LabProctoringEventType.COPY_BLOCKED:
+        return 'attempted to copy content';
+      case LabProctoringEventType.PASTE_BLOCKED:
+        return 'attempted to paste content';
+      case LabProctoringEventType.CUT_BLOCKED:
+        return 'attempted to cut content';
+      default:
+        return 'triggered a proctoring alert';
+    }
   }
 
   private inferLanguageFromFileName(
@@ -489,6 +519,19 @@ export class LabTestsService {
     });
   }
 
+  async getProctoringEventsForLabTest(labTestId: string, teacherUserId: string) {
+    const labTest = await this.labTestRepo.findOneBy({ id: labTestId });
+    if (!labTest) throw new NotFoundException('Lab test not found');
+    await this.getTeacherCourseAccess(labTest.courseId, teacherUserId);
+
+    return this.proctoringEventRepo.find({
+      where: { labTestId },
+      relations: ['student'],
+      order: { createdAt: 'DESC' },
+      take: 100,
+    });
+  }
+
   async gradeSubmission(
     submissionId: string,
     dto: ManualGradeDto,
@@ -562,6 +605,92 @@ export class LabTestsService {
       relations: ['problem'],
       order: { submittedAt: 'DESC' },
     });
+  }
+
+  async reportProctoringEvent(
+    labTestId: string,
+    studentUserId: string,
+    dto: ReportLabProctoringEventDto,
+  ) {
+    const labTest = await this.labTestRepo.findOne({
+      where: { id: labTestId },
+      relations: ['course', 'course.teachers'],
+    });
+    if (!labTest) throw new NotFoundException('Lab activity not found');
+
+    const { student } = await this.getStudentCourseAccess(
+      labTest.courseId,
+      studentUserId,
+    );
+
+    const now = new Date();
+    if (
+      labTest.status !== LabTestStatus.RUNNING ||
+      now < labTest.startTime ||
+      now > labTest.endTime
+    ) {
+      throw new ForbiddenException('Lab activity is not currently running');
+    }
+
+    if (dto.problemId) {
+      const problem = await this.problemRepo.findOneBy({
+        id: dto.problemId,
+        labTestId,
+      });
+      if (!problem) {
+        throw new BadRequestException('Problem does not belong to this lab activity');
+      }
+    }
+
+    const duplicateSince = new Date(Date.now() - 8000);
+    const recentDuplicate = await this.proctoringEventRepo
+      .createQueryBuilder('event')
+      .where('event.labTestId = :labTestId', { labTestId })
+      .andWhere('event.studentId = :studentId', { studentId: student.id })
+      .andWhere('event.eventType = :eventType', { eventType: dto.eventType })
+      .andWhere('event.createdAt >= :duplicateSince', { duplicateSince })
+      .orderBy('event.createdAt', 'DESC')
+      .getOne();
+
+    if (recentDuplicate) {
+      return recentDuplicate;
+    }
+
+    const savedEvent = await this.proctoringEventRepo.save(
+      this.proctoringEventRepo.create({
+        labTestId,
+        studentId: student.id,
+        eventType: dto.eventType,
+        problemId: dto.problemId ?? null,
+        message: dto.message?.trim() || null,
+        metadata: {
+          activityKind: labTest.activityKind,
+          activityTitle: labTest.title,
+        },
+      }),
+    );
+
+    const teacherUserIds = Array.from(
+      new Set(
+        (labTest.course?.teachers ?? [])
+          .map((teacher) => teacher.userId)
+          .filter((userId): userId is string => Boolean(userId)),
+      ),
+    );
+
+    if (teacherUserIds.length) {
+      await this.notifications.createBulk(teacherUserIds, {
+        type: NotificationType.SYSTEM,
+        title: `Proctoring alert in ${labTest.title}`,
+        body: `${
+          student.fullName || student.studentId
+        } ${this.describeProctoringEvent(dto.eventType)}.`,
+        referenceId: savedEvent.id,
+        targetPath: this.buildTeacherActivityHref(labTest),
+      });
+    }
+
+    return savedEvent;
   }
 
   async runCode(problemId: string, studentUserId: string, dto: RunLabCodeDto) {

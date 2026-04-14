@@ -24,6 +24,7 @@ import {
   ImportProblemDto,
   JudgeResultCallbackDto,
   ManualGradeDto,
+  ReportLabProctoringEventDto,
   RunLabCodeDto,
   SubmitLabCodeDto,
 } from './dto/lab-tests.dto';
@@ -105,6 +106,12 @@ export class LabTestsController {
   @Get(':id/submissions')
   getAllSubmissions(@Param('id') id: string, @CurrentUser() user: any) {
     return this.svc.getAllSubmissionsForLabTest(id, user.id);
+  }
+
+  @Roles(UserRole.TEACHER)
+  @Get(':id/proctoring-events')
+  getProctoringEvents(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.svc.getProctoringEventsForLabTest(id, user.id);
   }
 
   @Roles(UserRole.TEACHER)
@@ -202,6 +209,16 @@ export class LabTestsController {
   @Get(':id/my-submissions')
   mySubmissionsForLabTest(@Param('id') id: string, @CurrentUser() user: any) {
     return this.svc.getMySubmissionsForLabTest(id, user.id);
+  }
+
+  @Roles(UserRole.STUDENT)
+  @Post(':id/proctoring-events')
+  reportProctoringEvent(
+    @Param('id') id: string,
+    @Body() dto: ReportLabProctoringEventDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.svc.reportProctoringEvent(id, user.id, dto);
   }
 
   // ─── JUDGE WEBHOOK (future integration) ─────────────────────────────────────

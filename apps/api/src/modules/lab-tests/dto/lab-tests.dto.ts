@@ -14,6 +14,7 @@ import { Type } from 'class-transformer';
 import { LabTestType } from '../../../common/enums';
 import { ProgrammingLanguage, ManualVerdict } from '../../../common/enums';
 import { LabActivityKind } from '../entities/lab-test.entity';
+import { LabProctoringEventType } from '../entities/lab-proctoring-event.entity';
 
 class SampleTestCaseDto {
   @IsString() input: string;
@@ -81,6 +82,12 @@ export class ManualGradeDto {
   @IsEnum(ManualVerdict) verdict: ManualVerdict;
   @IsOptional() @IsNumber() score?: number;
   @IsOptional() @IsString() instructorNote?: string;
+}
+
+export class ReportLabProctoringEventDto {
+  @IsEnum(LabProctoringEventType) eventType: LabProctoringEventType;
+  @IsOptional() @IsUUID() problemId?: string;
+  @IsOptional() @IsString() message?: string;
 }
 
 // Future judge callback contract: POST /api/submissions/:id/result
