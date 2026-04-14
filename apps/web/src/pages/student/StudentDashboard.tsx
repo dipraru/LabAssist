@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
+import { resolveNotificationHref } from '../../lib/notification-links';
 import { useAuthStore } from '../../store/auth.store';
 import { BookOpen, ClipboardList, Bell } from 'lucide-react';
 
@@ -22,29 +23,6 @@ function formatShortDateTime(value: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-function resolveNotificationHref(notification: any): string {
-  if (notification?.targetPath) {
-    return notification.targetPath;
-  }
-  if (notification?.type === 'assignment_posted') {
-    return notification?.referenceId
-      ? `/student/assignments?assignmentId=${notification.referenceId}`
-      : '/student/assignments';
-  }
-  if (notification?.type === 'lecture_sheet_posted') {
-    return notification?.referenceId
-      ? `/student/courses`
-      : '/student/courses';
-  }
-  if (notification?.type === 'system') {
-    return '/student/courses';
-  }
-  if (notification?.type === 'contest_announcement') {
-    return '/student';
-  }
-  return '/student/notifications';
 }
 
 export function StudentDashboard() {
@@ -274,7 +252,7 @@ export function StudentDashboard() {
               {unread.slice(0, 5).map((n: any) => (
                 <Link
                   key={n.id}
-                  to={resolveNotificationHref(n)}
+                  to={resolveNotificationHref('student', n)}
                   className="block bg-white rounded-xl border border-slate-100 shadow-sm p-4 transition-colors hover:border-indigo-300"
                 >
                   <div className="flex items-start gap-3">

@@ -4,6 +4,7 @@ import { AppShell } from '../../components/AppShell';
 import { Bell, CheckCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
+import { resolveNotificationHref } from '../../lib/notification-links';
 
 export function StudentNotifications() {
   const qc = useQueryClient();
@@ -27,29 +28,11 @@ export function StudentNotifications() {
     mutationFn: (ids: string[]) => api.patch('/notifications/mark-read', { ids }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notifications'] });
+      qc.invalidateQueries({ queryKey: ['notifications-unread-count'] });
     },
   });
 
   const unreadCount = (notifications as any[]).filter((n: any) => !n.isRead).length;
-
-  const resolveNotificationHref = (n: any): string => {
-    if (n?.targetPath) {
-      return n.targetPath;
-    }
-    if (n?.type === 'assignment_posted') {
-      return n?.referenceId ? `/student/assignments?assignmentId=${n.referenceId}` : '/student/assignments';
-    }
-    if (n?.type === 'lecture_sheet_posted') {
-      return n?.referenceId ? `/student/courses?sheetId=${n.referenceId}` : '/student/courses';
-    }
-    if (n?.type === 'system') {
-      return '/student/courses';
-    }
-    if (n?.type === 'contest_announcement') {
-      return '/student';
-    }
-    return '/student/notifications';
-  };
 
   return (
     <AppShell>
@@ -85,10 +68,7 @@ export function StudentNotifications() {
                 type="button"
                 onClick={() => {
                   if (!n.isRead) markReadMutation.mutate([n.id]);
-                  const href = resolveNotificationHref(n);
-                  if (href !== '/student/notifications') {
-                    navigate(href);
-                  }
+                  navigate(resolveNotificationHref('student', n));
                 }}
                 className={`w-full text-left bg-white rounded-xl border shadow-sm p-4 transition-colors ${
                   n.isRead ? 'border-slate-100' : 'border-indigo-200 bg-indigo-50/40'

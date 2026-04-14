@@ -27,6 +27,7 @@ import {
   UserCircle2,
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { resolveNotificationHref } from '../lib/notification-links';
 import { disconnectSocket, getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/auth.store';
 
@@ -73,32 +74,6 @@ function isActivePath(currentPath: string, itemHref: string): boolean {
     return currentPath === itemHref;
   }
   return currentPath === itemHref || currentPath.startsWith(`${itemHref}/`);
-}
-
-function resolveNotificationHref(role: string | undefined, notification: any): string {
-  if (notification?.targetPath) {
-    return notification.targetPath;
-  }
-
-  if (notification?.type === 'assignment_posted') {
-    return role === 'teacher'
-      ? '/teacher/courses'
-      : notification?.referenceId
-        ? `/student/assignments?assignmentId=${notification.referenceId}`
-        : '/student/assignments';
-  }
-
-  if (notification?.type === 'lecture_sheet_posted') {
-    return role === 'teacher'
-      ? '/teacher/courses'
-      : '/student/courses';
-  }
-
-  if (notification?.type === 'system') {
-    return role === 'teacher' ? '/teacher/courses' : '/student/courses';
-  }
-
-  return role === 'teacher' ? '/teacher/notifications' : '/student/notifications';
 }
 
 function formatNotificationTime(value: string | null | undefined): string {
