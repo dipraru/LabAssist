@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import {
   BookOpen,
   ExternalLink,
+  FlaskConical,
   MessageSquare,
   Send,
   Users,
@@ -106,6 +107,18 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
       api.get(`/courses/${courseId}/enrollments`).then((response) => response.data),
     enabled: Boolean(courseId) && role === 'teacher',
   });
+  const { data: labClasses = [] } = useQuery({
+    queryKey: [role, 'course-lab-classes', courseId],
+    queryFn: () =>
+      api.get(`/courses/${courseId}/lab-classes`).then((response) => response.data),
+    enabled: Boolean(courseId),
+  });
+  const { data: labActivities = [] } = useQuery({
+    queryKey: [role, 'course-lab-activities', courseId],
+    queryFn: () =>
+      api.get(`/lab-tests/course/${courseId}`).then((response) => response.data),
+    enabled: Boolean(courseId),
+  });
 
   const createPostMutation = useMutation({
     mutationFn: async () => {
@@ -195,7 +208,13 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
   );
 
   const getSheetHref = (sheet: any) =>
-    `${basePath}/${sheet.courseId ?? courseId}?sheetId=${sheet.id}`;
+    `${basePath}/${sheet.courseId ?? courseId}/materials/${sheet.id}`;
+  const getLabClassHref = (labClass: any) =>
+    `${basePath}/${labClass.courseId ?? courseId}/lab-classes/${labClass.id}`;
+  const getActivityHref = (activity: any) =>
+    `/student/lab-tests/${activity.id}?courseId=${activity.courseId ?? courseId}&kind=${
+      activity.activityKind ?? 'lab_test'
+    }`;
 
   return (
     <div className="w-full max-w-[1520px] 2xl:max-w-[1680px]">
@@ -397,8 +416,10 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                           : 'border-slate-100'
                       }`}
                     >
-                      <Link
-                        to={getSheetHref(sheet)}
+                      <a
+                        href={getSheetHref(sheet)}
+                        target="_blank"
+                        rel="noreferrer"
                         className="block rounded-2xl transition-colors hover:bg-slate-50"
                       >
                         <div className="flex items-start gap-3">
@@ -428,7 +449,7 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                             )}
                           </div>
                         </div>
-                      </Link>
+                      </a>
                       {!!sheet.links?.length && (
                         <div className="mt-4 flex flex-wrap gap-2">
                           {sheet.links.map((link: any, index: number) => (
@@ -597,6 +618,96 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
               )}
             </section>
             <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+              <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                <FlaskConical size={16} className="text-slate-500" />
+                Lab Classes
+              </h3>
+              {!(labClasses as any[]).length ? (
+                <p className="text-sm text-slate-400 mt-3">
+                  No lab classes added yet.
+                </p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {(labClasses as any[])
+                    .slice()
+                    .sort(
+                      (left: any, right: any) =>
+                        Number(left?.labNumber ?? 0) - Number(right?.labNumber ?? 0),
+                    )
+                    .map((labClass: any) => (
+                      <Link
+                        key={labClass.id}
+                        to={getLabClassHref(labClass)}
+                        className="flex items-start justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-3 transition-colors hover:bg-slate-100"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-800">
+                            Lab {labClass.labNumber}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            {labClass.title}
+                          </p>
+                        </div>
+                        <ExternalLink
+                          size={14}
+                          className="mt-0.5 shrink-0 text-slate-400"
+                        />
+                      </Link>
+                    ))}
+                </div>
+              )}
+            </section>
+            <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+              <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                <BookOpen size={16} className="text-slate-500" />
+                Lab Activities
+              </h3>
+              {!(labActivities as any[]).length ? (
+                <p className="text-sm text-slate-400 mt-3">
+                  No lab tasks or tests posted yet.
+                </p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {(labActivities as any[])
+                    .slice()
+                    .sort(
+                      (left: any, right: any) =>
+                        new Date(right?.startTime ?? 0).getTime() -
+                        new Date(left?.startTime ?? 0).getTime(),
+                    )
+                    .map((activity: any) => (
+                      <a
+                        key={activity.id}
+                        href={getActivityHref(activity)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-start justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-3 transition-colors hover:bg-slate-100"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-slate-800">
+                              {activity.title}
+                            </p>
+                            <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200">
+                              {activity.activityKind === 'lab_task'
+                                ? 'Task'
+                                : 'Test'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-1">
+                            {formatDateTime(activity.endTime)}
+                          </p>
+                        </div>
+                        <ExternalLink
+                          size={14}
+                          className="mt-0.5 shrink-0 text-slate-400"
+                        />
+                      </a>
+                    ))}
+                </div>
+              )}
+            </section>
+            <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
               <h3 className="font-semibold text-slate-900">Materials</h3>
               {!(sheets as any[]).length ? (
                 <p className="text-sm text-slate-400 mt-3">
@@ -605,9 +716,11 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
               ) : (
                 <div className="mt-3 space-y-3">
                   {(sheets as any[]).slice(0, 6).map((sheet: any) => (
-                    <Link
+                    <a
                       key={sheet.id}
-                      to={getSheetHref(sheet)}
+                      href={getSheetHref(sheet)}
+                      target="_blank"
+                      rel="noreferrer"
                       className="flex items-start justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-3 transition-colors hover:bg-slate-100"
                     >
                       <div className="min-w-0">
@@ -622,7 +735,7 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                         size={14}
                         className="mt-0.5 shrink-0 text-slate-400"
                       />
-                    </Link>
+                    </a>
                   ))}
                 </div>
               )}
