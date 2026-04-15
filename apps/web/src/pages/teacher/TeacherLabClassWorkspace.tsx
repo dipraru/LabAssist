@@ -201,6 +201,33 @@ function getMaterialHref(courseId: string, sheetId: string): string {
   return `/teacher/courses/${courseId}/materials/${sheetId}`;
 }
 
+function getLabTaskDisplayTitle(activity: any): string {
+  if (activity?.title?.trim()) {
+    return activity.title.trim();
+  }
+
+  if (activity?.labClass?.labNumber) {
+    return `Lab ${activity.labClass.labNumber} Task`;
+  }
+
+  return 'Lab Task';
+}
+
+function getLabTaskDuration(activity: any): number {
+  if (activity?.durationMinutes && activity.durationMinutes > 0) {
+    return activity.durationMinutes;
+  }
+
+  if (activity?.startTime && activity?.endTime) {
+    const diff = new Date(activity.endTime).getTime() - new Date(activity.startTime).getTime();
+    if (Number.isFinite(diff) && diff > 0) {
+      return Math.max(1, Math.ceil(diff / 60_000));
+    }
+  }
+
+  return 60;
+}
+
 export function TeacherLabClassWorkspace() {
   const { courseId, labClassId } = useParams<{
     courseId: string;
@@ -218,6 +245,8 @@ export function TeacherLabClassWorkspace() {
   const [pendingAttendanceAction, setPendingAttendanceAction] =
     useState<AttendanceAction>(null);
   const [extraStudentSearch, setExtraStudentSearch] = useState('');
+  const [selectedLabTaskId, setSelectedLabTaskId] = useState<string | null>(null);
+  const [showNewTaskWorkspace, setShowNewTaskWorkspace] = useState(false);
 
   const { data: labClass, isLoading } = useQuery({
     queryKey: ['teacher-lab-class', courseId, labClassId],
@@ -247,6 +276,20 @@ export function TeacherLabClassWorkspace() {
       null,
     [course, sections, selectedSectionId],
   );
+  const { data: labTasks = [] } = useQuery({
+    queryKey: ['teacher-lab-class-tasks', courseId, labClassId, selectedSection?.sectionName],
+    queryFn: () =>
+      api
+        .get(`/lab-tests/course/${courseId}`, {
+          params: {
+            kind: 'lab_task',
+            labClassId,
+            sectionName: selectedSection?.sectionName,
+          },
+        })
+        .then((response) => response.data),
+    enabled: Boolean(courseId && labClassId && selectedSection?.sectionName),
+  });
   const allCourseStudents = useMemo(() => getCourseStudents(course), [course]);
   const presentInOtherSections = useMemo(
     () => getPresentStudentIdsFromOtherSections(labClass, selectedSection?.id),
@@ -287,7 +330,18 @@ export function TeacherLabClassWorkspace() {
 
   useEffect(() => {
     setModifyMode(false);
+    setSelectedLabTaskId(null);
+    setShowNewTaskWorkspace(false);
   }, [selectedSectionId]);
+
+  useEffect(() => {
+    if (
+      selectedLabTaskId &&
+      !(labTasks as any[]).some((task: any) => task.id === selectedLabTaskId)
+    ) {
+      setSelectedLabTaskId(null);
+    }
+  }, [labTasks, selectedLabTaskId]);
 
   useEffect(() => {
     if (!course || !labClass || !selectedSection) {
@@ -969,35 +1023,108 @@ export function TeacherLabClassWorkspace() {
               </div>
 
               <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                  Lab Task
-                </p>
-                <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50/80 px-5 py-5 text-sm text-slate-600">
-                  <p className="font-semibold text-slate-900">
-                    Create tasks for Lab {labClass.labNumber} and {selectedSection.sectionName}
-                  </p>
-                  <p className="mt-2">
-                    This area now uses the current lab class and selected section automatically, so teachers can create and manage lab tasks for conducted sections without leaving the lab workspace.
-                  </p>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                      Lab Task
+                    </p>
+                    <p className="mt-2 text-sm text-slate-500">
+                      Select a task or create a new one for this section.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedLabTaskId(null);
+                      setShowNewTaskWorkspace(true);
+                    }}
+                    disabled={archived}
+                    className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Plus size={16} />
+                    New Task
+                  </button>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {(labTasks as any[]).map((task: any) => {
+                    const active = selectedLabTaskId === task.id && !showNewTaskWorkspace;
+                    return (
+                      <button
+                        key={task.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedLabTaskId(task.id);
+                          setShowNewTaskWorkspace(false);
+                        }}
+                        className={`w-full rounded-[22px] border px-4 py-4 text-left transition ${
+                          active
+                            ? 'border-slate-900 bg-slate-900 text-white'
+                            : 'border-slate-200 bg-slate-50/80 hover:border-slate-300 hover:bg-white'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className={`truncate font-semibold ${active ? 'text-white' : 'text-slate-900'}`}>
+                              {getLabTaskDisplayTitle(task)}
+                            </p>
+                            <p className={`mt-1 text-xs ${active ? 'text-slate-200' : 'text-slate-500'}`}>
+                              {getLabTaskDuration(task)} min · {task.totalMarks ?? 'N/A'} marks
+                            </p>
+                          </div>
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                              active
+                                ? 'bg-white/10 text-white'
+                                : 'bg-white text-slate-600 ring-1 ring-slate-200'
+                            }`}
+                          >
+                            {task.status === 'draft'
+                              ? 'Draft'
+                              : task.status === 'running'
+                                ? 'Running'
+                                : 'Ended'}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+
+                  {!(labTasks as any[]).length ? (
+                    <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center text-sm text-slate-500">
+                      No lab tasks yet for this section.
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </section>
           </div>
 
-          <TeacherLabActivityManager
-            key={`${labClassId}-${selectedSection.id}`}
-            fixedCourseId={courseId}
-            fixedActivityKind="lab_task"
-            fixedLabClassId={labClassId}
-            fixedSectionName={selectedSection.sectionName}
-            disableCreation={archived}
-            heading={{
-              eyebrow: 'Lab Class Workspace',
-              title: `Lab ${labClass.labNumber} Tasks`,
-              description:
-                'Manage the section-specific lab tasks for this conducted class here. New tasks automatically use this lab class and the selected section.',
-            }}
-          />
+          {selectedLabTaskId || showNewTaskWorkspace ? (
+            <TeacherLabActivityManager
+              key={`${labClassId}-${selectedSection.id}-${selectedLabTaskId ?? 'new'}-${
+                showNewTaskWorkspace ? 'compose' : 'view'
+              }`}
+              fixedCourseId={courseId}
+              fixedActivityKind="lab_task"
+              fixedLabClassId={labClassId}
+              fixedSectionName={selectedSection.sectionName}
+              disableCreation={archived}
+              hideActivityLibrary
+              initialSelectedActivityId={selectedLabTaskId}
+              autoOpenCreateModal={showNewTaskWorkspace}
+              onSelectedActivityChange={(activityId) => {
+                if (!activityId) return;
+                setSelectedLabTaskId(activityId);
+                setShowNewTaskWorkspace(false);
+              }}
+              heading={{
+                eyebrow: 'Lab Class Workspace',
+                title: `Lab ${labClass.labNumber} Tasks`,
+                description: 'Manage the selected task for this conducted section.',
+              }}
+            />
+          ) : null}
         </div>
       )}
 

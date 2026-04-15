@@ -48,11 +48,14 @@ export class LabTest {
   @Column({ type: 'enum', enum: LabTestStatus, default: LabTestStatus.DRAFT })
   status: LabTestStatus;
 
-  @Column({ type: 'timestamptz' })
-  startTime: Date;
+  @Column({ type: 'timestamptz', nullable: true })
+  startTime: Date | null;
 
-  @Column({ type: 'timestamptz' })
-  endTime: Date;
+  @Column({ type: 'timestamptz', nullable: true })
+  endTime: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  durationMinutes: number | null;
 
   @Column({ type: 'float', nullable: true })
   totalMarks: number | null;

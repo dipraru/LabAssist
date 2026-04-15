@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { LabTest, LabActivityKind, LabTestStatus } from './entities/lab-test.entity';
 import { LabTestProblem } from './entities/lab-test-problem.entity';
@@ -22,6 +22,9 @@ import {
   ReportLabProctoringEventDto,
   RunLabCodeDto,
   SubmitLabCodeDto,
+  UpdateLabActivityProblemDto,
+  UpdateLabTestDto,
+  UpdateProblemBankDto,
 } from './dto/lab-tests.dto';
 import { Problem } from '../contests/entities/problem.entity';
 import { StorageService } from '../storage/storage.service';
@@ -35,6 +38,7 @@ import {
 import { Course } from '../courses/entities/course.entity';
 import { Enrollment } from '../courses/entities/enrollment.entity';
 import { LabClass } from '../courses/entities/lab-class.entity';
+import { LabClassSectionStatus } from '../courses/entities/lab-class-section.entity';
 import { Teacher } from '../users/entities/teacher.entity';
 import { Student } from '../users/entities/student.entity';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -44,6 +48,10 @@ import { Batch, BatchSection } from '../office/entities/batch.entity';
 
 function normalizeSectionName(sectionName?: string | null): string {
   return sectionName?.trim() || 'All Students';
+}
+
+function normalizeTextValue(value?: string | null): string {
+  return value?.trim().toLowerCase() || '';
 }
 
 function studentIdFallsInsideSection(
@@ -188,6 +196,19 @@ export class LabTestsService {
       ) {
         throw new BadRequestException('Selected lab class does not include this section');
       }
+
+      if (
+        activityKind === LabActivityKind.LAB_TASK &&
+        !(labClass.sections ?? []).some(
+          (section) =>
+            normalizeSectionName(section.sectionName) === normalizedSectionName &&
+            section.status === LabClassSectionStatus.CONDUCTED,
+        )
+      ) {
+        throw new BadRequestException(
+          'Lab task can be linked only to a conducted lab class for this section',
+        );
+      }
     }
 
     if (activityKind === LabActivityKind.LAB_TASK && !labClass) {
@@ -259,6 +280,106 @@ export class LabTestsService {
     return access;
   }
 
+  private getActivityLabel(
+    labTest: Pick<LabTest, 'title' | 'activityKind'> & {
+      labClass?: { labNumber?: number | null } | null;
+    },
+  ): string {
+    const explicitTitle = labTest.title?.trim();
+    if (explicitTitle) {
+      return explicitTitle;
+    }
+
+    if (labTest.activityKind === LabActivityKind.LAB_TASK) {
+      if (labTest.labClass?.labNumber) {
+        return `Lab ${labTest.labClass.labNumber} Task`;
+      }
+      return 'Lab Task';
+    }
+
+    return 'Lab Test';
+  }
+
+  private resolveDurationMinutes(values: {
+    durationMinutes?: number | null;
+    startTime?: string | Date | null;
+    endTime?: string | Date | null;
+  }): number {
+    if (values.durationMinutes && values.durationMinutes > 0) {
+      return values.durationMinutes;
+    }
+
+    if (values.startTime && values.endTime) {
+      const start = new Date(values.startTime);
+      const end = new Date(values.endTime);
+      const diff = end.getTime() - start.getTime();
+      if (Number.isFinite(diff) && diff > 0) {
+        return Math.max(1, Math.ceil(diff / 60_000));
+      }
+    }
+
+    return 60;
+  }
+
+  private async syncExpiredActivities(labTests: LabTest[]): Promise<void> {
+    const expiredIds = labTests
+      .filter(
+        (labTest) =>
+          labTest.status === LabTestStatus.RUNNING &&
+          Boolean(labTest.endTime) &&
+          new Date(labTest.endTime as Date).getTime() <= Date.now(),
+      )
+      .map((labTest) => labTest.id);
+
+    if (!expiredIds.length) {
+      return;
+    }
+
+    await this.labTestRepo.update({ id: In(expiredIds) }, { status: LabTestStatus.ENDED });
+    labTests.forEach((labTest) => {
+      if (expiredIds.includes(labTest.id)) {
+        labTest.status = LabTestStatus.ENDED;
+      }
+    });
+  }
+
+  private async ensureProblemIsUnique(
+    labTestId: string,
+    values: {
+      title?: string | null;
+      statement?: string | null;
+      sourceProblemId?: string | null;
+    },
+  ) {
+    const existingProblems = await this.problemRepo.find({
+      where: { labTestId },
+      select: ['id', 'title', 'statement', 'sourceProblemId'],
+    });
+
+    if (
+      values.sourceProblemId &&
+      existingProblems.some((problem) => problem.sourceProblemId === values.sourceProblemId)
+    ) {
+      throw new BadRequestException('This problem is already added to the activity');
+    }
+
+    const normalizedTitle = normalizeTextValue(values.title);
+    const normalizedStatement = normalizeTextValue(values.statement);
+    if (!normalizedTitle || !normalizedStatement) {
+      return;
+    }
+
+    const hasSameContent = existingProblems.some(
+      (problem) =>
+        normalizeTextValue(problem.title) === normalizedTitle &&
+        normalizeTextValue(problem.statement) === normalizedStatement,
+    );
+
+    if (hasSameContent) {
+      throw new BadRequestException('This problem is already added to the activity');
+    }
+  }
+
   private async notifyStudentsAboutActivity(labTest: LabTest) {
     const course = await this.courseRepo.findOne({
       where: { id: labTest.courseId },
@@ -298,8 +419,8 @@ export class LabTestsService {
       type: NotificationType.SYSTEM,
       title:
         labTest.activityKind === LabActivityKind.LAB_TASK
-          ? `New Lab Task: ${labTest.title}`
-          : `New Lab Test: ${labTest.title}`,
+          ? `New Lab Task: ${this.getActivityLabel(labTest)}`
+          : `New Lab Test: ${this.getActivityLabel(labTest)}`,
       body:
         labTest.activityKind === LabActivityKind.LAB_TASK
           ? 'A new lab task is available in one of your courses.'
@@ -381,7 +502,9 @@ export class LabTestsService {
   }
 
   private async saveProblemIntoBank(dto: CreateProblemDto, teacherUserId: string) {
+    const problemCode = await this.generateProblemCode();
     const bankProblem = this.problemBankRepo.create({
+      problemCode,
       title: dto.title.trim(),
       statement: dto.statement.trim(),
       inputDescription: dto.inputDescription?.trim() || null,
@@ -391,9 +514,25 @@ export class LabTestsService {
       sampleTestCases: dto.sampleTestCases ?? [],
       hiddenTestCases: dto.hiddenTestCases ?? [],
       authorId: teacherUserId,
-      isPublic: true,
+      isPublic: false,
     });
     return this.problemBankRepo.save(bankProblem);
+  }
+
+  private async generateProblemCode(): Promise<string> {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const suffix = uuidv4().replace(/-/g, '').slice(0, 8).toUpperCase();
+      const code = `TOJ-${suffix}`;
+      const existing = await this.problemBankRepo.findOne({
+        where: { problemCode: code },
+        select: ['id'],
+      });
+      if (!existing) {
+        return code;
+      }
+    }
+
+    throw new BadRequestException('Failed to generate a unique problem code');
   }
 
   private async buildJudgeJobPayload(
@@ -481,6 +620,15 @@ export class LabTestsService {
       dto.sectionName,
       dto.labClassId,
     );
+    const durationMinutes = this.resolveDurationMinutes(dto);
+    const title =
+      dto.activityKind === LabActivityKind.LAB_TASK
+        ? dto.title?.trim() || ''
+        : dto.title?.trim();
+
+    if (dto.activityKind === LabActivityKind.LAB_TEST && !title) {
+      throw new BadRequestException('Title is required');
+    }
 
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
@@ -488,12 +636,13 @@ export class LabTestsService {
     try {
       const labTest = qr.manager.create(LabTest, {
         courseId: dto.courseId,
-        title: dto.title.trim(),
+        title: title ?? '',
         description: dto.description?.trim() || null,
         activityKind: dto.activityKind,
         type: dto.type,
-        startTime: new Date(dto.startTime),
-        endTime: new Date(dto.endTime),
+        startTime: null,
+        endTime: null,
+        durationMinutes,
         totalMarks: dto.totalMarks ?? null,
         sectionName,
         labClassId: labClass?.id ?? null,
@@ -518,7 +667,6 @@ export class LabTestsService {
 
       await qr.commitTransaction();
       const saved = await this.getLabTestById(labTest.id);
-      await this.notifyStudentsAboutActivity(saved);
       return saved;
     } catch (error) {
       await qr.rollbackTransaction();
@@ -528,14 +676,127 @@ export class LabTestsService {
     }
   }
 
+  async updateLabTest(
+    labTestId: string,
+    dto: UpdateLabTestDto,
+    teacherUserId: string,
+  ): Promise<LabTest> {
+    const labTest = await this.labTestRepo.findOneBy({ id: labTestId });
+    if (!labTest) throw new NotFoundException('Lab test not found');
+
+    const { course } = await this.getTeacherCourseAccess(labTest.courseId, teacherUserId);
+    await this.syncExpiredActivities([labTest]);
+
+    if (labTest.status !== LabTestStatus.DRAFT) {
+      throw new BadRequestException('Only draft activities can be edited');
+    }
+
+    const nextSectionName = dto.sectionName ?? labTest.sectionName ?? undefined;
+    const nextLabClassId = dto.labClassId ?? labTest.labClassId ?? undefined;
+    const { sectionName, labClass } = await this.validateActivityPlacement(
+      course,
+      labTest.activityKind,
+      nextSectionName,
+      nextLabClassId,
+    );
+
+    if (labTest.activityKind === LabActivityKind.LAB_TEST) {
+      const nextTitle =
+        dto.title !== undefined ? dto.title.trim() : (labTest.title ?? '').trim();
+      if (!nextTitle) {
+        throw new BadRequestException('Title is required');
+      }
+      labTest.title = nextTitle;
+    } else if (dto.title !== undefined) {
+      labTest.title = dto.title.trim();
+    }
+
+    if (dto.description !== undefined) {
+      labTest.description = dto.description?.trim() || null;
+    }
+    if (dto.type) {
+      labTest.type = dto.type;
+    }
+    if (dto.durationMinutes !== undefined) {
+      labTest.durationMinutes = this.resolveDurationMinutes(dto);
+    }
+    if (dto.totalMarks !== undefined) {
+      labTest.totalMarks = dto.totalMarks ?? null;
+    }
+
+    labTest.sectionName = sectionName;
+    labTest.labClassId = labClass?.id ?? null;
+    return this.labTestRepo.save(labTest);
+  }
+
   async listReusableProblems(teacherUserId: string): Promise<Problem[]> {
     return this.problemBankRepo
       .createQueryBuilder('problem')
-      .where('problem.authorId IS NOT NULL')
+      .where('problem.authorId = :teacherUserId', { teacherUserId })
       .orWhere('problem.isPublic = true')
-      .orWhere('problem.authorId = :teacherUserId', { teacherUserId })
       .orderBy('problem.updatedAt', 'DESC')
       .getMany();
+  }
+
+  async createReusableProblem(
+    dto: CreateProblemDto,
+    teacherUserId: string,
+  ): Promise<Problem> {
+    return this.saveProblemIntoBank(dto, teacherUserId);
+  }
+
+  async getReusableProblemById(id: string, teacherUserId: string): Promise<Problem> {
+    const problem = await this.problemBankRepo.findOneBy({ id });
+    if (!problem) {
+      throw new NotFoundException('Problem not found');
+    }
+
+    if (problem.authorId !== teacherUserId && !problem.isPublic) {
+      throw new ForbiddenException('You do not have access to this problem');
+    }
+
+    return problem;
+  }
+
+  async updateReusableProblem(
+    id: string,
+    dto: UpdateProblemBankDto,
+    teacherUserId: string,
+  ): Promise<Problem> {
+    const problem = await this.problemBankRepo.findOneBy({ id });
+    if (!problem) {
+      throw new NotFoundException('Problem not found');
+    }
+    if (problem.authorId !== teacherUserId) {
+      throw new ForbiddenException('Only your own problems can be edited');
+    }
+
+    if (dto.title !== undefined) {
+      problem.title = dto.title.trim();
+    }
+    if (dto.statement !== undefined) {
+      problem.statement = dto.statement.trim();
+    }
+    if (dto.inputDescription !== undefined) {
+      problem.inputDescription = dto.inputDescription?.trim() || null;
+    }
+    if (dto.outputDescription !== undefined) {
+      problem.outputDescription = dto.outputDescription?.trim() || null;
+    }
+    if (dto.timeLimitMs !== undefined) {
+      problem.timeLimitMs = dto.timeLimitMs ?? null;
+    }
+    if (dto.memoryLimitKb !== undefined) {
+      problem.memoryLimitKb = dto.memoryLimitKb ?? null;
+    }
+    if (dto.sampleTestCases !== undefined) {
+      problem.sampleTestCases = dto.sampleTestCases ?? [];
+    }
+    if (dto.hiddenTestCases !== undefined) {
+      problem.hiddenTestCases = dto.hiddenTestCases ?? [];
+    }
+
+    return this.problemBankRepo.save(problem);
   }
 
   async getProblemsForTeacher(labTestId: string, teacherUserId: string) {
@@ -562,6 +823,7 @@ export class LabTestsService {
     if (labTest.activityKind === LabActivityKind.LAB_TASK && existingCount >= 1) {
       throw new BadRequestException('Lab task can contain only one problem');
     }
+    await this.ensureProblemIsUnique(labTestId, dto);
 
     const bankProblem =
       dto.saveToBank === false
@@ -593,6 +855,11 @@ export class LabTestsService {
     if (labTest.activityKind === LabActivityKind.LAB_TASK && existingCount >= 1) {
       throw new BadRequestException('Lab task can contain only one problem');
     }
+    await this.ensureProblemIsUnique(labTestId, {
+      title: sourceProblem.title,
+      statement: sourceProblem.statement,
+      sourceProblemId: sourceProblem.id,
+    });
 
     const problem = this.problemRepo.create({
       ...this.buildProblemCopy(sourceProblem, sourceProblem.id),
@@ -600,6 +867,70 @@ export class LabTestsService {
       labTestId,
       orderIndex: existingCount + 1,
     });
+    return this.problemRepo.save(problem);
+  }
+
+  async removeProblem(
+    labTestId: string,
+    problemId: string,
+    teacherUserId: string,
+  ): Promise<{ success: true }> {
+    const labTest = await this.labTestRepo.findOneBy({ id: labTestId });
+    if (!labTest) throw new NotFoundException('Lab test not found');
+    await this.getTeacherCourseAccess(labTest.courseId, teacherUserId);
+
+    if (labTest.status !== LabTestStatus.DRAFT) {
+      throw new BadRequestException('Problems can be removed only from draft activities');
+    }
+
+    const problem = await this.problemRepo.findOneBy({ id: problemId, labTestId });
+    if (!problem) {
+      throw new NotFoundException('Problem not found');
+    }
+
+    await this.problemRepo.remove(problem);
+
+    const remaining = await this.problemRepo.find({
+      where: { labTestId },
+      order: { orderIndex: 'ASC', createdAt: 'ASC' },
+    });
+
+    for (let index = 0; index < remaining.length; index += 1) {
+      const item = remaining[index];
+      if (item.orderIndex !== index + 1) {
+        item.orderIndex = index + 1;
+        await this.problemRepo.save(item);
+      }
+    }
+
+    return { success: true };
+  }
+
+  async updateActivityProblem(
+    labTestId: string,
+    problemId: string,
+    dto: UpdateLabActivityProblemDto,
+    teacherUserId: string,
+  ): Promise<LabTestProblem> {
+    const labTest = await this.labTestRepo.findOneBy({ id: labTestId });
+    if (!labTest) {
+      throw new NotFoundException('Lab test not found');
+    }
+    await this.getTeacherCourseAccess(labTest.courseId, teacherUserId);
+
+    if (labTest.status !== LabTestStatus.DRAFT) {
+      throw new BadRequestException('Problems can be updated only for draft activities');
+    }
+
+    const problem = await this.problemRepo.findOneBy({ id: problemId, labTestId });
+    if (!problem) {
+      throw new NotFoundException('Problem not found');
+    }
+
+    if (dto.marks !== undefined) {
+      problem.marks = dto.marks ?? null;
+    }
+
     return this.problemRepo.save(problem);
   }
 
@@ -616,11 +947,48 @@ export class LabTestsService {
   }
 
   async startLabTest(labTestId: string, teacherUserId: string) {
-    return this.updateLabTestStatus(labTestId, LabTestStatus.RUNNING, teacherUserId);
+    const labTest = await this.labTestRepo.findOne({
+      where: { id: labTestId },
+      relations: ['labClass'],
+    });
+    if (!labTest) throw new NotFoundException('Lab test not found');
+    await this.getTeacherCourseAccess(labTest.courseId, teacherUserId);
+
+    await this.syncExpiredActivities([labTest]);
+    if (labTest.status === LabTestStatus.ENDED) {
+      throw new BadRequestException('Ended activity cannot be started again');
+    }
+    if (labTest.status === LabTestStatus.RUNNING) {
+      return labTest;
+    }
+
+    const durationMinutes = this.resolveDurationMinutes(labTest);
+    const startTime = new Date();
+    labTest.status = LabTestStatus.RUNNING;
+    labTest.startTime = startTime;
+    labTest.endTime = new Date(startTime.getTime() + durationMinutes * 60_000);
+    labTest.durationMinutes = durationMinutes;
+    const saved = await this.labTestRepo.save(labTest);
+    await this.notifyStudentsAboutActivity(saved);
+    return saved;
   }
 
   async endLabTest(labTestId: string, teacherUserId: string) {
-    return this.updateLabTestStatus(labTestId, LabTestStatus.ENDED, teacherUserId);
+    const labTest = await this.labTestRepo.findOneBy({ id: labTestId });
+    if (!labTest) throw new NotFoundException('Lab test not found');
+    await this.getTeacherCourseAccess(labTest.courseId, teacherUserId);
+
+    if (labTest.status !== LabTestStatus.RUNNING) {
+      throw new BadRequestException('Only running activities can be ended');
+    }
+
+    const now = new Date();
+    labTest.status = LabTestStatus.ENDED;
+    labTest.endTime = now;
+    if (!labTest.startTime) {
+      labTest.startTime = now;
+    }
+    return this.labTestRepo.save(labTest);
   }
 
   async getLabTestsByCourse(
@@ -652,8 +1020,9 @@ export class LabTestsService {
 
     const labTests = await this.labTestRepo.find({
       where,
-      order: { startTime: 'DESC' },
+      order: { createdAt: 'DESC' },
     });
+    await this.syncExpiredActivities(labTests);
 
     if (role === UserRole.STUDENT) {
       return labTests.filter((labTest) => {
@@ -678,10 +1047,11 @@ export class LabTestsService {
   async getLabTestById(id: string): Promise<LabTest> {
     const labTest = await this.labTestRepo.findOne({
       where: { id },
-      relations: ['problems'],
+      relations: ['problems', 'labClass'],
       order: { problems: { orderIndex: 'ASC' } } as any,
     });
     if (!labTest) throw new NotFoundException('Lab test not found');
+    await this.syncExpiredActivities([labTest]);
     return labTest;
   }
 
@@ -694,6 +1064,9 @@ export class LabTestsService {
   async getLabTestByIdForStudent(id: string, studentUserId: string) {
     const labTest = await this.getLabTestById(id);
     await this.ensureStudentCanAccessLabTest(labTest, studentUserId);
+    if (labTest.status === LabTestStatus.DRAFT) {
+      throw new ForbiddenException('Lab activity has not started');
+    }
     return {
       ...labTest,
       problems: (labTest.problems ?? []).map((problem) =>
@@ -798,10 +1171,15 @@ export class LabTestsService {
     const activities = await this.labTestRepo
       .createQueryBuilder('labTest')
       .where('labTest.courseId IN (:...courseIds)', { courseIds })
-      .orderBy('labTest.startTime', 'DESC')
+      .orderBy('labTest.createdAt', 'DESC')
       .getMany();
+    await this.syncExpiredActivities(activities);
 
     return activities.filter((labTest) => {
+      if (labTest.status !== LabTestStatus.RUNNING) {
+        return false;
+      }
+
       const scopedSectionName = labTest.sectionName
         ? normalizeSectionName(labTest.sectionName)
         : null;
@@ -857,10 +1235,13 @@ export class LabTestsService {
       labTest,
       studentUserId,
     );
+    await this.syncExpiredActivities([labTest]);
 
     const now = new Date();
     if (
       labTest.status !== LabTestStatus.RUNNING ||
+      !labTest.startTime ||
+      !labTest.endTime ||
       now < labTest.startTime ||
       now > labTest.endTime
     ) {
@@ -900,7 +1281,7 @@ export class LabTestsService {
         message: dto.message?.trim() || null,
         metadata: {
           activityKind: labTest.activityKind,
-          activityTitle: labTest.title,
+          activityTitle: this.getActivityLabel(labTest),
         },
       }),
     );
@@ -916,7 +1297,7 @@ export class LabTestsService {
     if (teacherUserIds.length) {
       await this.notifications.createBulk(teacherUserIds, {
         type: NotificationType.SYSTEM,
-        title: `Proctoring alert in ${labTest.title}`,
+        title: `Proctoring alert in ${this.getActivityLabel(labTest)}`,
         body: `${
           student.fullName || student.studentId
         } ${this.describeProctoringEvent(dto.eventType)}.`,
@@ -936,6 +1317,7 @@ export class LabTestsService {
     if (!problem) throw new NotFoundException('Problem not found');
 
     await this.ensureStudentCanAccessLabTest(problem.labTest, studentUserId);
+    await this.syncExpiredActivities([problem.labTest]);
 
     const sourceCode = dto.code?.trim();
     if (!sourceCode) {
@@ -946,6 +1328,8 @@ export class LabTestsService {
     }
     if (
       problem.labTest.status !== LabTestStatus.RUNNING ||
+      !problem.labTest.startTime ||
+      !problem.labTest.endTime ||
       new Date() < problem.labTest.startTime ||
       new Date() > problem.labTest.endTime
     ) {
@@ -971,10 +1355,14 @@ export class LabTestsService {
       problem.labTest,
       studentUserId,
     );
+    await this.syncExpiredActivities([problem.labTest]);
 
     const now = new Date();
     if (problem.labTest.status !== LabTestStatus.RUNNING) {
       throw new ForbiddenException('Lab activity is not currently running');
+    }
+    if (!problem.labTest.startTime || !problem.labTest.endTime) {
+      throw new ForbiddenException('Submission window closed');
     }
     const allowedDeadline = new Date(problem.labTest.endTime.getTime() + 5000);
     if (now < problem.labTest.startTime || now > allowedDeadline) {

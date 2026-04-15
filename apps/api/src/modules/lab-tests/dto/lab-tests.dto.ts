@@ -50,12 +50,13 @@ export class CreateProblemDto {
 
 export class CreateLabTestDto {
   @IsUUID() courseId: string;
-  @IsString() title: string;
+  @IsOptional() @IsString() title?: string;
   @IsOptional() @IsString() description?: string;
   @IsEnum(LabActivityKind) activityKind: LabActivityKind;
   @IsEnum(LabTestType) type: LabTestType;
-  @IsDateString() startTime: string;
-  @IsDateString() endTime: string;
+  @IsOptional() @IsDateString() startTime?: string;
+  @IsOptional() @IsDateString() endTime?: string;
+  @IsOptional() @IsInt() durationMinutes?: number;
   @IsOptional() @IsNumber() totalMarks?: number;
   @IsOptional() @IsString() sectionName?: string;
   @IsOptional() @IsUUID() labClassId?: string;
@@ -64,6 +65,39 @@ export class CreateLabTestDto {
   @ValidateNested({ each: true })
   @Type(() => CreateProblemDto)
   problems?: CreateProblemDto[];
+}
+
+export class UpdateLabTestDto {
+  @IsOptional() @IsString() title?: string;
+  @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsEnum(LabTestType) type?: LabTestType;
+  @IsOptional() @IsInt() durationMinutes?: number;
+  @IsOptional() @IsNumber() totalMarks?: number;
+  @IsOptional() @IsString() sectionName?: string;
+  @IsOptional() @IsUUID() labClassId?: string;
+}
+
+export class UpdateLabActivityProblemDto {
+  @IsOptional() @IsNumber() marks?: number;
+}
+
+export class UpdateProblemBankDto {
+  @IsOptional() @IsString() title?: string;
+  @IsOptional() @IsString() statement?: string;
+  @IsOptional() @IsString() inputDescription?: string;
+  @IsOptional() @IsString() outputDescription?: string;
+  @IsOptional() @IsInt() timeLimitMs?: number;
+  @IsOptional() @IsInt() memoryLimitKb?: number;
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SampleTestCaseDto)
+  sampleTestCases?: SampleTestCaseDto[];
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => HiddenTestCaseDto)
+  hiddenTestCases?: HiddenTestCaseDto[];
 }
 
 export class SubmitLabCodeDto {

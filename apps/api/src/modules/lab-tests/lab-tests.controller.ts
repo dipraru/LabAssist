@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -27,6 +28,9 @@ import {
   ReportLabProctoringEventDto,
   RunLabCodeDto,
   SubmitLabCodeDto,
+  UpdateLabActivityProblemDto,
+  UpdateLabTestDto,
+  UpdateProblemBankDto,
 } from './dto/lab-tests.dto';
 import { LabActivityKind, LabTestStatus } from './entities/lab-test.entity';
 import { SubmissionStatus } from '../../common/enums';
@@ -42,6 +46,16 @@ export class LabTestsController {
   @Post()
   create(@Body() dto: CreateLabTestDto, @CurrentUser() user: any) {
     return this.svc.createLabTest(dto, user.id);
+  }
+
+  @Roles(UserRole.TEACHER)
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateLabTestDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.svc.updateLabTest(id, dto, user.id);
   }
 
   @Roles(UserRole.TEACHER)
@@ -92,6 +106,28 @@ export class LabTestsController {
   }
 
   @Roles(UserRole.TEACHER)
+  @Post('problem-bank')
+  createProblemBankEntry(@Body() dto: CreateProblemDto, @CurrentUser() user: any) {
+    return this.svc.createReusableProblem(dto, user.id);
+  }
+
+  @Roles(UserRole.TEACHER)
+  @Get('problem-bank/:id')
+  getProblemBankEntry(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.svc.getReusableProblemById(id, user.id);
+  }
+
+  @Roles(UserRole.TEACHER)
+  @Patch('problem-bank/:id')
+  updateProblemBankEntry(
+    @Param('id') id: string,
+    @Body() dto: UpdateProblemBankDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.svc.updateReusableProblem(id, dto, user.id);
+  }
+
+  @Roles(UserRole.TEACHER)
   @Post(':id/problems')
   addProblem(
     @Param('id') id: string,
@@ -109,6 +145,27 @@ export class LabTestsController {
     @CurrentUser() user: any,
   ) {
     return this.svc.importProblem(id, dto, user.id);
+  }
+
+  @Roles(UserRole.TEACHER)
+  @Delete(':id/problems/:problemId')
+  removeProblem(
+    @Param('id') id: string,
+    @Param('problemId') problemId: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.svc.removeProblem(id, problemId, user.id);
+  }
+
+  @Roles(UserRole.TEACHER)
+  @Patch(':id/problems/:problemId')
+  updateActivityProblem(
+    @Param('id') id: string,
+    @Param('problemId') problemId: string,
+    @Body() dto: UpdateLabActivityProblemDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.svc.updateActivityProblem(id, problemId, dto, user.id);
   }
 
   @Roles(UserRole.TEACHER)
