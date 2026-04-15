@@ -22,6 +22,7 @@ import {
 import { api } from '../../lib/api';
 import { studentDisplayName } from '../../lib/display';
 import { Modal } from '../../components/Modal';
+import { TeacherLabActivityManager } from './TeacherLabActivityManager';
 import {
   StudentAvatar,
   TeacherAvatarStack,
@@ -164,23 +165,6 @@ export function TeacherCourseDetail() {
     queryFn: () => api.get(`/assignments/course/${courseId}`).then((response) => response.data),
     enabled: Boolean(courseId),
   });
-  const { data: courseLabTests = [] } = useQuery({
-    queryKey: ['teacher-course-lab-tests', courseId],
-    queryFn: () =>
-      api
-        .get(`/lab-tests/course/${courseId}`, { params: { kind: 'lab_test' } })
-        .then((response) => response.data),
-    enabled: Boolean(courseId),
-  });
-  const { data: courseLabTasks = [] } = useQuery({
-    queryKey: ['teacher-course-lab-tasks', courseId],
-    queryFn: () =>
-      api
-        .get(`/lab-tests/course/${courseId}`, { params: { kind: 'lab_task' } })
-        .then((response) => response.data),
-    enabled: Boolean(courseId),
-  });
-
   const archived = isCourseArchived(course);
   const sectionNames = useMemo(() => getCourseSectionNames(course), [course]);
   const students = useMemo(() => getCourseStudents(course), [course]);
@@ -843,26 +827,30 @@ export function TeacherCourseDetail() {
       ) : null}
 
       {activeTab === 'lab-tests' ? (
-        <CourseLabActivitiesPanel
-          title="Lab Tests"
-          description="Create contest-style lab exams with multiple problems and remote judge verdicts."
-          emptyTitle="No lab tests created for this course yet"
-          courseId={courseId}
-          kind="lab_test"
-          activities={courseLabTests as any[]}
-          archived={archived}
+        <TeacherLabActivityManager
+          fixedCourseId={courseId}
+          fixedActivityKind="lab_test"
+          disableCreation={archived}
+          heading={{
+            eyebrow: 'Course Workspace',
+            title: 'Lab Tests',
+            description:
+              'Manage all lab tests for this course here, including section-scoped scheduling, problems, submissions, and grading.',
+          }}
         />
       ) : null}
 
       {activeTab === 'lab-tasks' ? (
-        <CourseLabActivitiesPanel
-          title="Lab Tasks"
-          description="Create solo timed problem-solving tasks directly for this course."
-          emptyTitle="No lab tasks created for this course yet"
-          courseId={courseId}
-          kind="lab_task"
-          activities={courseLabTasks as any[]}
-          archived={archived}
+        <TeacherLabActivityManager
+          fixedCourseId={courseId}
+          fixedActivityKind="lab_task"
+          disableCreation={archived}
+          heading={{
+            eyebrow: 'Course Workspace',
+            title: 'Lab Tasks',
+            description:
+              'Review previous lab tasks for this course and create new section-specific tasks that are tied to a lab class.',
+          }}
         />
       ) : null}
 
@@ -1290,112 +1278,6 @@ function EmptyState({ title }: { title: string }) {
     <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
       {title}
     </div>
-  );
-}
-
-function CourseLabActivitiesPanel({
-  title,
-  description,
-  emptyTitle,
-  courseId,
-  kind,
-  activities,
-  archived,
-}: {
-  title: string;
-  description: string;
-  emptyTitle: string;
-  courseId: string;
-  kind: 'lab_test' | 'lab_task';
-  activities: any[];
-  archived: boolean;
-}) {
-  return (
-    <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-            {title}
-          </p>
-          <h3 className="mt-2 text-2xl font-semibold text-slate-900">{title}</h3>
-          <p className="mt-2 max-w-2xl text-sm text-slate-500">{description}</p>
-        </div>
-
-        <Link
-          to={`/teacher/lab-tests?courseId=${courseId}&kind=${kind}`}
-          className={`inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium transition ${
-            archived
-              ? 'border border-slate-200 bg-slate-100 text-slate-400'
-              : 'bg-slate-900 text-white hover:bg-slate-800'
-          }`}
-        >
-          <Plus size={16} />
-          Open {kind === 'lab_task' ? 'Task' : 'Test'} Manager
-        </Link>
-      </div>
-
-      {activities.length ? (
-        <div className="mt-6 grid gap-4 xl:grid-cols-2">
-          {activities.map((activity) => (
-            <div
-              key={activity.id}
-              className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-5"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-lg font-semibold text-slate-900">
-                    {activity.title}
-                  </p>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {String(activity.type ?? '')
-                      .replace(/_/g, ' ')
-                      .replace(/\b\w/g, (char: string) => char.toUpperCase())}{' '}
-                    · {activity.totalMarks ?? 'N/A'} marks
-                  </p>
-                </div>
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                    activity.status === 'running'
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : activity.status === 'ended'
-                        ? 'bg-slate-100 text-slate-600'
-                        : 'bg-amber-100 text-amber-700'
-                  }`}
-                >
-                  {String(activity.status ?? '')
-                    .replace(/_/g, ' ')
-                    .replace(/\b\w/g, (char: string) => char.toUpperCase())}
-                </span>
-              </div>
-
-              {activity.description ? (
-                <p className="mt-3 line-clamp-3 text-sm text-slate-600">
-                  {activity.description}
-                </p>
-              ) : null}
-
-              <div className="mt-4 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
-                <p>Starts: {formatDateTime(activity.startTime)}</p>
-                <p>Ends: {formatDateTime(activity.endTime)}</p>
-              </div>
-
-              <div className="mt-4 flex justify-end">
-                <Link
-                  to={`/teacher/lab-tests?courseId=${courseId}&kind=${kind}`}
-                  className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                >
-                  Manage
-                </Link>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="mt-6 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-12 text-center text-sm text-slate-500">
-          {emptyTitle}
-        </div>
-      )}
-    </section>
   );
 }
 

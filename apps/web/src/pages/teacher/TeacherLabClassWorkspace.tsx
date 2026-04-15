@@ -23,6 +23,7 @@ import {
 import { Modal } from '../../components/Modal';
 import { api } from '../../lib/api';
 import { studentDisplayName } from '../../lib/display';
+import { TeacherLabActivityManager } from './TeacherLabActivityManager';
 import {
   StudentAvatar,
   formatDateOnly,
@@ -33,6 +34,7 @@ import {
   getEffectiveLabSectionSchedule,
   getStudentRollLabel,
   getStudentsForSection,
+  isCourseArchived,
   isLabSectionScheduledNow,
   resolveStudentSection,
 } from './teacher.shared';
@@ -269,6 +271,7 @@ export function TeacherLabClassWorkspace() {
     ? `Batch ${course.semester.batchYear}`
     : 'Selected batch';
   const selectedEffectiveSchedule = getEffectiveLabSectionSchedule(course, selectedSection);
+  const archived = course ? isCourseArchived(course) : false;
 
   useEffect(() => {
     if (!sections.length) {
@@ -848,131 +851,153 @@ export function TeacherLabClassWorkspace() {
           </div>
         </section>
       ) : (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-          <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                  Lecture Material
-                </p>
-                <h2 className="mt-2 text-2xl font-semibold text-slate-900">
-                  {selectedSection.sectionName}
-                </h2>
+        <div className="space-y-6">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+            <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                    Lecture Material
+                  </p>
+                  <h2 className="mt-2 text-2xl font-semibold text-slate-900">
+                    {selectedSection.sectionName}
+                  </h2>
+                </div>
               </div>
-            </div>
 
-            {visibleMaterials.length ? (
-              <div className="mt-5 space-y-4">
-                {visibleMaterials.map((sheet: any) => (
-                  <div
-                    key={sheet.id}
-                    className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-5"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
-                        {sheet.sectionName ? `${sheet.sectionName} only` : 'All sections'}
-                      </span>
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
-                        Lab {sheet?.labClass?.labNumber}
-                      </span>
-                      <span className="text-xs font-medium text-slate-400">
-                        {formatDateTime(sheet.createdAt)}
-                      </span>
-                      <a
-                        href={getMaterialHref(courseId, sheet.id)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-50"
-                      >
-                        <Link2 size={12} />
-                        Open
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingMaterial(sheet);
-                          editMaterialForm.reset({
-                            title: sheet.title ?? '',
-                            description: sheet.description ?? '',
-                            links:
-                              Array.isArray(sheet.links) && sheet.links.length
-                                ? sheet.links.map((link: any) => ({
-                                    url: link.url ?? '',
-                                    label: link.label ?? '',
-                                  }))
-                                : [{ url: '', label: '' }],
-                          });
-                        }}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                      >
-                        <PencilLine size={12} />
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (deleteMaterialMutation.isPending) return;
-                          if (!window.confirm('Delete this lecture material?')) return;
-                          deleteMaterialMutation.mutate(sheet.id);
-                        }}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={deleteMaterialMutation.isPending}
-                      >
-                        <Trash2 size={12} />
-                        Delete
-                      </button>
-                    </div>
-                    <h3 className="mt-3 text-lg font-semibold text-slate-900">{sheet.title}</h3>
-                    {sheet.description ? (
-                      <p className="mt-2 text-sm text-slate-500">{sheet.description}</p>
-                    ) : null}
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {(sheet.links ?? []).map((link: any, index: number) => (
+              {visibleMaterials.length ? (
+                <div className="mt-5 space-y-4">
+                  {visibleMaterials.map((sheet: any) => (
+                    <div
+                      key={sheet.id}
+                      className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-5"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                          {sheet.sectionName ? `${sheet.sectionName} only` : 'All sections'}
+                        </span>
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                          Lab {sheet?.labClass?.labNumber}
+                        </span>
+                        <span className="text-xs font-medium text-slate-400">
+                          {formatDateTime(sheet.createdAt)}
+                        </span>
                         <a
-                          key={`${sheet.id}-${index}`}
-                          href={link.url}
+                          href={getMaterialHref(courseId, sheet.id)}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50"
+                          className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-50"
                         >
                           <Link2 size={12} />
-                          {link.label || 'Open material'}
+                          Open
                         </a>
-                      ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingMaterial(sheet);
+                            editMaterialForm.reset({
+                              title: sheet.title ?? '',
+                              description: sheet.description ?? '',
+                              links:
+                                Array.isArray(sheet.links) && sheet.links.length
+                                  ? sheet.links.map((link: any) => ({
+                                      url: link.url ?? '',
+                                      label: link.label ?? '',
+                                    }))
+                                  : [{ url: '', label: '' }],
+                            });
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                        >
+                          <PencilLine size={12} />
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (deleteMaterialMutation.isPending) return;
+                            if (!window.confirm('Delete this lecture material?')) return;
+                            deleteMaterialMutation.mutate(sheet.id);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={deleteMaterialMutation.isPending}
+                        >
+                          <Trash2 size={12} />
+                          Delete
+                        </button>
+                      </div>
+                      <h3 className="mt-3 text-lg font-semibold text-slate-900">{sheet.title}</h3>
+                      {sheet.description ? (
+                        <p className="mt-2 text-sm text-slate-500">{sheet.description}</p>
+                      ) : null}
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {(sheet.links ?? []).map((link: any, index: number) => (
+                          <a
+                            key={`${sheet.id}-${index}`}
+                            href={link.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50"
+                          >
+                            <Link2 size={12} />
+                            {link.label || 'Open material'}
+                          </a>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-5 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
-                No lecture material for this section yet.
-              </div>
-            )}
-          </section>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-5 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
+                  No lecture material for this section yet.
+                </div>
+              )}
+            </section>
 
-          <section className="space-y-6">
-            <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                Attendance
-              </p>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <AttendanceStat label="Present" value={presentCount} />
-                <AttendanceStat label="Absent" value={absentCount} />
+            <section className="space-y-6">
+              <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                  Attendance
+                </p>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <AttendanceStat label="Present" value={presentCount} />
+                  <AttendanceStat label="Absent" value={absentCount} />
+                </div>
+                <p className="mt-4 text-xs text-slate-400">
+                  Completed {formatDateTime(selectedSection.attendanceTakenAt)}
+                </p>
               </div>
-              <p className="mt-4 text-xs text-slate-400">
-                Completed {formatDateTime(selectedSection.attendanceTakenAt)}
-              </p>
-            </div>
 
-            <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                Lab Task
-              </p>
-              <div className="mt-4 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
-                Lab task will be added later.
+              <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                  Lab Task
+                </p>
+                <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50/80 px-5 py-5 text-sm text-slate-600">
+                  <p className="font-semibold text-slate-900">
+                    Create tasks for Lab {labClass.labNumber} and {selectedSection.sectionName}
+                  </p>
+                  <p className="mt-2">
+                    This area now uses the current lab class and selected section automatically, so teachers can create and manage lab tasks for conducted sections without leaving the lab workspace.
+                  </p>
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
+          </div>
+
+          <TeacherLabActivityManager
+            key={`${labClassId}-${selectedSection.id}`}
+            fixedCourseId={courseId}
+            fixedActivityKind="lab_task"
+            fixedLabClassId={labClassId}
+            fixedSectionName={selectedSection.sectionName}
+            disableCreation={archived}
+            heading={{
+              eyebrow: 'Lab Class Workspace',
+              title: `Lab ${labClass.labNumber} Tasks`,
+              description:
+                'Manage the section-specific lab tasks for this conducted class here. New tasks automatically use this lab class and the selected section.',
+            }}
+          />
         </div>
       )}
 

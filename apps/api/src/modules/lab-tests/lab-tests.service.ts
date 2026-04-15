@@ -34,11 +34,37 @@ import {
 } from '../../common/enums';
 import { Course } from '../courses/entities/course.entity';
 import { Enrollment } from '../courses/entities/enrollment.entity';
+import { LabClass } from '../courses/entities/lab-class.entity';
 import { Teacher } from '../users/entities/teacher.entity';
 import { Student } from '../users/entities/student.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { UserRole } from '../../common/enums/role.enum';
+import { Batch, BatchSection } from '../office/entities/batch.entity';
+
+function normalizeSectionName(sectionName?: string | null): string {
+  return sectionName?.trim() || 'All Students';
+}
+
+function studentIdFallsInsideSection(
+  studentId: string,
+  fromStudentId: string,
+  toStudentId: string,
+): boolean {
+  const current = Number(studentId);
+  const from = Number(fromStudentId);
+  const to = Number(toStudentId);
+
+  if (
+    !Number.isFinite(current) ||
+    !Number.isFinite(from) ||
+    !Number.isFinite(to)
+  ) {
+    return false;
+  }
+
+  return current >= Math.min(from, to) && current <= Math.max(from, to);
+}
 
 @Injectable()
 export class LabTestsService {
@@ -55,8 +81,11 @@ export class LabTestsService {
     @InjectRepository(Course) private courseRepo: Repository<Course>,
     @InjectRepository(Enrollment)
     private enrollmentRepo: Repository<Enrollment>,
+    @InjectRepository(LabClass)
+    private labClassRepo: Repository<LabClass>,
     @InjectRepository(Teacher) private teacherRepo: Repository<Teacher>,
     @InjectRepository(Student) private studentRepo: Repository<Student>,
+    @InjectRepository(Batch) private batchRepo: Repository<Batch>,
     private dataSource: DataSource,
     private storage: StorageService,
     private judgeRemote: LabJudgeRemoteService,
@@ -71,7 +100,7 @@ export class LabTestsService {
 
     const course = await this.courseRepo.findOne({
       where: { id: courseId },
-      relations: ['teachers'],
+      relations: ['teachers', 'semester', 'schedules'],
     });
     if (!course) throw new NotFoundException('Course not found');
 
@@ -83,25 +112,164 @@ export class LabTestsService {
     return { teacher, course };
   }
 
-  private async getStudentCourseAccess(courseId: string, studentUserId: string) {
+  private async getCourseBatchSections(course: Course): Promise<BatchSection[]> {
+    if (!(course as Course & { semester?: any })?.semester?.batchYear) {
+      return [];
+    }
+
+    const batch = await this.batchRepo.findOne({
+      where: { year: (course as Course & { semester?: any }).semester.batchYear },
+    });
+
+    return batch?.sections ?? [];
+  }
+
+  private async getCourseSectionNames(course: Course): Promise<string[]> {
+    const batchSections = await this.getCourseBatchSections(course);
+    const batchNames = batchSections.map((section) => normalizeSectionName(section.name));
+    const scheduleNames = Array.isArray((course as Course & { schedules?: any[] }).schedules)
+      ? ((course as Course & { schedules?: any[] }).schedules ?? []).map((schedule: any) =>
+          normalizeSectionName(schedule?.sectionName),
+        )
+      : [];
+
+    const values = [...batchNames, ...scheduleNames].filter(Boolean);
+    return Array.from(new Set(values.length ? values : ['All Students']));
+  }
+
+  private resolveStudentSection(
+    student: Student,
+    batchSections: BatchSection[],
+  ): string {
+    return (
+      batchSections.find((section) =>
+        studentIdFallsInsideSection(
+          student.studentId,
+          section.fromStudentId,
+          section.toStudentId,
+        ),
+      )?.name ?? 'All Students'
+    );
+  }
+
+  private async validateActivityPlacement(
+    course: Course,
+    activityKind: LabActivityKind,
+    sectionName?: string | null,
+    labClassId?: string | null,
+  ): Promise<{
+    sectionName: string;
+    labClass: LabClass | null;
+  }> {
+    const courseSections = await this.getCourseSectionNames(course);
+    const normalizedSectionName = normalizeSectionName(sectionName);
+
+    if (!sectionName?.trim() && courseSections.length > 1) {
+      throw new BadRequestException('Section is required');
+    }
+
+    if (!courseSections.includes(normalizedSectionName)) {
+      throw new BadRequestException('Invalid section for this course');
+    }
+
+    let labClass: LabClass | null = null;
+    if (labClassId) {
+      labClass = await this.labClassRepo.findOne({
+        where: { id: labClassId },
+        relations: ['sections'],
+      });
+      if (!labClass || labClass.courseId !== course.id) {
+        throw new BadRequestException('Selected lab class does not belong to this course');
+      }
+      if (
+        !(labClass.sections ?? []).some(
+          (section) => normalizeSectionName(section.sectionName) === normalizedSectionName,
+        )
+      ) {
+        throw new BadRequestException('Selected lab class does not include this section');
+      }
+    }
+
+    if (activityKind === LabActivityKind.LAB_TASK && !labClass) {
+      throw new BadRequestException('Lab task must be linked to a lab class');
+    }
+
+    return {
+      sectionName: normalizedSectionName,
+      labClass,
+    };
+  }
+
+  private async getStudentCourseAccess(
+    courseId: string,
+    studentUserId: string,
+  ): Promise<{
+    student: Student;
+    course: Course & { batchSections: BatchSection[] };
+    sectionName: string;
+  }> {
     const student = await this.studentRepo.findOne({
       where: { userId: studentUserId },
-      relations: ['user'],
     });
     if (!student) throw new NotFoundException('Student not found');
 
+    const course = await this.courseRepo.findOne({
+      where: { id: courseId },
+      relations: ['semester', 'schedules'],
+    });
+    if (!course) throw new NotFoundException('Course not found');
+
     const enrollment = await this.enrollmentRepo.findOne({
       where: { courseId, studentId: student.id, isActive: true },
-      relations: ['course'],
     });
-    if (!enrollment) {
+    if (!enrollment || !course) {
       throw new ForbiddenException('You are not enrolled in this course');
     }
 
-    return { student, course: enrollment.course };
+    const batchSections = await this.getCourseBatchSections(course);
+
+    return {
+      student,
+      course: Object.assign(course, { batchSections }),
+      sectionName: this.resolveStudentSection(student, batchSections),
+    };
+  }
+
+  private async ensureStudentCanAccessLabTest(
+    labTest: LabTest,
+    studentUserId: string,
+  ): Promise<{
+    student: Student;
+    course: Course & { batchSections: BatchSection[] };
+    sectionName: string;
+  }> {
+    const access = await this.getStudentCourseAccess(labTest.courseId, studentUserId);
+    const scopedSectionName = labTest.sectionName
+      ? normalizeSectionName(labTest.sectionName)
+      : null;
+
+    if (
+      scopedSectionName &&
+      scopedSectionName !== 'All Students' &&
+      scopedSectionName !== access.sectionName
+    ) {
+      throw new ForbiddenException('This lab activity is not assigned to your section');
+    }
+
+    return access;
   }
 
   private async notifyStudentsAboutActivity(labTest: LabTest) {
+    const course = await this.courseRepo.findOne({
+      where: { id: labTest.courseId },
+      relations: ['semester'],
+    });
+    if (!course) return;
+
+    const batchSections = await this.getCourseBatchSections(course);
+    const scopedSectionName = labTest.sectionName
+      ? normalizeSectionName(labTest.sectionName)
+      : null;
     const enrollments = await this.enrollmentRepo.find({
       where: { courseId: labTest.courseId, isActive: true },
       relations: ['student'],
@@ -109,6 +277,16 @@ export class LabTestsService {
     const recipientUserIds = Array.from(
       new Set(
         enrollments
+          .filter((enrollment) => {
+            if (!scopedSectionName || scopedSectionName === 'All Students') {
+              return true;
+            }
+
+            return (
+              this.resolveStudentSection(enrollment.student, batchSections) ===
+              scopedSectionName
+            );
+          })
           .map((enrollment) => enrollment.student?.userId)
           .filter((userId): userId is string => Boolean(userId)),
       ),
@@ -296,7 +474,13 @@ export class LabTestsService {
     dto: CreateLabTestDto,
     teacherUserId: string,
   ): Promise<LabTest> {
-    await this.getTeacherCourseAccess(dto.courseId, teacherUserId);
+    const { course } = await this.getTeacherCourseAccess(dto.courseId, teacherUserId);
+    const { sectionName, labClass } = await this.validateActivityPlacement(
+      course,
+      dto.activityKind,
+      dto.sectionName,
+      dto.labClassId,
+    );
 
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
@@ -311,6 +495,8 @@ export class LabTestsService {
         startTime: new Date(dto.startTime),
         endTime: new Date(dto.endTime),
         totalMarks: dto.totalMarks ?? null,
+        sectionName,
+        labClassId: labClass?.id ?? null,
         status: LabTestStatus.DRAFT,
       });
       await qr.manager.save(labTest);
@@ -442,20 +628,48 @@ export class LabTestsService {
     requesterUserId: string,
     role: UserRole,
     activityKind?: LabActivityKind,
+    sectionName?: string,
+    labClassId?: string,
   ): Promise<LabTest[]> {
+    let viewerSectionName: string | null = null;
     if (role === UserRole.TEACHER) {
       await this.getTeacherCourseAccess(courseId, requesterUserId);
     } else {
-      await this.getStudentCourseAccess(courseId, requesterUserId);
+      const studentAccess = await this.getStudentCourseAccess(courseId, requesterUserId);
+      viewerSectionName = studentAccess.sectionName;
+    }
+
+    const where: Record<string, any> = { courseId };
+    if (activityKind) {
+      where.activityKind = activityKind;
+    }
+    if (sectionName?.trim()) {
+      where.sectionName = normalizeSectionName(sectionName);
+    }
+    if (labClassId?.trim()) {
+      where.labClassId = labClassId.trim();
     }
 
     const labTests = await this.labTestRepo.find({
-      where: activityKind ? { courseId, activityKind } : { courseId },
+      where,
       order: { startTime: 'DESC' },
     });
 
     if (role === UserRole.STUDENT) {
-      return labTests.filter((labTest) => labTest.status !== LabTestStatus.DRAFT);
+      return labTests.filter((labTest) => {
+        if (labTest.status === LabTestStatus.DRAFT) {
+          return false;
+        }
+
+        const scopedSectionName = labTest.sectionName
+          ? normalizeSectionName(labTest.sectionName)
+          : null;
+        if (!scopedSectionName || scopedSectionName === 'All Students') {
+          return true;
+        }
+
+        return scopedSectionName === viewerSectionName;
+      });
     }
 
     return labTests;
@@ -479,7 +693,7 @@ export class LabTestsService {
 
   async getLabTestByIdForStudent(id: string, studentUserId: string) {
     const labTest = await this.getLabTestById(id);
-    await this.getStudentCourseAccess(labTest.courseId, studentUserId);
+    await this.ensureStudentCanAccessLabTest(labTest, studentUserId);
     return {
       ...labTest,
       problems: (labTest.problems ?? []).map((problem) =>
@@ -571,16 +785,37 @@ export class LabTestsService {
     const courseIds = enrollments.map((enrollment) => enrollment.courseId);
     if (!courseIds.length) return [];
 
-    return this.labTestRepo
+    const courses = await this.courseRepo.find({
+      where: courseIds.map((courseId) => ({ id: courseId })),
+      relations: ['semester', 'schedules'],
+    });
+    const sectionByCourseId = new Map<string, string>();
+    for (const course of courses) {
+      const batchSections = await this.getCourseBatchSections(course);
+      sectionByCourseId.set(course.id, this.resolveStudentSection(student, batchSections));
+    }
+
+    const activities = await this.labTestRepo
       .createQueryBuilder('labTest')
       .where('labTest.courseId IN (:...courseIds)', { courseIds })
       .orderBy('labTest.startTime', 'DESC')
       .getMany();
+
+    return activities.filter((labTest) => {
+      const scopedSectionName = labTest.sectionName
+        ? normalizeSectionName(labTest.sectionName)
+        : null;
+      if (!scopedSectionName || scopedSectionName === 'All Students') {
+        return true;
+      }
+
+      return scopedSectionName === sectionByCourseId.get(labTest.courseId);
+    });
   }
 
   async getProblemsForStudent(labTestId: string, studentUserId: string): Promise<any[]> {
     const labTest = await this.getLabTestById(labTestId);
-    await this.getStudentCourseAccess(labTest.courseId, studentUserId);
+    await this.ensureStudentCanAccessLabTest(labTest, studentUserId);
     if (labTest.status === LabTestStatus.DRAFT) {
       throw new ForbiddenException('Lab activity has not started');
     }
@@ -595,7 +830,7 @@ export class LabTestsService {
 
   async getMySubmissionsForLabTest(labTestId: string, studentUserId: string) {
     const labTest = await this.getLabTestById(labTestId);
-    const { student } = await this.getStudentCourseAccess(labTest.courseId, studentUserId);
+    const { student } = await this.ensureStudentCanAccessLabTest(labTest, studentUserId);
     const problems = await this.problemRepo.findBy({ labTestId });
     const problemIds = problems.map((problem) => problem.id);
     if (!problemIds.length) return [];
@@ -618,8 +853,8 @@ export class LabTestsService {
     });
     if (!labTest) throw new NotFoundException('Lab activity not found');
 
-    const { student } = await this.getStudentCourseAccess(
-      labTest.courseId,
+    const { student } = await this.ensureStudentCanAccessLabTest(
+      labTest,
       studentUserId,
     );
 
@@ -700,7 +935,7 @@ export class LabTestsService {
     });
     if (!problem) throw new NotFoundException('Problem not found');
 
-    await this.getStudentCourseAccess(problem.labTest.courseId, studentUserId);
+    await this.ensureStudentCanAccessLabTest(problem.labTest, studentUserId);
 
     const sourceCode = dto.code?.trim();
     if (!sourceCode) {
@@ -732,8 +967,8 @@ export class LabTestsService {
     });
     if (!problem) throw new NotFoundException('Problem not found');
 
-    const { student } = await this.getStudentCourseAccess(
-      problem.labTest.courseId,
+    const { student } = await this.ensureStudentCanAccessLabTest(
+      problem.labTest,
       studentUserId,
     );
 
@@ -814,8 +1049,8 @@ export class LabTestsService {
       relations: ['labTest'],
     });
     if (!problem) throw new NotFoundException('Problem not found');
-    const { student } = await this.getStudentCourseAccess(
-      problem.labTest.courseId,
+    const { student } = await this.ensureStudentCanAccessLabTest(
+      problem.labTest,
       studentUserId,
     );
 

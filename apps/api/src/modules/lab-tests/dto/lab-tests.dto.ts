@@ -57,6 +57,8 @@ export class CreateLabTestDto {
   @IsDateString() startTime: string;
   @IsDateString() endTime: string;
   @IsOptional() @IsNumber() totalMarks?: number;
+  @IsOptional() @IsString() sectionName?: string;
+  @IsOptional() @IsUUID() labClassId?: string;
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })

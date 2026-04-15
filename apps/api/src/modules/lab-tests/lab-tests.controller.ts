@@ -72,8 +72,17 @@ export class LabTestsController {
     @Param('courseId') courseId: string,
     @CurrentUser() user: any,
     @Query('kind') kind?: LabActivityKind,
+    @Query('sectionName') sectionName?: string,
+    @Query('labClassId') labClassId?: string,
   ) {
-    return this.svc.getLabTestsByCourse(courseId, user.id, user.role, kind);
+    return this.svc.getLabTestsByCourse(
+      courseId,
+      user.id,
+      user.role,
+      kind,
+      sectionName,
+      labClassId,
+    );
   }
 
   @Roles(UserRole.TEACHER)

@@ -9,6 +9,7 @@ import {
   OneToMany,
 } from 'typeorm';
 import { Course } from '../../courses/entities/course.entity';
+import { LabClass } from '../../courses/entities/lab-class.entity';
 import { LabTestProblem } from './lab-test-problem.entity';
 import { LabTestType } from '../../../common/enums';
 
@@ -56,12 +57,22 @@ export class LabTest {
   @Column({ type: 'float', nullable: true })
   totalMarks: number | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  sectionName: string | null;
+
   @ManyToOne(() => Course, { eager: true, onDelete: 'CASCADE' })
   @JoinColumn()
   course: Course;
 
   @Column()
   courseId: string;
+
+  @ManyToOne(() => LabClass, { eager: true, nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn()
+  labClass: LabClass | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  labClassId: string | null;
 
   @OneToMany(() => LabTestProblem, (p) => p.labTest, { cascade: true })
   problems: LabTestProblem[];
