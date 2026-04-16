@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import AceEditor from 'react-ace';
 import toast from 'react-hot-toast';
-import { Clock3, Play, Send, Upload } from 'lucide-react';
+import { ArrowRight, CalendarClock, Clock3, Play, Send, Upload } from 'lucide-react';
 import 'ace-builds/src-noconflict/mode-c_cpp';
 import 'ace-builds/src-noconflict/mode-java';
 import 'ace-builds/src-noconflict/mode-javascript';
@@ -59,6 +59,16 @@ function statusBadge(status: string) {
   return 'bg-amber-100 text-amber-700';
 }
 
+function statusSurface(status: string) {
+  if (status === 'running') {
+    return 'border-emerald-200 bg-[linear-gradient(135deg,#ecfdf5_0%,#ffffff_100%)]';
+  }
+  if (status === 'ended') {
+    return 'border-slate-200 bg-[linear-gradient(135deg,#f8fafc_0%,#ffffff_100%)]';
+  }
+  return 'border-amber-200 bg-[linear-gradient(135deg,#fffbeb_0%,#ffffff_100%)]';
+}
+
 function getActivityDisplayTitle(activity: any): string {
   if (activity?.title?.trim()) {
     return activity.title.trim();
@@ -87,6 +97,18 @@ function getActivityDuration(activity: any): number {
   }
 
   return 60;
+}
+
+function formatDateTimeLabel(value: string | null | undefined): string {
+  if (!value) return 'Not scheduled';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
 }
 
 function Countdown({
@@ -244,6 +266,14 @@ export function StudentLabTests() {
         selectedProblemId ? submission.problemId === selectedProblemId : false,
       ),
     [mySubmissions, selectedProblemId],
+  );
+  const runningActivitiesCount = useMemo(
+    () => (activities as any[]).filter((activity: any) => activity?.status === 'running').length,
+    [activities],
+  );
+  const selectedCourseMeta = useMemo(
+    () => (courses as any[]).find((course: any) => course.id === filterCourse) ?? null,
+    [courses, filterCourse],
   );
 
   const proctoringActive = Boolean(
@@ -492,63 +522,86 @@ export function StudentLabTests() {
             : 'mx-auto max-w-[1560px] space-y-6'
         }
       >
-        <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">
-                Student Workspace
-              </p>
-              <h1 className="mt-2 text-3xl font-semibold text-slate-900">
-                {filterKind === 'lab_task' ? 'Lab Tasks' : 'Lab Tests'}
-              </h1>
-              <p className="mt-2 text-sm text-slate-500">
-                Solve judge-style course activities, run against visible samples, and keep your
-                final submission history in one place.
-              </p>
-            </div>
+        <section className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_24px_70px_-42px_rgba(15,23,42,0.35)]">
+          <div className="bg-[radial-gradient(circle_at_top_left,#0f172a,transparent_44%),linear-gradient(135deg,#082f49_0%,#1d4ed8_58%,#38bdf8_100%)] px-6 py-8 text-white sm:px-8">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+              <div className="max-w-3xl">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-100/85">
+                  Student Workspace
+                </p>
+                <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">
+                  {filterKind === 'lab_task' ? 'Lab Tasks' : 'Lab Tests'}
+                </h1>
+                <p className="mt-3 text-sm leading-7 text-sky-50/85">
+                  Review course activities, open the active workspace, and keep your submission
+                  history in one place with the same structured feel as the teacher dashboard.
+                </p>
+                <div className="mt-5 flex flex-wrap gap-3 text-sm text-sky-50/90">
+                  <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5">
+                    {(activities as any[]).length} total{' '}
+                    {filterKind === 'lab_task' ? 'tasks' : 'tests'}
+                  </span>
+                  <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5">
+                    {runningActivitiesCount} running now
+                  </span>
+                  <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5">
+                    {selectedCourseMeta
+                      ? `${courseCode(selectedCourseMeta)} · ${courseTitle(selectedCourseMeta)}`
+                      : 'Choose a course'}
+                  </span>
+                </div>
+              </div>
 
-            <div className="flex flex-wrap gap-3">
-              <select
-                value={filterCourse}
-                onChange={(event) => {
-                  const next = new URLSearchParams(searchParams);
-                  next.set('courseId', event.target.value);
-                  next.set('kind', filterKind);
-                  setSearchParams(next, { replace: true });
-                }}
-                className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              >
-                <option value="">Select course</option>
-                {(courses as any[]).map((course: any) => (
-                  <option key={course.id} value={course.id}>
-                    {courseCode(course)} - {courseTitle(course)}
-                  </option>
-                ))}
-              </select>
+              <div className="w-full max-w-xl rounded-[28px] border border-white/15 bg-white/10 p-4 backdrop-blur">
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-100/85">
+                      Course
+                    </span>
+                    <select
+                      value={filterCourse}
+                      onChange={(event) => {
+                        const next = new URLSearchParams(searchParams);
+                        next.set('courseId', event.target.value);
+                        next.set('kind', filterKind);
+                        setSearchParams(next, { replace: true });
+                      }}
+                      className="w-full rounded-2xl border border-white/15 bg-white/95 px-4 py-3 text-sm text-slate-900 outline-none"
+                    >
+                      <option value="">Select course</option>
+                      {(courses as any[]).map((course: any) => (
+                        <option key={course.id} value={course.id}>
+                          {courseCode(course)} - {courseTitle(course)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-              <div className="flex rounded-full border border-slate-200 bg-slate-50 p-1">
-                {[
-                  { value: 'lab_test', label: 'Lab Tests' },
-                  { value: 'lab_task', label: 'Lab Tasks' },
-                ].map((item) => (
-                  <button
-                    key={item.value}
-                    type="button"
-                    onClick={() => {
-                      const next = new URLSearchParams(searchParams);
-                      next.set('kind', item.value);
-                      if (filterCourse) next.set('courseId', filterCourse);
-                      setSearchParams(next, { replace: true });
-                    }}
-                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                      filterKind === item.value
-                        ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
-                        : 'text-slate-500 hover:text-slate-900'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
+                  <div className="flex rounded-full border border-white/15 bg-slate-950/15 p-1">
+                    {[
+                      { value: 'lab_test', label: 'Lab Tests' },
+                      { value: 'lab_task', label: 'Lab Tasks' },
+                    ].map((item) => (
+                      <button
+                        key={item.value}
+                        type="button"
+                        onClick={() => {
+                          const next = new URLSearchParams(searchParams);
+                          next.set('kind', item.value);
+                          if (filterCourse) next.set('courseId', filterCourse);
+                          setSearchParams(next, { replace: true });
+                        }}
+                        className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                          filterKind === item.value
+                            ? 'bg-white text-slate-900 shadow-sm'
+                            : 'text-sky-50/80 hover:text-white'
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -572,7 +625,9 @@ export function StudentLabTests() {
                   href={`/student/lab-tests/${activity.id}?courseId=${activity.courseId}&kind=${activity.activityKind}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300"
+                  className={`group rounded-[28px] border p-5 shadow-[0_18px_45px_-34px_rgba(15,23,42,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_26px_60px_-38px_rgba(15,23,42,0.35)] ${statusSurface(
+                    activity.status,
+                  )}`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -593,9 +648,34 @@ export function StudentLabTests() {
                     </span>
                   </div>
 
-                  <div className="mt-5 space-y-2 text-sm text-slate-500">
-                    <p>Duration {getActivityDuration(activity)} min</p>
-                    {activity.endTime ? <p>{new Date(activity.endTime).toLocaleString()}</p> : null}
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Duration
+                      </p>
+                      <p className="mt-2 text-sm font-semibold text-slate-900">
+                        {getActivityDuration(activity)} min
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Deadline
+                      </p>
+                      <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                        <CalendarClock size={14} className="text-slate-400" />
+                        {formatDateTimeLabel(activity.endTime)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 flex items-center justify-between border-t border-slate-200/80 pt-4">
+                    <p className="text-sm text-slate-500">
+                      Open a focused workspace in a new tab.
+                    </p>
+                    <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900 transition group-hover:translate-x-0.5">
+                      Open workspace
+                      <ArrowRight size={15} />
+                    </span>
                   </div>
                 </a>
               ))}
@@ -613,8 +693,9 @@ export function StudentLabTests() {
             <div className="flex items-center justify-between gap-3">
               <Link
                 to={`/student/lab-tests?courseId=${filterCourse}&kind=${filterKind}`}
-                className="text-sm font-medium text-indigo-600 hover:text-indigo-700"
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900"
               >
+                <ArrowRight size={14} className="rotate-180" />
                 Back to all {filterKind === 'lab_task' ? 'lab tasks' : 'lab tests'}
               </Link>
             </div>
@@ -659,59 +740,107 @@ export function StudentLabTests() {
                   </div>
                 ) : null}
 
-                <section className="rounded-[24px] border border-slate-200 bg-white px-5 py-4 shadow-sm">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusBadge(
-                            selectedActivity.status,
-                          )}`}
-                        >
-                          {humanize(selectedActivity.status)}
-                        </span>
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                          {selectedActivity.activityKind === 'lab_task'
-                            ? 'Lab Task'
-                            : 'Lab Test'}
-                        </span>
-                      </div>
-                      <h2 className="mt-2 text-2xl font-semibold text-slate-900">
-                        {getActivityDisplayTitle(selectedActivity)}
-                      </h2>
-                      {selectedActivity.description ? (
-                        <p className="mt-1.5 text-sm text-slate-600">
-                          {selectedActivity.description}
-                        </p>
-                      ) : null}
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <div className="flex items-center gap-2 text-slate-700">
-                        <Clock3 size={16} />
-                        {selectedActivity.status === 'running' ? (
-                          <Countdown endTime={selectedActivity.endTime} onEnded={tryAutoSubmit} />
-                        ) : (
-                          <span className="text-sm font-medium">
-                            {selectedActivity.status === 'ended' ? 'Ended' : 'Not started'}
+                <section className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_22px_60px_-40px_rgba(15,23,42,0.32)]">
+                  <div className="bg-[radial-gradient(circle_at_top_left,#0f172a,transparent_44%),linear-gradient(135deg,#0f172a_0%,#1d4ed8_55%,#60a5fa_100%)] px-5 py-6 text-white sm:px-6">
+                    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="max-w-3xl">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                              selectedActivity.status === 'running'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : selectedActivity.status === 'ended'
+                                  ? 'bg-slate-100 text-slate-700'
+                                  : 'bg-amber-100 text-amber-700'
+                            }`}
+                          >
+                            {humanize(selectedActivity.status)}
                           </span>
-                        )}
+                          <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-xs font-medium text-sky-50">
+                            {selectedActivity.activityKind === 'lab_task'
+                              ? 'Lab Task'
+                              : 'Lab Test'}
+                          </span>
+                          {selectedCourseMeta ? (
+                            <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-xs font-medium text-sky-50">
+                              {courseCode(selectedCourseMeta)}
+                            </span>
+                          ) : null}
+                        </div>
+                        <h2 className="mt-3 text-2xl font-semibold sm:text-3xl">
+                          {getActivityDisplayTitle(selectedActivity)}
+                        </h2>
+                        {selectedActivity.description ? (
+                          <p className="mt-3 max-w-3xl text-sm leading-7 text-sky-50/85">
+                            {selectedActivity.description}
+                          </p>
+                        ) : null}
                       </div>
-                      <p className="mt-2 text-xs text-slate-500">
-                        Ends at {new Date(selectedActivity.endTime).toLocaleString()}
+
+                      <div className="rounded-[24px] border border-white/15 bg-white/10 px-4 py-4 backdrop-blur">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-100/85">
+                          Time Remaining
+                        </p>
+                        <div className="mt-3 flex items-center gap-2 text-sky-50">
+                          <Clock3 size={16} />
+                          {selectedActivity.status === 'running' ? (
+                            <Countdown endTime={selectedActivity.endTime} onEnded={tryAutoSubmit} />
+                          ) : (
+                            <span className="text-sm font-semibold">
+                              {selectedActivity.status === 'ended' ? 'Ended' : 'Not started'}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-3 text-xs text-sky-100/80">
+                          Ends at {new Date(selectedActivity.endTime).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 border-t border-slate-200 px-5 py-5 sm:px-6 lg:grid-cols-3">
+                    <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Duration
+                      </p>
+                      <p className="mt-2 text-sm font-semibold text-slate-900">
+                        {getActivityDuration(selectedActivity)} minutes
+                      </p>
+                    </div>
+                    <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Schedule
+                      </p>
+                      <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                        <CalendarClock size={14} className="text-slate-400" />
+                        {formatDateTimeLabel(selectedActivity.startTime)} to{' '}
+                        {formatDateTimeLabel(selectedActivity.endTime)}
+                      </p>
+                    </div>
+                    <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Submission Mode
+                      </p>
+                      <p className="mt-2 text-sm font-semibold text-slate-900">
+                        {useFile ? 'Source file upload' : `${language.toUpperCase()} editor`}
                       </p>
                     </div>
                   </div>
                 </section>
 
                 {proctoringWarnings.length ? (
-                  <section className="rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm">
-                    <p className="text-sm font-semibold text-amber-800">
-                      Proctoring warnings
-                    </p>
-                    <div className="mt-2 space-y-1">
+                  <section className="rounded-[24px] border border-amber-200 bg-[linear-gradient(135deg,#fffbeb_0%,#ffffff_100%)] px-5 py-4 shadow-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-amber-900">
+                        Proctoring warnings have been recorded
+                      </p>
+                      <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
+                        Visible to teachers
+                      </span>
+                    </div>
+                    <div className="mt-3 space-y-1">
                       {proctoringWarnings.map((warning, index) => (
-                        <p key={`${warning}-${index}`} className="text-xs text-amber-700">
+                        <p key={`${warning}-${index}`} className="text-xs leading-6 text-amber-700">
                           {warning}
                         </p>
                       ))}
@@ -721,7 +850,22 @@ export function StudentLabTests() {
 
                 <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(640px,0.95fr)]">
                   <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-                    <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="border-b border-slate-200 bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] px-4 py-4">
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                            Problem Navigator
+                          </p>
+                          <h3 className="mt-1 text-lg font-semibold text-slate-900">
+                            {selectedActivity.activityKind === 'lab_task'
+                              ? 'Task overview'
+                              : 'Problem set'}
+                          </h3>
+                        </div>
+                        <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600">
+                          {(problems as any[]).length} item{(problems as any[]).length === 1 ? '' : 's'}
+                        </span>
+                      </div>
                       <div className="flex flex-wrap gap-2">
                         {(problems as any[]).map((problem: any, index: number) => {
                           const latest = latestSubmissionForProblem.get(problem.id);
@@ -761,8 +905,8 @@ export function StudentLabTests() {
                       </div>
                     </div>
 
-                    <div className="border-b border-slate-200 px-4">
-                      <div className="flex gap-2">
+                    <div className="border-b border-slate-200 px-4 py-2">
+                      <div className="flex gap-2 rounded-full bg-slate-100 p-1">
                         {[
                           { key: 'statement', label: 'Statement' },
                           { key: 'submissions', label: 'My Submissions' },
@@ -773,10 +917,10 @@ export function StudentLabTests() {
                             onClick={() =>
                               setLeftPaneTab(tab.key as 'statement' | 'submissions')
                             }
-                            className={`border-b-2 px-3 py-3 text-sm font-medium transition ${
+                            className={`rounded-full px-3 py-2.5 text-sm font-medium transition ${
                               leftPaneTab === tab.key
-                                ? 'border-indigo-600 text-indigo-600'
-                                : 'border-transparent text-slate-500 hover:text-slate-900'
+                                ? 'bg-white text-slate-900 shadow-sm'
+                                : 'text-slate-500 hover:text-slate-900'
                             }`}
                           >
                             {tab.label}
@@ -792,11 +936,11 @@ export function StudentLabTests() {
                         </div>
                       ) : leftPaneTab === 'statement' ? (
                         <article className="space-y-6">
-                          <div className="flex flex-wrap items-center gap-3">
+                          <div className="flex flex-wrap items-center gap-3 rounded-[24px] border border-slate-200 bg-[linear-gradient(135deg,#eff6ff_0%,#ffffff_100%)] px-4 py-4">
                             <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
                               {selectedActivity.activityKind === 'lab_task' ? 'Task' : 'Problem'}
                             </span>
-                            <span className="text-sm text-slate-500">
+                            <span className="text-sm text-slate-600">
                               {selectedProblem.marks ?? 0} marks · {selectedProblem.timeLimitMs ?? 1000}{' '}
                               ms · {selectedProblem.memoryLimitKb ?? 262144} KB
                             </span>
@@ -809,12 +953,12 @@ export function StudentLabTests() {
                               Read the statement here and code on the right.
                             </p>
                           </div>
-                          <div className="whitespace-pre-wrap text-[15px] leading-8 text-slate-700">
+                          <div className="rounded-[24px] border border-slate-200 bg-white px-5 py-5 whitespace-pre-wrap text-[15px] leading-8 text-slate-700">
                             {selectedProblem.statement}
                           </div>
 
                           {selectedProblem.inputDescription ? (
-                            <section>
+                            <section className="rounded-[24px] border border-slate-200 bg-slate-50/70 px-5 py-5">
                               <h4 className="text-lg font-semibold text-slate-900">Input</h4>
                               <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-600">
                                 {selectedProblem.inputDescription}
@@ -823,7 +967,7 @@ export function StudentLabTests() {
                           ) : null}
 
                           {selectedProblem.outputDescription ? (
-                            <section>
+                            <section className="rounded-[24px] border border-slate-200 bg-slate-50/70 px-5 py-5">
                               <h4 className="text-lg font-semibold text-slate-900">Output</h4>
                               <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-600">
                                 {selectedProblem.outputDescription}
@@ -840,7 +984,7 @@ export function StudentLabTests() {
                                 (sample: any, index: number) => (
                                   <div
                                     key={`${selectedProblem.id}-${index}`}
-                                    className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                                    className="rounded-[24px] border border-slate-200 bg-[linear-gradient(135deg,#f8fafc_0%,#ffffff_100%)] p-4"
                                   >
                                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                                       Sample {index + 1}
@@ -886,14 +1030,12 @@ export function StudentLabTests() {
                               return (
                                 <div
                                   key={submission.id}
-                                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
+                                  className="rounded-[24px] border border-slate-200 bg-[linear-gradient(135deg,#f8fafc_0%,#ffffff_100%)] px-4 py-4"
                                 >
                                   <div className="flex items-start justify-between gap-3">
                                     <div>
                                       <p className="text-sm font-medium text-slate-900">
-                                        {new Date(
-                                          submission.submittedAt,
-                                        ).toLocaleString()}
+                                        {formatDateTimeLabel(submission.submittedAt)}
                                       </p>
                                       <p className="mt-1 text-xs text-slate-500">
                                         Score: {submission.score ?? '—'} · Time:{' '}
@@ -933,24 +1075,25 @@ export function StudentLabTests() {
                   </section>
 
                   <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-                    <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="border-b border-slate-200 bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] px-4 py-4">
                       <div className="flex flex-col gap-3">
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                           <div>
                             <h3 className="text-lg font-semibold text-slate-900">Editor</h3>
                             <p className="text-sm text-slate-500">
-                              Code on the right, read on the left.
+                              Keep the problem statement open on the left and work from a cleaner,
+                              focused coding surface here.
                             </p>
                           </div>
 
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-2 rounded-full bg-slate-100 p-1">
                             <button
                               type="button"
                               onClick={() => setUseFile(false)}
-                              className={`rounded-xl px-3 py-2 text-sm font-medium ${
+                              className={`rounded-full px-3 py-2 text-sm font-medium ${
                                 !useFile
-                                  ? 'bg-indigo-600 text-white'
-                                  : 'border border-slate-300 bg-white text-slate-700'
+                                  ? 'bg-white text-slate-900 shadow-sm'
+                                  : 'text-slate-600'
                               }`}
                             >
                               Editor
@@ -958,10 +1101,10 @@ export function StudentLabTests() {
                             <button
                               type="button"
                               onClick={() => setUseFile(true)}
-                              className={`rounded-xl px-3 py-2 text-sm font-medium ${
+                              className={`rounded-full px-3 py-2 text-sm font-medium ${
                                 useFile
-                                  ? 'bg-indigo-600 text-white'
-                                  : 'border border-slate-300 bg-white text-slate-700'
+                                  ? 'bg-white text-slate-900 shadow-sm'
+                                  : 'text-slate-600'
                               }`}
                             >
                               Upload Code
@@ -985,6 +1128,9 @@ export function StudentLabTests() {
                                 </option>
                               ))}
                             </select>
+                            <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500">
+                              Autosubmit at end if this page stays open
+                            </span>
                           </div>
 
                           <div className="flex flex-wrap gap-3">
@@ -1037,7 +1183,7 @@ export function StudentLabTests() {
                             editorProps={{ $blockScrolling: true }}
                           />
                         ) : (
-                          <div className="flex h-full items-center justify-center p-6">
+                          <div className="flex h-full items-center justify-center bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_100%)] p-6">
                             <label
                               className={`flex w-full max-w-xl cursor-pointer items-center gap-3 rounded-2xl border-2 border-dashed px-4 py-6 ${
                                 file
@@ -1076,9 +1222,9 @@ export function StudentLabTests() {
                         )}
                       </div>
 
-                      <div className="border-t border-slate-200 bg-slate-50 px-4 py-3">
+                      <div className="border-t border-slate-200 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_100%)] px-4 py-4">
                         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                          <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-4 shadow-[0_16px_36px_-32px_rgba(15,23,42,0.35)]">
                             <h4 className="text-sm font-semibold text-slate-900">
                               Latest Run Result
                             </h4>
@@ -1106,7 +1252,7 @@ export function StudentLabTests() {
                             )}
                           </div>
 
-                          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                          <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-4 shadow-[0_16px_36px_-32px_rgba(15,23,42,0.35)]">
                             <h4 className="text-sm font-semibold text-slate-900">
                               Current Problem History
                             </h4>
