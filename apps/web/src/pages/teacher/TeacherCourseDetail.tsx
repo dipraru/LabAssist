@@ -95,10 +95,10 @@ const editMaterialSchema = z
 type CourseTab =
   | 'lab-classes'
   | 'lecture-materials'
-  | 'assignments'
-  | 'members'
+  | 'lab-tasks'
   | 'lab-tests'
-  | 'lab-tasks';
+  | 'assignments'
+  | 'members';
 
 type LabClassFormValues = z.infer<typeof labClassSchema>;
 type AssignmentFormValues = z.infer<typeof assignmentSchema>;
@@ -108,10 +108,10 @@ type EditMaterialFormValues = z.infer<typeof editMaterialSchema>;
 const tabItems: { key: CourseTab; label: string; icon: ReactNode }[] = [
   { key: 'lab-classes', label: 'Lab Classes', icon: <FlaskConical size={16} /> },
   { key: 'lecture-materials', label: 'Lecture Materials', icon: <Files size={16} /> },
+  { key: 'lab-tasks', label: 'Lab Tasks', icon: <BookOpen size={16} /> },
+  { key: 'lab-tests', label: 'Lab Tests', icon: <BookOpen size={16} /> },
   { key: 'assignments', label: 'Assignments', icon: <FilePlus2 size={16} /> },
   { key: 'members', label: 'Members', icon: <Users size={16} /> },
-  { key: 'lab-tests', label: 'Lab Tests', icon: <BookOpen size={16} /> },
-  { key: 'lab-tasks', label: 'Lab Tasks', icon: <BookOpen size={16} /> },
 ];
 
 function getMaterialPlacementLabel(sheet: any) {
@@ -469,11 +469,15 @@ export function TeacherCourseDetail() {
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
                 {String(course?.type ?? 'course').toUpperCase()}
               </span>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                Batch {course?.semester?.batchYear ?? '—'}
+              </span>
             </div>
 
             <h1 className="mt-4 text-3xl font-semibold text-slate-900">{course.title}</h1>
 
             <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-slate-500">
+              <span>Batch {course?.semester?.batchYear ?? '—'}</span>
               <span>{course?.semester?.name?.replace(/_/g, ' ')}</span>
               <span>{sectionNames.length} section{sectionNames.length === 1 ? '' : 's'}</span>
               <span>{students.length} student{students.length === 1 ? '' : 's'}</span>

@@ -1,13 +1,128 @@
 import { useMemo, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FolderArchive, Layers3 } from 'lucide-react';
+import { CalendarClock, FolderArchive, Layers3 } from 'lucide-react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { AppShell } from '../../components/AppShell';
 import { api } from '../../lib/api';
+import { courseCode } from '../../lib/display';
 import { CourseMaterialDetail } from '../../components/CourseMaterialDetail';
 import { TeacherCourseDetail } from './TeacherCourseDetail';
 import { TeacherLabClassWorkspace } from './TeacherLabClassWorkspace';
 import { TeacherCourseCard, splitTeacherCourses } from './teacher.shared';
+
+type NextLabSlot = {
+  course: any;
+  sectionName: string;
+  startAt: Date;
+  endAt: Date;
+};
+
+const weekdayIndex: Record<string, number> = {
+  sunday: 0,
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+};
+
+function parseTimeToMinutes(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const [hoursText = '0', minutesText = '0'] = String(value).split(':');
+  const hours = Number(hoursText);
+  const minutes = Number(minutesText);
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null;
+  }
+
+  return hours * 60 + minutes;
+}
+
+function getNextWeeklyWindow(
+  dayOfWeek: string | null | undefined,
+  startTime: string | null | undefined,
+  endTime: string | null | undefined,
+  now: Date,
+): { startAt: Date; endAt: Date } | null {
+  const targetDay = weekdayIndex[String(dayOfWeek ?? '').trim().toLowerCase()];
+  const startMinutes = parseTimeToMinutes(startTime);
+  const endMinutes = parseTimeToMinutes(endTime);
+
+  if (
+    targetDay === undefined ||
+    startMinutes === null ||
+    endMinutes === null
+  ) {
+    return null;
+  }
+
+  const startAt = new Date(now);
+  startAt.setHours(0, 0, 0, 0);
+  const deltaDays = (targetDay - now.getDay() + 7) % 7;
+  startAt.setDate(startAt.getDate() + deltaDays);
+  startAt.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
+
+  const endAt = new Date(startAt);
+  endAt.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0);
+  if (endAt.getTime() <= startAt.getTime()) {
+    endAt.setDate(endAt.getDate() + 1);
+  }
+
+  if (deltaDays === 0 && endAt.getTime() < now.getTime()) {
+    startAt.setDate(startAt.getDate() + 7);
+    endAt.setDate(endAt.getDate() + 7);
+  }
+
+  return { startAt, endAt };
+}
+
+function findNextLabSlot(courses: any[]): NextLabSlot | null {
+  const now = new Date();
+
+  const candidates = (courses ?? [])
+    .filter((course: any) => String(course?.type ?? '').toLowerCase() === 'lab')
+    .flatMap((course: any) =>
+      (Array.isArray(course?.schedules) ? course.schedules : []).flatMap((schedule: any) => {
+        const window = getNextWeeklyWindow(
+          schedule?.dayOfWeek,
+          schedule?.startTime,
+          schedule?.endTime,
+          now,
+        );
+
+        if (!window) return [];
+
+        return [
+          {
+            course,
+            sectionName: schedule?.sectionName || 'All Students',
+            startAt: window.startAt,
+            endAt: window.endAt,
+          } satisfies NextLabSlot,
+        ];
+      }),
+    )
+    .sort((left, right) => left.startAt.getTime() - right.startAt.getTime());
+
+  return candidates[0] ?? null;
+}
+
+function formatClock(value: Date): string {
+  return new Intl.DateTimeFormat([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(value);
+}
+
+function formatDayLabel(value: Date): string {
+  return new Intl.DateTimeFormat([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  }).format(value);
+}
 
 export function TeacherCourses() {
   const { courseId, labClassId, sheetId } = useParams<{
@@ -45,6 +160,7 @@ function TeacherCoursesOverview() {
     [courses],
   );
   const visibleCourses = view === 'old' ? old : current;
+  const nextLabSlot = useMemo(() => findNextLabSlot(current), [current]);
 
   return (
     <div className="space-y-6">
@@ -95,9 +211,18 @@ function TeacherCoursesOverview() {
             value={String(old.length)}
           />
           <OverviewCard
-            icon={<Layers3 size={18} />}
-            label={view === 'old' ? 'Showing old' : 'Showing current'}
-            value={String(visibleCourses.length)}
+            icon={<CalendarClock size={18} />}
+            label="Next lab"
+            value={
+              nextLabSlot
+                ? `${formatClock(nextLabSlot.startAt)} - ${formatClock(nextLabSlot.endAt)}`
+                : 'No upcoming slot'
+            }
+            hint={
+              nextLabSlot
+                ? `${courseCode(nextLabSlot.course)} · ${nextLabSlot.sectionName} · ${formatDayLabel(nextLabSlot.startAt)}`
+                : 'Add weekly schedule to a current lab course'
+            }
           />
         </div>
       </section>
@@ -134,10 +259,12 @@ function OverviewCard({
   icon,
   label,
   value,
+  hint,
 }: {
   icon: ReactNode;
   label: string;
   value: string;
+  hint?: string;
 }) {
   return (
     <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
@@ -148,6 +275,7 @@ function OverviewCard({
         {label}
       </p>
       <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
+      {hint ? <p className="mt-2 text-xs text-slate-500">{hint}</p> : null}
     </div>
   );
 }

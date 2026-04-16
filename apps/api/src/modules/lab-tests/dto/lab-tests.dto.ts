@@ -28,8 +28,8 @@ class HiddenTestCaseDto {
 }
 
 export class CreateProblemDto {
-  @IsString() title: string;
-  @IsString() statement: string;
+  @IsOptional() @IsString() title?: string;
+  @IsOptional() @IsString() statement?: string;
   @IsOptional() @IsString() inputDescription?: string;
   @IsOptional() @IsString() outputDescription?: string;
   @IsOptional() @IsNumber() marks?: number;

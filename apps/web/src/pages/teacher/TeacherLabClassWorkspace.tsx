@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   CalendarClock,
@@ -228,13 +228,141 @@ function getLabTaskDuration(activity: any): number {
   return 60;
 }
 
+function formatRemainingTime(endTime: string | null | undefined, nowMs: number): string | null {
+  if (!endTime) return null;
+
+  const diff = new Date(endTime).getTime() - nowMs;
+  if (!Number.isFinite(diff) || diff <= 0) {
+    return 'Ended';
+  }
+
+  const totalSeconds = Math.floor(diff / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  }
+
+  return `${minutes}m ${seconds}s`;
+}
+
+function parseTimeToMinutes(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const [hoursText = '0', minutesText = '0'] = String(value).split(':');
+  const hours = Number(hoursText);
+  const minutes = Number(minutesText);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null;
+  }
+  return hours * 60 + minutes;
+}
+
+function buildDateTime(dateValue: Date | string | null | undefined, timeValue: string | null | undefined) {
+  if (!dateValue || !timeValue) return null;
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const minutes = parseTimeToMinutes(timeValue);
+  if (minutes === null) return null;
+
+  date.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+  return date;
+}
+
+function getSectionDefaultByUpcomingSchedule(course: any, sections: any[]): any | null {
+  const now = new Date();
+  const dayNames = [
+    'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+  ];
+
+  const pendingFirst = sections.some((section: any) => section?.status !== 'conducted')
+    ? sections.filter((section: any) => section?.status !== 'conducted')
+    : sections;
+
+  const candidates = pendingFirst
+    .map((section: any) => {
+      const effective = getEffectiveLabSectionSchedule(course, section);
+
+      if (effective.kind === 'override') {
+        const startAt = buildDateTime(effective.date, effective.startTime);
+        const endAt = buildDateTime(effective.date, effective.endTime);
+        if (!startAt || !endAt) return null;
+
+        if (endAt.getTime() < now.getTime()) {
+          return null;
+        }
+
+        return {
+          section,
+          rank: startAt.getTime() <= now.getTime() && endAt.getTime() >= now.getTime() ? 0 : 1,
+          nextAt: startAt,
+        };
+      }
+
+      if (effective.kind === 'course') {
+        const targetDayIndex = dayNames.indexOf(String(effective.dayOfWeek ?? ''));
+        const startMinutes = parseTimeToMinutes(effective.startTime);
+        const endMinutes = parseTimeToMinutes(effective.endTime);
+        if (targetDayIndex < 0 || startMinutes === null || endMinutes === null) {
+          return null;
+        }
+
+        const nextDate = new Date(now);
+        nextDate.setHours(0, 0, 0, 0);
+
+        const deltaDays = (targetDayIndex - now.getDay() + 7) % 7;
+        nextDate.setDate(nextDate.getDate() + deltaDays);
+
+        const startAt = new Date(nextDate);
+        startAt.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
+
+        const endAt = new Date(nextDate);
+        endAt.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0);
+
+        if (deltaDays === 0 && endAt.getTime() < now.getTime()) {
+          startAt.setDate(startAt.getDate() + 7);
+        }
+
+        const activeNow = deltaDays === 0 && startAt.getTime() <= now.getTime() && endAt.getTime() >= now.getTime();
+
+        return {
+          section,
+          rank: activeNow ? 0 : 1,
+          nextAt: startAt,
+        };
+      }
+
+      return null;
+    })
+    .filter((item: any) => Boolean(item))
+    .sort((left: any, right: any) => {
+      if (left.rank !== right.rank) return left.rank - right.rank;
+      return left.nextAt.getTime() - right.nextAt.getTime();
+    });
+
+  return candidates[0]?.section ?? null;
+}
+
 export function TeacherLabClassWorkspace() {
   const { courseId, labClassId } = useParams<{
     courseId: string;
     labClassId: string;
   }>();
   const queryClient = useQueryClient();
-  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialSectionId = searchParams.get('sectionId');
+  const initialTaskId = searchParams.get('taskId');
+  const initialCompose = searchParams.get('compose') === '1';
+
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(initialSectionId);
   const [attendanceEntries, setAttendanceEntries] = useState<AttendanceEntry[]>([]);
   const [showMaterialModal, setShowMaterialModal] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<any | null>(null);
@@ -245,8 +373,12 @@ export function TeacherLabClassWorkspace() {
   const [pendingAttendanceAction, setPendingAttendanceAction] =
     useState<AttendanceAction>(null);
   const [extraStudentSearch, setExtraStudentSearch] = useState('');
-  const [selectedLabTaskId, setSelectedLabTaskId] = useState<string | null>(null);
-  const [showNewTaskWorkspace, setShowNewTaskWorkspace] = useState(false);
+  const [selectedLabTaskId, setSelectedLabTaskId] = useState<string | null>(initialTaskId);
+  const [showNewTaskWorkspace, setShowNewTaskWorkspace] = useState(
+    Boolean(initialCompose && !initialTaskId),
+  );
+  const [clockNow, setClockNow] = useState(() => Date.now());
+  const previousSectionIdRef = useRef<string | null>(selectedSectionId);
 
   const { data: labClass, isLoading } = useQuery({
     queryKey: ['teacher-lab-class', courseId, labClassId],
@@ -271,6 +403,7 @@ export function TeacherLabClassWorkspace() {
   const selectedSection = useMemo(
     () =>
       sections.find((section: any) => section.id === selectedSectionId) ??
+      getSectionDefaultByUpcomingSchedule(course, sections) ??
       getDefaultLabSection(course, sections) ??
       sections[0] ??
       null,
@@ -317,22 +450,67 @@ export function TeacherLabClassWorkspace() {
   const archived = course ? isCourseArchived(course) : false;
 
   useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setClockNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
     if (!sections.length) {
       setSelectedSectionId(null);
       return;
     }
 
     if (!sections.some((section: any) => section.id === selectedSectionId)) {
-      const defaultSection = getDefaultLabSection(course, sections);
+      const defaultSection =
+        getSectionDefaultByUpcomingSchedule(course, sections) ??
+        getDefaultLabSection(course, sections);
       setSelectedSectionId(defaultSection?.id ?? sections[0].id);
     }
   }, [course, sections, selectedSectionId]);
 
   useEffect(() => {
-    setModifyMode(false);
-    setSelectedLabTaskId(null);
-    setShowNewTaskWorkspace(false);
+    if (previousSectionIdRef.current === null) {
+      previousSectionIdRef.current = selectedSectionId;
+      return;
+    }
+
+    if (previousSectionIdRef.current !== selectedSectionId) {
+      setModifyMode(false);
+      setSelectedLabTaskId(null);
+      setShowNewTaskWorkspace(false);
+    }
+
+    previousSectionIdRef.current = selectedSectionId;
   }, [selectedSectionId]);
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+
+    if (selectedSectionId) {
+      next.set('sectionId', selectedSectionId);
+    } else {
+      next.delete('sectionId');
+    }
+
+    if (selectedLabTaskId) {
+      next.set('taskId', selectedLabTaskId);
+      next.delete('compose');
+    } else {
+      next.delete('taskId');
+      if (showNewTaskWorkspace) {
+        next.set('compose', '1');
+      } else {
+        next.delete('compose');
+      }
+    }
+
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, selectedSectionId, selectedLabTaskId, setSearchParams, showNewTaskWorkspace]);
 
   useEffect(() => {
     if (
@@ -1071,6 +1249,15 @@ export function TeacherLabClassWorkspace() {
                             <p className={`mt-1 text-xs ${active ? 'text-slate-200' : 'text-slate-500'}`}>
                               {getLabTaskDuration(task)} min · {task.totalMarks ?? 'N/A'} marks
                             </p>
+                            {task.endTime && task.status !== 'draft' ? (
+                              <p
+                                className={`mt-1 text-xs ${
+                                  active ? 'text-slate-200' : 'text-slate-500'
+                                }`}
+                              >
+                                Remaining {formatRemainingTime(task.endTime, clockNow)}
+                              </p>
+                            ) : null}
                           </div>
                           <span
                             className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
@@ -1111,6 +1298,7 @@ export function TeacherLabClassWorkspace() {
               fixedSectionName={selectedSection.sectionName}
               disableCreation={archived}
               hideActivityLibrary
+              hideWorkspaceHeader
               initialSelectedActivityId={selectedLabTaskId}
               autoOpenCreateModal={showNewTaskWorkspace}
               onSelectedActivityChange={(activityId) => {

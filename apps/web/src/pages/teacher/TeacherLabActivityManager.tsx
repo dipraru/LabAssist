@@ -41,14 +41,14 @@ const verdictEnum = z.enum([
 ]);
 
 const sampleCaseSchema = z.object({
-  input: z.string().min(1, 'Input is required'),
-  output: z.string().min(1, 'Output is required'),
+  input: z.string().optional(),
+  output: z.string().optional(),
   explanation: z.string().optional(),
 });
 
 const hiddenCaseSchema = z.object({
-  input: z.string().min(1, 'Input is required'),
-  output: z.string().min(1, 'Output is required'),
+  input: z.string().optional(),
+  output: z.string().optional(),
 });
 
 const activitySchema = z
@@ -82,13 +82,13 @@ const activitySchema = z
   });
 
 const problemSchema = z.object({
-  title: z.string().trim().min(1, 'Title is required'),
-  statement: z.string().trim().min(1, 'Statement is required'),
+  title: z.string().optional(),
+  statement: z.string().optional(),
   inputDescription: z.string().optional(),
   outputDescription: z.string().optional(),
   timeLimitMs: z.number().positive().optional(),
   memoryLimitKb: z.number().positive().optional(),
-  sampleTestCases: z.array(sampleCaseSchema).min(1, 'Add at least one sample'),
+  sampleTestCases: z.array(sampleCaseSchema),
   hiddenTestCases: z.array(hiddenCaseSchema),
 });
 
@@ -121,6 +121,7 @@ export type TeacherLabActivityManagerProps = {
   heading?: HeadingCopy;
   disableCreation?: boolean;
   hideActivityLibrary?: boolean;
+  hideWorkspaceHeader?: boolean;
   initialSelectedActivityId?: string | null;
   autoOpenCreateModal?: boolean;
   onSelectedActivityChange?: (activityId: string | null) => void;
@@ -253,23 +254,51 @@ function getProblemCode(problem: any, sourceProblemMap?: Map<string, any>) {
 }
 
 function buildProblemPayload(values: ProblemFormData) {
+  const sampleTestCases = values.sampleTestCases
+    .map((sample) => ({
+      input: sample.input?.trim() ?? '',
+      output: sample.output?.trim() ?? '',
+      explanation: sample.explanation?.trim() || undefined,
+    }))
+    .filter((sample) => sample.input || sample.output);
+
+  const hiddenTestCases = values.hiddenTestCases
+    .map((testCase) => ({
+      input: testCase.input?.trim() ?? '',
+      output: testCase.output?.trim() ?? '',
+    }))
+    .filter((testCase) => testCase.input || testCase.output);
+
   return {
-    title: values.title.trim(),
-    statement: values.statement.trim(),
+    title: values.title?.trim() ?? '',
+    statement: values.statement?.trim() ?? '',
     inputDescription: values.inputDescription?.trim() || undefined,
     outputDescription: values.outputDescription?.trim() || undefined,
     timeLimitMs: values.timeLimitMs,
     memoryLimitKb: values.memoryLimitKb,
-    sampleTestCases: values.sampleTestCases.map((sample) => ({
-      input: sample.input,
-      output: sample.output,
-      explanation: sample.explanation?.trim() || undefined,
-    })),
-    hiddenTestCases: values.hiddenTestCases.map((testCase) => ({
-      input: testCase.input,
-      output: testCase.output,
-    })),
+    sampleTestCases,
+    hiddenTestCases,
   };
+}
+
+function formatRemainingTime(endTime: string | null | undefined, nowMs: number) {
+  if (!endTime) return null;
+
+  const diff = new Date(endTime).getTime() - nowMs;
+  if (!Number.isFinite(diff) || diff <= 0) {
+    return 'Ended';
+  }
+
+  const totalSeconds = Math.floor(diff / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  }
+
+  return `${minutes}m ${seconds}s`;
 }
 
 export function TeacherLabActivityManager({
@@ -281,6 +310,7 @@ export function TeacherLabActivityManager({
   heading,
   disableCreation = false,
   hideActivityLibrary = false,
+  hideWorkspaceHeader = false,
   initialSelectedActivityId,
   autoOpenCreateModal = false,
   onSelectedActivityChange,
@@ -306,6 +336,7 @@ export function TeacherLabActivityManager({
   const [localKind, setLocalKind] = useState<LabActivityKindValue>(
     fixedActivityKind ?? 'lab_test',
   );
+  const [clockNow, setClockNow] = useState(() => Date.now());
 
   const controlledSelection = initialSelectedActivityId !== undefined;
   const urlCourseId = searchParams.get('courseId') ?? '';
@@ -434,7 +465,14 @@ export function TeacherLabActivityManager({
 
   const { data: problemBank = [] } = useQuery({
     queryKey: ['teacher-problem-bank'],
-    queryFn: () => api.get('/lab-tests/problem-bank').then((response) => response.data),
+    queryFn: () =>
+      api.get('/lab-tests/problem-bank').then((response) => {
+        const payload = response.data;
+        if (Array.isArray(payload)) return payload;
+        if (Array.isArray(payload?.items)) return payload.items;
+        if (Array.isArray(payload?.data)) return payload.data;
+        return [];
+      }),
   });
 
   const myProblems = useMemo(
@@ -467,8 +505,8 @@ export function TeacherLabActivityManager({
       outputDescription: '',
       timeLimitMs: 1000,
       memoryLimitKb: 262144,
-      sampleTestCases: [{ input: '', output: '', explanation: '' }],
-      hiddenTestCases: [{ input: '', output: '' }],
+      sampleTestCases: [],
+      hiddenTestCases: [],
     },
   });
 
@@ -497,11 +535,17 @@ export function TeacherLabActivityManager({
       .map((problem: any) => problem.sourceProblemId)
       .filter((value: string | null | undefined): value is string => Boolean(value)),
   );
-  const canAttachAnotherProblem =
-    selectedTest?.activityKind !== 'lab_task' || (problems as any[]).length === 0;
   const manageLocked = selectedTest?.status !== 'draft';
   const kindLabel = filterKind === 'lab_task' ? 'Lab Tasks' : 'Lab Tests';
   const headerCopy = heading ?? getDefaultHeading(filterKind, currentCourse, fixedCourseId);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setClockNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     onSelectedActivityChange?.(selectedTestId);
@@ -723,8 +767,8 @@ export function TeacherLabActivityManager({
       outputDescription: '',
       timeLimitMs: 1000,
       memoryLimitKb: 262144,
-      sampleTestCases: [{ input: '', output: '', explanation: '' }],
-      hiddenTestCases: [{ input: '', output: '' }],
+      sampleTestCases: [],
+      hiddenTestCases: [],
     });
   };
 
@@ -743,14 +787,14 @@ export function TeacherLabActivityManager({
               output: sample.output ?? '',
               explanation: sample.explanation ?? sample.note ?? '',
             }))
-          : [{ input: '', output: '', explanation: '' }],
+          : [],
       hiddenTestCases:
         Array.isArray(problem.hiddenTestCases) && problem.hiddenTestCases.length
           ? problem.hiddenTestCases.map((sample: any) => ({
               input: sample.input ?? '',
               output: sample.output ?? '',
             }))
-          : [{ input: '', output: '' }],
+          : [],
     });
   };
 
@@ -1020,7 +1064,8 @@ export function TeacherLabActivityManager({
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+      {!hideWorkspaceHeader ? (
+        <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">
@@ -1102,7 +1147,8 @@ export function TeacherLabActivityManager({
             This course is archived, so new activities are locked.
           </div>
         ) : null}
-      </section>
+        </section>
+      ) : null}
 
       <Modal
         open={showActivityForm}
@@ -1380,7 +1426,7 @@ export function TeacherLabActivityManager({
                   <input
                     {...problemForm.register(`sampleTestCases.${index}.explanation`)}
                     className={inputClass}
-                    placeholder="Optional explanation"
+                    placeholder="Explanation"
                   />
                 </div>
               </div>
@@ -1530,6 +1576,9 @@ export function TeacherLabActivityManager({
                       >
                         <span>Duration {formatDurationLabel(getActivityDurationMinutes(item))}</span>
                         {item.startTime ? <span>Started {formatDateTime(item.startTime)}</span> : null}
+                        {item.endTime && item.status !== 'draft' ? (
+                          <span>Remaining {formatRemainingTime(item.endTime, clockNow)}</span>
+                        ) : null}
                       </div>
                     </button>
                   );
@@ -1595,6 +1644,9 @@ export function TeacherLabActivityManager({
                           {selectedTest.status === 'ended' ? 'Ended' : 'Ends'}{' '}
                           {formatDateTime(selectedTest.endTime)}
                         </span>
+                      ) : null}
+                      {selectedTest.endTime && selectedTest.status !== 'draft' ? (
+                        <span>Remaining {formatRemainingTime(selectedTest.endTime, clockNow)}</span>
                       ) : null}
                     </div>
                   </div>
@@ -1712,9 +1764,7 @@ export function TeacherLabActivityManager({
                                     {getProblemCode(problem, sourceProblemMap)}
                                   </span>
                                   <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-                                    {selectedTest.activityKind === 'lab_task'
-                                      ? 'Task Problem'
-                                      : `Problem ${problem.orderIndex ?? ''}`}
+                                    {`Problem ${problem.orderIndex ?? ''}`}
                                   </span>
                                 </div>
                                 <h4 className="mt-3 text-base font-semibold text-slate-900">
@@ -1788,12 +1838,6 @@ export function TeacherLabActivityManager({
                       </div>
                     </div>
 
-                    {!canAttachAnotherProblem && selectedTest.activityKind === 'lab_task' ? (
-                      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-                        Lab tasks can contain only one problem.
-                      </div>
-                    ) : null}
-
                     <div className="mt-5 space-y-4">
                       <CollapsibleLibrary
                         title="My Problems"
@@ -1813,9 +1857,7 @@ export function TeacherLabActivityManager({
                                 problem={problem}
                                 problemCode={getProblemCode(problem)}
                                 added={alreadyAdded}
-                                disabled={
-                                  alreadyAdded || manageLocked || !canAttachAnotherProblem
-                                }
+                                disabled={alreadyAdded || manageLocked}
                                 isPending={isAdding}
                                 onAdd={() => importProblemMutation.mutate(problem.id)}
                               />
@@ -1844,9 +1886,7 @@ export function TeacherLabActivityManager({
                                 problem={problem}
                                 problemCode={getProblemCode(problem)}
                                 added={alreadyAdded}
-                                disabled={
-                                  alreadyAdded || manageLocked || !canAttachAnotherProblem
-                                }
+                                disabled={alreadyAdded || manageLocked}
                                 isPending={isAdding}
                                 onAdd={() => importProblemMutation.mutate(problem.id)}
                               />

@@ -475,9 +475,11 @@ export class LabTestsService {
 
   private buildProblemCopy(problem: Problem | CreateProblemDto, sourceProblemId?: string | null) {
     const marks = 'marks' in problem ? problem.marks ?? null : null;
+    const normalizedTitle = problem.title?.trim() || 'Untitled Problem';
+    const normalizedStatement = problem.statement?.trim() || '';
     return {
-      title: problem.title,
-      statement: problem.statement,
+      title: normalizedTitle,
+      statement: normalizedStatement,
       inputDescription:
         'inputDescription' in problem ? problem.inputDescription ?? null : null,
       outputDescription:
@@ -503,10 +505,12 @@ export class LabTestsService {
 
   private async saveProblemIntoBank(dto: CreateProblemDto, teacherUserId: string) {
     const problemCode = await this.generateProblemCode();
+    const normalizedTitle = dto.title?.trim() || 'Untitled Problem';
+    const normalizedStatement = dto.statement?.trim() || '';
     const bankProblem = this.problemBankRepo.create({
       problemCode,
-      title: dto.title.trim(),
-      statement: dto.statement.trim(),
+      title: normalizedTitle,
+      statement: normalizedStatement,
       inputDescription: dto.inputDescription?.trim() || null,
       outputDescription: dto.outputDescription?.trim() || null,
       timeLimitMs: dto.timeLimitMs ?? 1000,
@@ -733,6 +737,7 @@ export class LabTestsService {
     return this.problemBankRepo
       .createQueryBuilder('problem')
       .where('problem.authorId = :teacherUserId', { teacherUserId })
+      .orWhere('problem.authorId IS NOT NULL')
       .orWhere('problem.isPublic = true')
       .orderBy('problem.updatedAt', 'DESC')
       .getMany();
@@ -820,9 +825,6 @@ export class LabTestsService {
     await this.getTeacherCourseAccess(labTest.courseId, teacherUserId);
 
     const existingCount = await this.problemRepo.count({ where: { labTestId } });
-    if (labTest.activityKind === LabActivityKind.LAB_TASK && existingCount >= 1) {
-      throw new BadRequestException('Lab task can contain only one problem');
-    }
     await this.ensureProblemIsUnique(labTestId, dto);
 
     const bankProblem =
@@ -852,9 +854,6 @@ export class LabTestsService {
     if (!sourceProblem) throw new NotFoundException('Problem bank entry not found');
 
     const existingCount = await this.problemRepo.count({ where: { labTestId } });
-    if (labTest.activityKind === LabActivityKind.LAB_TASK && existingCount >= 1) {
-      throw new BadRequestException('Lab task can contain only one problem');
-    }
     await this.ensureProblemIsUnique(labTestId, {
       title: sourceProblem.title,
       statement: sourceProblem.statement,
