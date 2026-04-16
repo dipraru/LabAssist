@@ -9,6 +9,7 @@ import {
   OneToMany,
 } from 'typeorm';
 import { Course } from '../../courses/entities/course.entity';
+import { LabClass } from '../../courses/entities/lab-class.entity';
 import { LabTestProblem } from './lab-test-problem.entity';
 import { LabTestType } from '../../../common/enums';
 
@@ -47,14 +48,20 @@ export class LabTest {
   @Column({ type: 'enum', enum: LabTestStatus, default: LabTestStatus.DRAFT })
   status: LabTestStatus;
 
-  @Column({ type: 'timestamptz' })
-  startTime: Date;
+  @Column({ type: 'timestamptz', nullable: true })
+  startTime: Date | null;
 
-  @Column({ type: 'timestamptz' })
-  endTime: Date;
+  @Column({ type: 'timestamptz', nullable: true })
+  endTime: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  durationMinutes: number | null;
 
   @Column({ type: 'float', nullable: true })
   totalMarks: number | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  sectionName: string | null;
 
   @ManyToOne(() => Course, { eager: true, onDelete: 'CASCADE' })
   @JoinColumn()
@@ -62,6 +69,13 @@ export class LabTest {
 
   @Column()
   courseId: string;
+
+  @ManyToOne(() => LabClass, { eager: true, nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn()
+  labClass: LabClass | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  labClassId: string | null;
 
   @OneToMany(() => LabTestProblem, (p) => p.labTest, { cascade: true })
   problems: LabTestProblem[];

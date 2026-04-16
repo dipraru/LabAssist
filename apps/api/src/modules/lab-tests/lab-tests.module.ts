@@ -9,8 +9,10 @@ import { LabTestsController } from './lab-tests.controller';
 import { Problem } from '../contests/entities/problem.entity';
 import { Course } from '../courses/entities/course.entity';
 import { Enrollment } from '../courses/entities/enrollment.entity';
+import { LabClass } from '../courses/entities/lab-class.entity';
 import { Teacher } from '../users/entities/teacher.entity';
 import { Student } from '../users/entities/student.entity';
+import { Batch } from '../office/entities/batch.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { LabJudgeRemoteService } from './judge-remote.service';
 
@@ -24,8 +26,10 @@ import { LabJudgeRemoteService } from './judge-remote.service';
       Problem,
       Course,
       Enrollment,
+      LabClass,
       Teacher,
       Student,
+      Batch,
     ]),
     NotificationsModule,
   ],

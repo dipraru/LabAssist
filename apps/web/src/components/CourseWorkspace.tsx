@@ -215,6 +215,20 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
     `/student/lab-tests/${activity.id}?courseId=${activity.courseId ?? courseId}&kind=${
       activity.activityKind ?? 'lab_test'
     }`;
+  const getActivityTitle = (activity: any) => {
+    if (activity?.title?.trim()) {
+      return activity.title.trim();
+    }
+
+    if (activity?.activityKind === 'lab_task') {
+      if (activity?.labClass?.labNumber) {
+        return `Lab ${activity.labClass.labNumber} Task`;
+      }
+      return 'Lab Task';
+    }
+
+    return 'Lab Test';
+  };
 
   return (
     <div className="w-full max-w-[1520px] 2xl:max-w-[1680px]">
@@ -686,7 +700,7 @@ export function CourseWorkspace({ role }: { role: WorkspaceRole }) {
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="text-sm font-medium text-slate-800">
-                              {activity.title}
+                              {getActivityTitle(activity)}
                             </p>
                             <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200">
                               {activity.activityKind === 'lab_task'

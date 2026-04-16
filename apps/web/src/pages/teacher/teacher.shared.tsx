@@ -2,6 +2,7 @@ import {
   CalendarDays,
   ChevronRight,
   Clock3,
+  GraduationCap,
   Layers3,
   Users,
 } from 'lucide-react';
@@ -616,6 +617,12 @@ export function TeacherCourseCard({
         </span>
       </div>
 
+      <div className="mt-3">
+        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+          Batch {course?.semester?.batchYear ?? '—'}
+        </span>
+      </div>
+
       <div className="mt-4 flex items-center justify-between gap-4">
         <div className="flex flex-wrap gap-2">
           {sections.slice(0, 4).map((section) => (
@@ -636,6 +643,10 @@ export function TeacherCourseCard({
       </div>
 
       <div className="mt-4 grid gap-3 text-sm text-slate-500 sm:grid-cols-3">
+        <span className="inline-flex items-center gap-2">
+          <GraduationCap size={15} className="text-slate-400" />
+          Batch {course?.semester?.batchYear ?? '—'}
+        </span>
         <span className="inline-flex items-center gap-2">
           <CalendarDays size={15} className="text-slate-400" />
           {semesterLabel(course)}

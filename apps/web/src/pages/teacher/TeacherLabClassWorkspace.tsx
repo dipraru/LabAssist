@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   CalendarClock,
@@ -23,6 +23,7 @@ import {
 import { Modal } from '../../components/Modal';
 import { api } from '../../lib/api';
 import { studentDisplayName } from '../../lib/display';
+import { TeacherLabActivityManager } from './TeacherLabActivityManager';
 import {
   StudentAvatar,
   formatDateOnly,
@@ -33,6 +34,7 @@ import {
   getEffectiveLabSectionSchedule,
   getStudentRollLabel,
   getStudentsForSection,
+  isCourseArchived,
   isLabSectionScheduledNow,
   resolveStudentSection,
 } from './teacher.shared';
@@ -199,13 +201,168 @@ function getMaterialHref(courseId: string, sheetId: string): string {
   return `/teacher/courses/${courseId}/materials/${sheetId}`;
 }
 
+function getLabTaskDisplayTitle(activity: any): string {
+  if (activity?.title?.trim()) {
+    return activity.title.trim();
+  }
+
+  if (activity?.labClass?.labNumber) {
+    return `Lab ${activity.labClass.labNumber} Task`;
+  }
+
+  return 'Lab Task';
+}
+
+function getLabTaskDuration(activity: any): number {
+  if (activity?.durationMinutes && activity.durationMinutes > 0) {
+    return activity.durationMinutes;
+  }
+
+  if (activity?.startTime && activity?.endTime) {
+    const diff = new Date(activity.endTime).getTime() - new Date(activity.startTime).getTime();
+    if (Number.isFinite(diff) && diff > 0) {
+      return Math.max(1, Math.ceil(diff / 60_000));
+    }
+  }
+
+  return 60;
+}
+
+function formatRemainingTime(endTime: string | null | undefined, nowMs: number): string | null {
+  if (!endTime) return null;
+
+  const diff = new Date(endTime).getTime() - nowMs;
+  if (!Number.isFinite(diff) || diff <= 0) {
+    return 'Ended';
+  }
+
+  const totalSeconds = Math.floor(diff / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  }
+
+  return `${minutes}m ${seconds}s`;
+}
+
+function parseTimeToMinutes(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const [hoursText = '0', minutesText = '0'] = String(value).split(':');
+  const hours = Number(hoursText);
+  const minutes = Number(minutesText);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null;
+  }
+  return hours * 60 + minutes;
+}
+
+function buildDateTime(dateValue: Date | string | null | undefined, timeValue: string | null | undefined) {
+  if (!dateValue || !timeValue) return null;
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const minutes = parseTimeToMinutes(timeValue);
+  if (minutes === null) return null;
+
+  date.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+  return date;
+}
+
+function getSectionDefaultByUpcomingSchedule(course: any, sections: any[]): any | null {
+  const now = new Date();
+  const dayNames = [
+    'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+  ];
+
+  const pendingFirst = sections.some((section: any) => section?.status !== 'conducted')
+    ? sections.filter((section: any) => section?.status !== 'conducted')
+    : sections;
+
+  const candidates = pendingFirst
+    .map((section: any) => {
+      const effective = getEffectiveLabSectionSchedule(course, section);
+
+      if (effective.kind === 'override') {
+        const startAt = buildDateTime(effective.date, effective.startTime);
+        const endAt = buildDateTime(effective.date, effective.endTime);
+        if (!startAt || !endAt) return null;
+
+        if (endAt.getTime() < now.getTime()) {
+          return null;
+        }
+
+        return {
+          section,
+          rank: startAt.getTime() <= now.getTime() && endAt.getTime() >= now.getTime() ? 0 : 1,
+          nextAt: startAt,
+        };
+      }
+
+      if (effective.kind === 'course') {
+        const targetDayIndex = dayNames.indexOf(String(effective.dayOfWeek ?? ''));
+        const startMinutes = parseTimeToMinutes(effective.startTime);
+        const endMinutes = parseTimeToMinutes(effective.endTime);
+        if (targetDayIndex < 0 || startMinutes === null || endMinutes === null) {
+          return null;
+        }
+
+        const nextDate = new Date(now);
+        nextDate.setHours(0, 0, 0, 0);
+
+        const deltaDays = (targetDayIndex - now.getDay() + 7) % 7;
+        nextDate.setDate(nextDate.getDate() + deltaDays);
+
+        const startAt = new Date(nextDate);
+        startAt.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
+
+        const endAt = new Date(nextDate);
+        endAt.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0);
+
+        if (deltaDays === 0 && endAt.getTime() < now.getTime()) {
+          startAt.setDate(startAt.getDate() + 7);
+        }
+
+        const activeNow = deltaDays === 0 && startAt.getTime() <= now.getTime() && endAt.getTime() >= now.getTime();
+
+        return {
+          section,
+          rank: activeNow ? 0 : 1,
+          nextAt: startAt,
+        };
+      }
+
+      return null;
+    })
+    .filter((item: any) => Boolean(item))
+    .sort((left: any, right: any) => {
+      if (left.rank !== right.rank) return left.rank - right.rank;
+      return left.nextAt.getTime() - right.nextAt.getTime();
+    });
+
+  return candidates[0]?.section ?? null;
+}
+
 export function TeacherLabClassWorkspace() {
   const { courseId, labClassId } = useParams<{
     courseId: string;
     labClassId: string;
   }>();
   const queryClient = useQueryClient();
-  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialSectionId = searchParams.get('sectionId');
+  const initialTaskId = searchParams.get('taskId');
+  const initialCompose = searchParams.get('compose') === '1';
+
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(initialSectionId);
   const [attendanceEntries, setAttendanceEntries] = useState<AttendanceEntry[]>([]);
   const [showMaterialModal, setShowMaterialModal] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<any | null>(null);
@@ -216,6 +373,12 @@ export function TeacherLabClassWorkspace() {
   const [pendingAttendanceAction, setPendingAttendanceAction] =
     useState<AttendanceAction>(null);
   const [extraStudentSearch, setExtraStudentSearch] = useState('');
+  const [selectedLabTaskId, setSelectedLabTaskId] = useState<string | null>(initialTaskId);
+  const [showNewTaskWorkspace, setShowNewTaskWorkspace] = useState(
+    Boolean(initialCompose && !initialTaskId),
+  );
+  const [clockNow, setClockNow] = useState(() => Date.now());
+  const previousSectionIdRef = useRef<string | null>(selectedSectionId);
 
   const { data: labClass, isLoading } = useQuery({
     queryKey: ['teacher-lab-class', courseId, labClassId],
@@ -240,11 +403,26 @@ export function TeacherLabClassWorkspace() {
   const selectedSection = useMemo(
     () =>
       sections.find((section: any) => section.id === selectedSectionId) ??
+      getSectionDefaultByUpcomingSchedule(course, sections) ??
       getDefaultLabSection(course, sections) ??
       sections[0] ??
       null,
     [course, sections, selectedSectionId],
   );
+  const { data: labTasks = [] } = useQuery({
+    queryKey: ['teacher-lab-class-tasks', courseId, labClassId, selectedSection?.sectionName],
+    queryFn: () =>
+      api
+        .get(`/lab-tests/course/${courseId}`, {
+          params: {
+            kind: 'lab_task',
+            labClassId,
+            sectionName: selectedSection?.sectionName,
+          },
+        })
+        .then((response) => response.data),
+    enabled: Boolean(courseId && labClassId && selectedSection?.sectionName),
+  });
   const allCourseStudents = useMemo(() => getCourseStudents(course), [course]);
   const presentInOtherSections = useMemo(
     () => getPresentStudentIdsFromOtherSections(labClass, selectedSection?.id),
@@ -269,6 +447,15 @@ export function TeacherLabClassWorkspace() {
     ? `Batch ${course.semester.batchYear}`
     : 'Selected batch';
   const selectedEffectiveSchedule = getEffectiveLabSectionSchedule(course, selectedSection);
+  const archived = course ? isCourseArchived(course) : false;
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setClockNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     if (!sections.length) {
@@ -277,14 +464,62 @@ export function TeacherLabClassWorkspace() {
     }
 
     if (!sections.some((section: any) => section.id === selectedSectionId)) {
-      const defaultSection = getDefaultLabSection(course, sections);
+      const defaultSection =
+        getSectionDefaultByUpcomingSchedule(course, sections) ??
+        getDefaultLabSection(course, sections);
       setSelectedSectionId(defaultSection?.id ?? sections[0].id);
     }
   }, [course, sections, selectedSectionId]);
 
   useEffect(() => {
-    setModifyMode(false);
+    if (previousSectionIdRef.current === null) {
+      previousSectionIdRef.current = selectedSectionId;
+      return;
+    }
+
+    if (previousSectionIdRef.current !== selectedSectionId) {
+      setModifyMode(false);
+      setSelectedLabTaskId(null);
+      setShowNewTaskWorkspace(false);
+    }
+
+    previousSectionIdRef.current = selectedSectionId;
   }, [selectedSectionId]);
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+
+    if (selectedSectionId) {
+      next.set('sectionId', selectedSectionId);
+    } else {
+      next.delete('sectionId');
+    }
+
+    if (selectedLabTaskId) {
+      next.set('taskId', selectedLabTaskId);
+      next.delete('compose');
+    } else {
+      next.delete('taskId');
+      if (showNewTaskWorkspace) {
+        next.set('compose', '1');
+      } else {
+        next.delete('compose');
+      }
+    }
+
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, selectedSectionId, selectedLabTaskId, setSearchParams, showNewTaskWorkspace]);
+
+  useEffect(() => {
+    if (
+      selectedLabTaskId &&
+      !(labTasks as any[]).some((task: any) => task.id === selectedLabTaskId)
+    ) {
+      setSelectedLabTaskId(null);
+    }
+  }, [labTasks, selectedLabTaskId]);
 
   useEffect(() => {
     if (!course || !labClass || !selectedSection) {
@@ -848,131 +1083,236 @@ export function TeacherLabClassWorkspace() {
           </div>
         </section>
       ) : (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-          <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                  Lecture Material
-                </p>
-                <h2 className="mt-2 text-2xl font-semibold text-slate-900">
-                  {selectedSection.sectionName}
-                </h2>
+        <div className="space-y-6">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+            <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                    Lecture Material
+                  </p>
+                  <h2 className="mt-2 text-2xl font-semibold text-slate-900">
+                    {selectedSection.sectionName}
+                  </h2>
+                </div>
               </div>
-            </div>
 
-            {visibleMaterials.length ? (
-              <div className="mt-5 space-y-4">
-                {visibleMaterials.map((sheet: any) => (
-                  <div
-                    key={sheet.id}
-                    className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-5"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
-                        {sheet.sectionName ? `${sheet.sectionName} only` : 'All sections'}
-                      </span>
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
-                        Lab {sheet?.labClass?.labNumber}
-                      </span>
-                      <span className="text-xs font-medium text-slate-400">
-                        {formatDateTime(sheet.createdAt)}
-                      </span>
-                      <a
-                        href={getMaterialHref(courseId, sheet.id)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-50"
-                      >
-                        <Link2 size={12} />
-                        Open
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingMaterial(sheet);
-                          editMaterialForm.reset({
-                            title: sheet.title ?? '',
-                            description: sheet.description ?? '',
-                            links:
-                              Array.isArray(sheet.links) && sheet.links.length
-                                ? sheet.links.map((link: any) => ({
-                                    url: link.url ?? '',
-                                    label: link.label ?? '',
-                                  }))
-                                : [{ url: '', label: '' }],
-                          });
-                        }}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                      >
-                        <PencilLine size={12} />
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (deleteMaterialMutation.isPending) return;
-                          if (!window.confirm('Delete this lecture material?')) return;
-                          deleteMaterialMutation.mutate(sheet.id);
-                        }}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={deleteMaterialMutation.isPending}
-                      >
-                        <Trash2 size={12} />
-                        Delete
-                      </button>
-                    </div>
-                    <h3 className="mt-3 text-lg font-semibold text-slate-900">{sheet.title}</h3>
-                    {sheet.description ? (
-                      <p className="mt-2 text-sm text-slate-500">{sheet.description}</p>
-                    ) : null}
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {(sheet.links ?? []).map((link: any, index: number) => (
+              {visibleMaterials.length ? (
+                <div className="mt-5 space-y-4">
+                  {visibleMaterials.map((sheet: any) => (
+                    <div
+                      key={sheet.id}
+                      className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-5"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                          {sheet.sectionName ? `${sheet.sectionName} only` : 'All sections'}
+                        </span>
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                          Lab {sheet?.labClass?.labNumber}
+                        </span>
+                        <span className="text-xs font-medium text-slate-400">
+                          {formatDateTime(sheet.createdAt)}
+                        </span>
                         <a
-                          key={`${sheet.id}-${index}`}
-                          href={link.url}
+                          href={getMaterialHref(courseId, sheet.id)}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50"
+                          className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-50"
                         >
                           <Link2 size={12} />
-                          {link.label || 'Open material'}
+                          Open
                         </a>
-                      ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingMaterial(sheet);
+                            editMaterialForm.reset({
+                              title: sheet.title ?? '',
+                              description: sheet.description ?? '',
+                              links:
+                                Array.isArray(sheet.links) && sheet.links.length
+                                  ? sheet.links.map((link: any) => ({
+                                      url: link.url ?? '',
+                                      label: link.label ?? '',
+                                    }))
+                                  : [{ url: '', label: '' }],
+                            });
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                        >
+                          <PencilLine size={12} />
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (deleteMaterialMutation.isPending) return;
+                            if (!window.confirm('Delete this lecture material?')) return;
+                            deleteMaterialMutation.mutate(sheet.id);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={deleteMaterialMutation.isPending}
+                        >
+                          <Trash2 size={12} />
+                          Delete
+                        </button>
+                      </div>
+                      <h3 className="mt-3 text-lg font-semibold text-slate-900">{sheet.title}</h3>
+                      {sheet.description ? (
+                        <p className="mt-2 text-sm text-slate-500">{sheet.description}</p>
+                      ) : null}
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {(sheet.links ?? []).map((link: any, index: number) => (
+                          <a
+                            key={`${sheet.id}-${index}`}
+                            href={link.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50"
+                          >
+                            <Link2 size={12} />
+                            {link.label || 'Open material'}
+                          </a>
+                        ))}
+                      </div>
                     </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-5 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
+                  No lecture material for this section yet.
+                </div>
+              )}
+            </section>
+
+            <section className="space-y-6">
+              <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                  Attendance
+                </p>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <AttendanceStat label="Present" value={presentCount} />
+                  <AttendanceStat label="Absent" value={absentCount} />
+                </div>
+                <p className="mt-4 text-xs text-slate-400">
+                  Completed {formatDateTime(selectedSection.attendanceTakenAt)}
+                </p>
+              </div>
+
+              <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                      Lab Task
+                    </p>
+                    <p className="mt-2 text-sm text-slate-500">
+                      Select a task or create a new one for this section.
+                    </p>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-5 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
-                No lecture material for this section yet.
-              </div>
-            )}
-          </section>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedLabTaskId(null);
+                      setShowNewTaskWorkspace(true);
+                    }}
+                    disabled={archived}
+                    className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Plus size={16} />
+                    New Task
+                  </button>
+                </div>
 
-          <section className="space-y-6">
-            <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                Attendance
-              </p>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <AttendanceStat label="Present" value={presentCount} />
-                <AttendanceStat label="Absent" value={absentCount} />
-              </div>
-              <p className="mt-4 text-xs text-slate-400">
-                Completed {formatDateTime(selectedSection.attendanceTakenAt)}
-              </p>
-            </div>
+                <div className="mt-4 space-y-3">
+                  {(labTasks as any[]).map((task: any) => {
+                    const active = selectedLabTaskId === task.id && !showNewTaskWorkspace;
+                    return (
+                      <button
+                        key={task.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedLabTaskId(task.id);
+                          setShowNewTaskWorkspace(false);
+                        }}
+                        className={`w-full rounded-[22px] border px-4 py-4 text-left transition ${
+                          active
+                            ? 'border-slate-900 bg-slate-900 text-white'
+                            : 'border-slate-200 bg-slate-50/80 hover:border-slate-300 hover:bg-white'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className={`truncate font-semibold ${active ? 'text-white' : 'text-slate-900'}`}>
+                              {getLabTaskDisplayTitle(task)}
+                            </p>
+                            <p className={`mt-1 text-xs ${active ? 'text-slate-200' : 'text-slate-500'}`}>
+                              {getLabTaskDuration(task)} min · {task.totalMarks ?? 'N/A'} marks
+                            </p>
+                            {task.endTime && task.status !== 'draft' ? (
+                              <p
+                                className={`mt-1 text-xs ${
+                                  active ? 'text-slate-200' : 'text-slate-500'
+                                }`}
+                              >
+                                Remaining {formatRemainingTime(task.endTime, clockNow)}
+                              </p>
+                            ) : null}
+                          </div>
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                              active
+                                ? 'bg-white/10 text-white'
+                                : 'bg-white text-slate-600 ring-1 ring-slate-200'
+                            }`}
+                          >
+                            {task.status === 'draft'
+                              ? 'Draft'
+                              : task.status === 'running'
+                                ? 'Running'
+                                : 'Ended'}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
 
-            <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                Lab Task
-              </p>
-              <div className="mt-4 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
-                Lab task will be added later.
+                  {!(labTasks as any[]).length ? (
+                    <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center text-sm text-slate-500">
+                      No lab tasks yet for this section.
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
+          </div>
+
+          {selectedLabTaskId || showNewTaskWorkspace ? (
+            <TeacherLabActivityManager
+              key={`${labClassId}-${selectedSection.id}-${selectedLabTaskId ?? 'new'}-${
+                showNewTaskWorkspace ? 'compose' : 'view'
+              }`}
+              fixedCourseId={courseId}
+              fixedActivityKind="lab_task"
+              fixedLabClassId={labClassId}
+              fixedSectionName={selectedSection.sectionName}
+              disableCreation={archived}
+              hideActivityLibrary
+              hideWorkspaceHeader
+              initialSelectedActivityId={selectedLabTaskId}
+              autoOpenCreateModal={showNewTaskWorkspace}
+              onSelectedActivityChange={(activityId) => {
+                if (!activityId) return;
+                setSelectedLabTaskId(activityId);
+                setShowNewTaskWorkspace(false);
+              }}
+              heading={{
+                eyebrow: 'Lab Class Workspace',
+                title: `Lab ${labClass.labNumber} Tasks`,
+                description: 'Manage the selected task for this conducted section.',
+              }}
+            />
+          ) : null}
         </div>
       )}
 

@@ -409,13 +409,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     const appSubtitle = isTeacherLayout ? 'Teacher workspace' : 'Student workspace';
     const userMenuLinks = isTeacherLayout
       ? [
-          { label: 'Dashboard', href: '/teacher' },
-          { label: 'Courses', href: '/teacher/courses' },
-          { label: 'Lab Tests', href: '/teacher/lab-tests' },
-          { label: 'Notifications', href: '/teacher/notifications' },
           profileHref
             ? { label: 'My Profile', href: profileHref }
             : null,
+          { label: 'Dashboard', href: '/teacher' },
+          { label: 'Courses', href: '/teacher/courses' },
           { label: 'Change Password', href: changePasswordHref },
         ].filter(Boolean) as { label: string; href: string }[]
       : [

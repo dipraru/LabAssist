@@ -59,6 +59,36 @@ function statusBadge(status: string) {
   return 'bg-amber-100 text-amber-700';
 }
 
+function getActivityDisplayTitle(activity: any): string {
+  if (activity?.title?.trim()) {
+    return activity.title.trim();
+  }
+
+  if (activity?.activityKind === 'lab_task') {
+    if (activity?.labClass?.labNumber) {
+      return `Lab ${activity.labClass.labNumber} Task`;
+    }
+    return 'Lab Task';
+  }
+
+  return 'Lab Test';
+}
+
+function getActivityDuration(activity: any): number {
+  if (activity?.durationMinutes && activity.durationMinutes > 0) {
+    return activity.durationMinutes;
+  }
+
+  if (activity?.startTime && activity?.endTime) {
+    const diff = new Date(activity.endTime).getTime() - new Date(activity.startTime).getTime();
+    if (Number.isFinite(diff) && diff > 0) {
+      return Math.max(1, Math.ceil(diff / 60_000));
+    }
+  }
+
+  return 60;
+}
+
 function Countdown({
   endTime,
   onEnded,
@@ -546,7 +576,9 @@ export function StudentLabTests() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-lg font-semibold text-slate-900">{activity.title}</p>
+                      <p className="text-lg font-semibold text-slate-900">
+                        {getActivityDisplayTitle(activity)}
+                      </p>
                       <p className="mt-1 text-sm text-slate-500">
                         {activity.activityKind === 'lab_task' ? 'Lab Task' : 'Lab Test'} ·{' '}
                         {humanize(activity.type)}
@@ -562,8 +594,8 @@ export function StudentLabTests() {
                   </div>
 
                   <div className="mt-5 space-y-2 text-sm text-slate-500">
-                    <p>{new Date(activity.startTime).toLocaleString()}</p>
-                    <p>{new Date(activity.endTime).toLocaleString()}</p>
+                    <p>Duration {getActivityDuration(activity)} min</p>
+                    {activity.endTime ? <p>{new Date(activity.endTime).toLocaleString()}</p> : null}
                   </div>
                 </a>
               ))}
@@ -645,7 +677,7 @@ export function StudentLabTests() {
                         </span>
                       </div>
                       <h2 className="mt-2 text-2xl font-semibold text-slate-900">
-                        {selectedActivity.title}
+                        {getActivityDisplayTitle(selectedActivity)}
                       </h2>
                       {selectedActivity.description ? (
                         <p className="mt-1.5 text-sm text-slate-600">
