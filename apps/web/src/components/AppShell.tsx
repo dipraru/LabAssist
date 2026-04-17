@@ -425,6 +425,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             : null,
           { label: 'Dashboard', href: '/student' },
           { label: 'Courses', href: '/student/courses' },
+          { label: 'Assignments', href: '/student/assignments' },
           { label: 'Change Password', href: changePasswordHref },
         ].filter(Boolean) as { label: string; href: string }[];
 

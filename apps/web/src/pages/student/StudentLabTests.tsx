@@ -700,16 +700,6 @@ export function StudentLabTests() {
           </section>
         ) : (
           <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <Link
-                to={detailBackHref}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900"
-              >
-                <ArrowRight size={14} className="rotate-180" />
-                Back to all {filterKind === 'lab_task' ? 'lab tasks' : 'lab tests'}
-              </Link>
-            </div>
-
             {selectedActivityLoading || !selectedActivity ? (
               <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500 shadow-sm">
                 Loading activity...
