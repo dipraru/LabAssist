@@ -321,6 +321,97 @@ export class CoursesService {
     );
   }
 
+  private resolveStudentLabClassView(
+    labClass: LabClass,
+    studentId: string,
+    viewerSectionName: string,
+  ): {
+    sections: LabClassSection[];
+    viewerEffectiveSectionName: string;
+    viewerAttendance: {
+      status: 'present' | 'absent' | 'not_taken';
+      sectionName: string | null;
+      takenAt: Date | null;
+    };
+    shouldInclude: boolean;
+  } {
+    const sections = [...(labClass.sections ?? [])].sort((left, right) =>
+      compareSectionNames(left.sectionName, right.sectionName),
+    );
+    const normalizedViewerSectionName = normalizeSectionName(viewerSectionName);
+    const fallbackSection =
+      sections.find(
+        (section) =>
+          normalizeSectionName(section.sectionName) === normalizedViewerSectionName,
+      ) ??
+      sections.find(
+        (section) => normalizeSectionName(section.sectionName) === 'All Students',
+      ) ??
+      null;
+    const attendanceEntries = sections
+      .map((section) => ({
+        section,
+        record: (section.attendanceRecords ?? []).find(
+          (record) => record.studentId === studentId,
+        ),
+      }))
+      .filter(
+        (
+          item,
+        ): item is {
+          section: LabClassSection;
+          record: LabAttendanceRecord;
+        } => Boolean(item.record),
+      );
+
+    const presentParticipation = attendanceEntries.find(
+      ({ record, section }) =>
+        record.isPresent &&
+        (section.status === LabClassSectionStatus.CONDUCTED ||
+          section.attendanceTakenAt != null),
+    );
+    const recordedAbsence = attendanceEntries.find(
+      ({ record, section }) =>
+        !record.isPresent &&
+        (section.status === LabClassSectionStatus.CONDUCTED ||
+          section.attendanceTakenAt != null),
+    );
+    const fallbackAttendanceTaken =
+      fallbackSection &&
+      (fallbackSection.status === LabClassSectionStatus.CONDUCTED ||
+        fallbackSection.attendanceTakenAt != null)
+        ? fallbackSection
+        : null;
+
+    const attendanceSection =
+      presentParticipation?.section ??
+      recordedAbsence?.section ??
+      fallbackAttendanceTaken ??
+      null;
+    const viewerAttendanceStatus: 'present' | 'absent' | 'not_taken' =
+      presentParticipation != null
+        ? 'present'
+        : attendanceSection
+          ? 'absent'
+          : 'not_taken';
+
+    return {
+      sections,
+      viewerEffectiveSectionName:
+        attendanceSection?.sectionName ??
+        fallbackSection?.sectionName ??
+        viewerSectionName,
+      viewerAttendance: {
+        status: viewerAttendanceStatus,
+        sectionName: attendanceSection?.sectionName ?? null,
+        takenAt: attendanceSection?.attendanceTakenAt ?? null,
+      },
+      shouldInclude: Boolean(
+        presentParticipation || recordedAbsence || fallbackAttendanceTaken,
+      ),
+    };
+  }
+
   private async validateLectureSheetPlacement(
     courseId: string,
     labClassId?: string | null,
@@ -940,6 +1031,7 @@ export class CoursesService {
     Array<
       LabClass & {
         viewerSectionName: string;
+        viewerEffectiveSectionName: string;
         viewerAttendance: {
           status: 'present' | 'absent';
           sectionName: string;
@@ -961,35 +1053,28 @@ export class CoursesService {
 
     return labClasses
       .map((labClass) => {
-        const sortedSections = [...(labClass.sections ?? [])].sort((left, right) =>
-          compareSectionNames(left.sectionName, right.sectionName),
+        const labClassView = this.resolveStudentLabClassView(
+          labClass,
+          student.id,
+          sectionName,
         );
-        const viewerSection =
-          sortedSections.find(
-            (section) => normalizeSectionName(section.sectionName) === sectionName,
-          ) ??
-          sortedSections.find(
-            (section) => normalizeSectionName(section.sectionName) === 'All Students',
-          ) ??
-          null;
-
-        if (!viewerSection || viewerSection.status !== LabClassSectionStatus.CONDUCTED) {
+        if (
+          !labClassView.shouldInclude ||
+          labClassView.viewerAttendance.status === 'not_taken' ||
+          !labClassView.viewerAttendance.sectionName
+        ) {
           return null;
         }
 
-        const attendanceRecord =
-          viewerSection.attendanceRecords?.find(
-            (record) => record.studentId === student.id,
-          ) ?? null;
-
         return {
           ...labClass,
-          sections: sortedSections,
+          sections: labClassView.sections,
           viewerSectionName: sectionName,
+          viewerEffectiveSectionName: labClassView.viewerEffectiveSectionName,
           viewerAttendance: {
-            status: attendanceRecord?.isPresent ? 'present' : 'absent',
-            sectionName: viewerSection.sectionName,
-            takenAt: viewerSection.attendanceTakenAt ?? null,
+            status: labClassView.viewerAttendance.status,
+            sectionName: labClassView.viewerAttendance.sectionName,
+            takenAt: labClassView.viewerAttendance.takenAt,
           },
         };
       })
@@ -998,6 +1083,7 @@ export class CoursesService {
           labClass,
         ): labClass is LabClass & {
           viewerSectionName: string;
+          viewerEffectiveSectionName: string;
           viewerAttendance: {
             status: 'present' | 'absent';
             sectionName: string;
@@ -1015,6 +1101,7 @@ export class CoursesService {
     LabClass & {
       course: Course;
       viewerSectionName: string;
+      viewerEffectiveSectionName: string;
       viewerAttendance: {
         status: 'present' | 'absent' | 'not_taken';
         sectionName: string | null;
@@ -1034,47 +1121,27 @@ export class CoursesService {
     if (!labClass || labClass.courseId !== courseId) {
       throw new NotFoundException('Lab class not found');
     }
-
-    const viewerSection =
-      (labClass.sections ?? []).find(
-        (section) => normalizeSectionName(section.sectionName) === sectionName,
-      ) ??
-      (labClass.sections ?? []).find(
-        (section) => normalizeSectionName(section.sectionName) === 'All Students',
-      ) ??
-      null;
-    if (!viewerSection || viewerSection.status !== LabClassSectionStatus.CONDUCTED) {
+    const labClassView = this.resolveStudentLabClassView(
+      labClass,
+      student.id,
+      sectionName,
+    );
+    if (!labClassView.shouldInclude) {
       throw new NotFoundException('Lab class not found');
     }
 
     labClass.course = Object.assign(labClass.course, {
       batchSections: course.batchSections,
     });
-    labClass.sections = [...(labClass.sections ?? [])].sort((left, right) =>
-      compareSectionNames(left.sectionName, right.sectionName),
-    );
-
-    const attendanceSection =
-      labClass.sections.find(
-        (section) => normalizeSectionName(section.sectionName) === normalizeSectionName(viewerSection.sectionName),
-      ) ?? null;
-    const attendanceRecord =
-      attendanceSection?.attendanceRecords?.find(
-        (record) => record.studentId === student.id,
-      ) ?? null;
-    const viewerAttendanceStatus: 'present' | 'absent' | 'not_taken' =
-      attendanceSection?.attendanceTakenAt != null
-        ? attendanceRecord?.isPresent
-          ? 'present'
-          : 'absent'
-        : 'not_taken';
+    labClass.sections = labClassView.sections;
 
     return Object.assign(labClass, {
       viewerSectionName: sectionName,
+      viewerEffectiveSectionName: labClassView.viewerEffectiveSectionName,
       viewerAttendance: {
-        status: viewerAttendanceStatus,
-        sectionName: attendanceSection?.sectionName ?? null,
-        takenAt: attendanceSection?.attendanceTakenAt ?? null,
+        status: labClassView.viewerAttendance.status,
+        sectionName: labClassView.viewerAttendance.sectionName,
+        takenAt: labClassView.viewerAttendance.takenAt,
       },
     });
   }

@@ -299,15 +299,35 @@ export function StudentCourseDetail() {
   );
   const visibleLectureSheets = useMemo(
     () =>
-      (lectureSheets as any[]).filter(
-        (sheet: any) => !sheet?.sectionName || sheet.sectionName === viewerSectionName,
-      ),
-    [lectureSheets, viewerSectionName],
+      (lectureSheets as any[]).filter((sheet: any) => {
+        if (!sheet?.sectionName) {
+          return true;
+        }
+
+        if (sheet.sectionName === viewerSectionName) {
+          return true;
+        }
+
+        if (!sheet?.labClassId) {
+          return false;
+        }
+
+        const matchingLabClass = (labClasses as any[]).find(
+          (labClass: any) => labClass?.id === sheet.labClassId,
+        );
+        const effectiveSectionName =
+          matchingLabClass?.viewerEffectiveSectionName ??
+          matchingLabClass?.viewerAttendance?.sectionName ??
+          viewerSectionName;
+
+        return sheet.sectionName === effectiveSectionName;
+      }),
+    [labClasses, lectureSheets, viewerSectionName],
   );
   const visibleLabClasses = useMemo(
     () =>
       [...(labClasses as any[])].sort(
-        (left: any, right: any) => Number(left?.labNumber ?? 0) - Number(right?.labNumber ?? 0),
+        (left: any, right: any) => Number(right?.labNumber ?? 0) - Number(left?.labNumber ?? 0),
       ),
     [labClasses],
   );

@@ -128,30 +128,34 @@ export function StudentLabClassWorkspace() {
 
   const course = labClass?.course ?? null;
   const viewerSectionName = labClass?.viewerSectionName ?? 'All Students';
+  const viewerEffectiveSectionName =
+    labClass?.viewerEffectiveSectionName ??
+    labClass?.viewerAttendance?.sectionName ??
+    viewerSectionName;
   const viewerSection = useMemo(
     () =>
       (labClass?.sections ?? []).find(
-        (section: any) => section?.sectionName === viewerSectionName,
+        (section: any) => section?.sectionName === viewerEffectiveSectionName,
       ) ??
       (labClass?.sections ?? []).find(
         (section: any) => section?.sectionName === 'All Students',
       ) ??
       null,
-    [labClass?.sections, viewerSectionName],
+    [labClass?.sections, viewerEffectiveSectionName],
   );
   const visibleMaterials = useMemo(
     () =>
       (lectureMaterials as any[]).filter(
         (sheet: any) =>
           sheet?.labClassId === labClassId &&
-          (!sheet?.sectionName || sheet.sectionName === viewerSectionName),
+          (!sheet?.sectionName || sheet.sectionName === viewerEffectiveSectionName),
       ),
-    [labClassId, lectureMaterials, viewerSectionName],
+    [labClassId, lectureMaterials, viewerEffectiveSectionName],
   );
   const orderedLabs = useMemo(
     () =>
       [...(allLabClasses as any[])].sort(
-        (left: any, right: any) => Number(left?.labNumber ?? 0) - Number(right?.labNumber ?? 0),
+        (left: any, right: any) => Number(right?.labNumber ?? 0) - Number(left?.labNumber ?? 0),
       ),
     [allLabClasses],
   );
@@ -186,7 +190,8 @@ export function StudentLabClassWorkspace() {
   }
 
   const attendanceStatus = labClass?.viewerAttendance?.status ?? 'not_taken';
-  const attendanceSectionName = labClass?.viewerAttendance?.sectionName ?? viewerSectionName;
+  const attendanceSectionName =
+    labClass?.viewerAttendance?.sectionName ?? viewerEffectiveSectionName;
   const attendanceOutcome =
     attendanceStatus === 'present' || attendanceStatus === 'absent'
       ? attendanceStatus
@@ -213,7 +218,7 @@ export function StudentLabClassWorkspace() {
                 {formatDateOnly(labClass.classDate)}
               </span>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                {viewerSectionName}
+                {viewerEffectiveSectionName}
               </span>
               <span
                 className={`rounded-full px-3 py-1 text-xs font-semibold ${getAttendanceOutcomeClasses(
@@ -257,7 +262,7 @@ export function StudentLabClassWorkspace() {
             status={attendanceStatus}
             takenAt={labClass?.viewerAttendance?.takenAt}
             sectionName={attendanceSectionName}
-            fallbackSectionName={viewerSectionName}
+            fallbackSectionName={viewerEffectiveSectionName}
           />
         </div>
       </section>

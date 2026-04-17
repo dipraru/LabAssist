@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import AceEditor from 'react-ace';
 import toast from 'react-hot-toast';
-import { ArrowRight, CalendarClock, Clock3, Play, Send, Upload } from 'lucide-react';
+import { ArrowRight, CalendarClock, Play, Send, Upload } from 'lucide-react';
 import 'ace-builds/src-noconflict/mode-c_cpp';
 import 'ace-builds/src-noconflict/mode-java';
 import 'ace-builds/src-noconflict/mode-javascript';
@@ -151,6 +151,7 @@ function Countdown({
 export function StudentLabTests() {
   const queryClient = useQueryClient();
   const { labTestId } = useParams<{ labTestId: string }>();
+  const isFocusedWorkspace = Boolean(labTestId);
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(null);
   const [language, setLanguage] = useState('cpp');
@@ -177,13 +178,14 @@ export function StudentLabTests() {
   });
 
   useEffect(() => {
+    if (isFocusedWorkspace) return;
     if (!filterCourse && (courses as any[]).length > 0) {
       const next = new URLSearchParams(searchParams);
       next.set('courseId', (courses as any[])[0].id);
       next.set('kind', filterKind);
       setSearchParams(next, { replace: true });
     }
-  }, [courses, filterCourse, filterKind, searchParams, setSearchParams]);
+  }, [courses, filterCourse, filterKind, isFocusedWorkspace, searchParams, setSearchParams]);
 
   const { data: activities = [], isLoading: activitiesLoading } = useQuery({
     queryKey: ['student-lab-tests', filterCourse, filterKind],
@@ -193,7 +195,7 @@ export function StudentLabTests() {
           params: { kind: filterKind },
         })
         .then((response) => response.data),
-    enabled: Boolean(filterCourse),
+    enabled: Boolean(filterCourse) && !isFocusedWorkspace,
   });
 
   const { data: selectedActivity, isLoading: selectedActivityLoading } = useQuery({
@@ -512,100 +514,108 @@ export function StudentLabTests() {
     autoSubmittedRef.current = true;
     submitMutation.mutate({ silent: true, auto: true });
   };
+  const detailBackHref = `/student/lab-tests?courseId=${
+    selectedActivity?.courseId ?? filterCourse
+  }&kind=${selectedActivity?.activityKind ?? filterKind}`;
+  const workspacePanelHeightClass = isFocusedWorkspace
+    ? 'h-[calc(100vh-9rem)]'
+    : 'h-[calc(100vh-15rem)]';
 
   return (
     <AppShell>
       <div
         className={
-          labTestId
+          isFocusedWorkspace
             ? 'space-y-4'
             : 'mx-auto max-w-[1560px] space-y-6'
         }
       >
-        <section className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_24px_70px_-42px_rgba(15,23,42,0.35)]">
-          <div className="bg-[radial-gradient(circle_at_top_left,#0f172a,transparent_44%),linear-gradient(135deg,#082f49_0%,#1d4ed8_58%,#38bdf8_100%)] px-6 py-8 text-white sm:px-8">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-              <div className="max-w-3xl">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-100/85">
-                  Student Workspace
-                </p>
-                <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">
-                  {filterKind === 'lab_task' ? 'Lab Tasks' : 'Lab Tests'}
-                </h1>
-                <p className="mt-3 text-sm leading-7 text-sky-50/85">
-                  Review course activities, open the active workspace, and keep your submission
-                  history in one place with the same structured feel as the teacher dashboard.
-                </p>
-                <div className="mt-5 flex flex-wrap gap-3 text-sm text-sky-50/90">
-                  <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5">
-                    {(activities as any[]).length} total{' '}
-                    {filterKind === 'lab_task' ? 'tasks' : 'tests'}
-                  </span>
-                  <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5">
-                    {runningActivitiesCount} running now
-                  </span>
-                  <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5">
-                    {selectedCourseMeta
-                      ? `${courseCode(selectedCourseMeta)} · ${courseTitle(selectedCourseMeta)}`
-                      : 'Choose a course'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="w-full max-w-xl rounded-[28px] border border-white/15 bg-white/10 p-4 backdrop-blur">
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                  <label className="space-y-2">
-                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-100/85">
-                      Course
+        {!isFocusedWorkspace ? (
+          <section className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_24px_70px_-42px_rgba(15,23,42,0.35)]">
+            <div className="bg-[radial-gradient(circle_at_top_left,#0f172a,transparent_44%),linear-gradient(135deg,#082f49_0%,#1d4ed8_58%,#38bdf8_100%)] px-6 py-8 text-white sm:px-8">
+              <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                <div className="max-w-3xl">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-100/85">
+                    Student Workspace
+                  </p>
+                  <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">
+                    {filterKind === 'lab_task' ? 'Lab Tasks' : 'Lab Tests'}
+                  </h1>
+                  <p className="mt-3 text-sm leading-7 text-sky-50/85">
+                    Review course activities, open the active workspace, and keep your submission
+                    history in one place with the same structured feel as the teacher dashboard.
+                  </p>
+                  <div className="mt-5 flex flex-wrap gap-3 text-sm text-sky-50/90">
+                    <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5">
+                      {(activities as any[]).length} total{' '}
+                      {filterKind === 'lab_task' ? 'tasks' : 'tests'}
                     </span>
-                    <select
-                      value={filterCourse}
-                      onChange={(event) => {
-                        const next = new URLSearchParams(searchParams);
-                        next.set('courseId', event.target.value);
-                        next.set('kind', filterKind);
-                        setSearchParams(next, { replace: true });
-                      }}
-                      className="w-full rounded-2xl border border-white/15 bg-white/95 px-4 py-3 text-sm text-slate-900 outline-none"
-                    >
-                      <option value="">Select course</option>
-                      {(courses as any[]).map((course: any) => (
-                        <option key={course.id} value={course.id}>
-                          {courseCode(course)} - {courseTitle(course)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                    <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5">
+                      {runningActivitiesCount} running now
+                    </span>
+                    <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5">
+                      {selectedCourseMeta
+                        ? `${courseCode(selectedCourseMeta)} · ${courseTitle(selectedCourseMeta)}`
+                        : 'Choose a course'}
+                    </span>
+                  </div>
+                </div>
 
-                  <div className="flex rounded-full border border-white/15 bg-slate-950/15 p-1">
-                    {[
-                      { value: 'lab_test', label: 'Lab Tests' },
-                      { value: 'lab_task', label: 'Lab Tasks' },
-                    ].map((item) => (
-                      <button
-                        key={item.value}
-                        type="button"
-                        onClick={() => {
+                <div className="w-full max-w-xl rounded-[28px] border border-white/15 bg-white/10 p-4 backdrop-blur">
+                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                    <label className="space-y-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-100/85">
+                        Course
+                      </span>
+                      <select
+                        value={filterCourse}
+                        onChange={(event) => {
                           const next = new URLSearchParams(searchParams);
-                          next.set('kind', item.value);
-                          if (filterCourse) next.set('courseId', filterCourse);
+                          next.set('courseId', event.target.value);
+                          next.set('kind', filterKind);
                           setSearchParams(next, { replace: true });
                         }}
-                        className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                          filterKind === item.value
-                            ? 'bg-white text-slate-900 shadow-sm'
-                            : 'text-sky-50/80 hover:text-white'
-                        }`}
+                        className="w-full rounded-2xl border border-white/15 bg-white/95 px-4 py-3 text-sm text-slate-900 outline-none"
                       >
-                        {item.label}
-                      </button>
-                    ))}
+                        <option value="">Select course</option>
+                        {(courses as any[]).map((course: any) => (
+                          <option key={course.id} value={course.id}>
+                            {courseCode(course)} - {courseTitle(course)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="flex rounded-full border border-white/15 bg-slate-950/15 p-1">
+                      {[
+                        { value: 'lab_test', label: 'Lab Tests' },
+                        { value: 'lab_task', label: 'Lab Tasks' },
+                      ].map((item) => (
+                        <button
+                          key={item.value}
+                          type="button"
+                          onClick={() => {
+                            const next = new URLSearchParams(searchParams);
+                            next.set('kind', item.value);
+                            if (filterCourse) next.set('courseId', filterCourse);
+                            setSearchParams(next, { replace: true });
+                          }}
+                          className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                            filterKind === item.value
+                              ? 'bg-white text-slate-900 shadow-sm'
+                              : 'text-sky-50/80 hover:text-white'
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        ) : null}
 
         {!labTestId ? (
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -692,7 +702,7 @@ export function StudentLabTests() {
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-3">
               <Link
-                to={`/student/lab-tests?courseId=${filterCourse}&kind=${filterKind}`}
+                to={detailBackHref}
                 className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900"
               >
                 <ArrowRight size={14} className="rotate-180" />
@@ -730,7 +740,7 @@ export function StudentLabTests() {
                           Enter fullscreen
                         </button>
                         <Link
-                          to={`/student/lab-tests?courseId=${filterCourse}&kind=${filterKind}`}
+                          to={detailBackHref}
                           className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700"
                         >
                           Leave activity
@@ -740,90 +750,39 @@ export function StudentLabTests() {
                   </div>
                 ) : null}
 
-                <section className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_22px_60px_-40px_rgba(15,23,42,0.32)]">
-                  <div className="bg-[radial-gradient(circle_at_top_left,#0f172a,transparent_44%),linear-gradient(135deg,#0f172a_0%,#1d4ed8_55%,#60a5fa_100%)] px-5 py-6 text-white sm:px-6">
-                    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="max-w-3xl">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span
-                            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                              selectedActivity.status === 'running'
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : selectedActivity.status === 'ended'
-                                  ? 'bg-slate-100 text-slate-700'
-                                  : 'bg-amber-100 text-amber-700'
-                            }`}
-                          >
-                            {humanize(selectedActivity.status)}
-                          </span>
-                          <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-xs font-medium text-sky-50">
-                            {selectedActivity.activityKind === 'lab_task'
-                              ? 'Lab Task'
-                              : 'Lab Test'}
-                          </span>
-                          {selectedCourseMeta ? (
-                            <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-xs font-medium text-sky-50">
-                              {courseCode(selectedCourseMeta)}
-                            </span>
-                          ) : null}
-                        </div>
-                        <h2 className="mt-3 text-2xl font-semibold sm:text-3xl">
-                          {getActivityDisplayTitle(selectedActivity)}
-                        </h2>
-                        {selectedActivity.description ? (
-                          <p className="mt-3 max-w-3xl text-sm leading-7 text-sky-50/85">
-                            {selectedActivity.description}
-                          </p>
-                        ) : null}
-                      </div>
+                <section className="rounded-[22px] border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                        {selectedActivity.activityKind === 'lab_task' ? 'Lab Task' : 'Lab Test'}
+                      </span>
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusBadge(
+                          selectedActivity.status,
+                        )}`}
+                      >
+                        {humanize(selectedActivity.status)}
+                      </span>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {getActivityDisplayTitle(selectedActivity)}
+                      </p>
+                    </div>
 
-                      <div className="rounded-[24px] border border-white/15 bg-white/10 px-4 py-4 backdrop-blur">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-100/85">
-                          Time Remaining
-                        </p>
-                        <div className="mt-3 flex items-center gap-2 text-sky-50">
-                          <Clock3 size={16} />
-                          {selectedActivity.status === 'running' ? (
-                            <Countdown endTime={selectedActivity.endTime} onEnded={tryAutoSubmit} />
-                          ) : (
-                            <span className="text-sm font-semibold">
-                              {selectedActivity.status === 'ended' ? 'Ended' : 'Not started'}
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-3 text-xs text-sky-100/80">
-                          Ends at {new Date(selectedActivity.endTime).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 border-t border-slate-200 px-5 py-5 sm:px-6 lg:grid-cols-3">
-                    <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        Duration
-                      </p>
-                      <p className="mt-2 text-sm font-semibold text-slate-900">
-                        {getActivityDuration(selectedActivity)} minutes
-                      </p>
-                    </div>
-                    <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        Schedule
-                      </p>
-                      <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                        <CalendarClock size={14} className="text-slate-400" />
-                        {formatDateTimeLabel(selectedActivity.startTime)} to{' '}
-                        {formatDateTimeLabel(selectedActivity.endTime)}
-                      </p>
-                    </div>
-                    <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        Submission Mode
-                      </p>
-                      <p className="mt-2 text-sm font-semibold text-slate-900">
-                        {useFile ? 'Source file upload' : `${language.toUpperCase()} editor`}
-                      </p>
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                      <CalendarClock size={15} className="text-slate-400" />
+                      {selectedActivity.status === 'running' ? (
+                        <>
+                          <span>Ends in</span>
+                          <Countdown
+                            endTime={selectedActivity.endTime}
+                            onEnded={tryAutoSubmit}
+                          />
+                        </>
+                      ) : (
+                        <span className="font-medium text-slate-700">
+                          {selectedActivity.status === 'ended' ? 'Ended' : 'Not started'}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </section>
@@ -929,7 +888,9 @@ export function StudentLabTests() {
                       </div>
                     </div>
 
-                    <div className="h-[calc(100vh-15rem)] overflow-y-auto px-5 py-5">
+                    <div
+                      className={`${workspacePanelHeightClass} overflow-y-auto px-5 py-5`}
+                    >
                       {!selectedProblem ? (
                         <div className="rounded-[20px] border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center text-sm text-slate-500">
                           Select a problem to view the statement.
@@ -1167,7 +1128,9 @@ export function StudentLabTests() {
                       </div>
                     </div>
 
-                    <div className="grid h-[calc(100vh-15rem)] grid-rows-[minmax(0,1fr)_auto_auto]">
+                    <div
+                      className={`grid ${workspacePanelHeightClass} grid-rows-[minmax(0,1fr)_auto_auto]`}
+                    >
                       <div className="min-h-0 bg-white">
                         {!useFile ? (
                           <AceEditor
