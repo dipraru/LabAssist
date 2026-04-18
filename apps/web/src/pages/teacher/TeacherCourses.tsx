@@ -6,6 +6,7 @@ import { AppShell } from '../../components/AppShell';
 import { api } from '../../lib/api';
 import { courseCode } from '../../lib/display';
 import { CourseMaterialDetail } from '../../components/CourseMaterialDetail';
+import { CourseAnnouncementDetail } from '../../components/CourseAnnouncementDetail';
 import { TeacherCourseDetail } from './TeacherCourseDetail';
 import { TeacherLabClassWorkspace } from './TeacherLabClassWorkspace';
 import { TeacherCourseCard, splitTeacherCourses } from './teacher.shared';
@@ -125,16 +126,19 @@ function formatDayLabel(value: Date): string {
 }
 
 export function TeacherCourses() {
-  const { courseId, labClassId, sheetId } = useParams<{
+  const { courseId, labClassId, sheetId, announcementId } = useParams<{
     courseId: string;
     labClassId: string;
     sheetId: string;
+    announcementId: string;
   }>();
 
   return (
     <AppShell>
       {sheetId ? (
         <CourseMaterialDetail role="teacher" />
+      ) : announcementId ? (
+        <CourseAnnouncementDetail role="teacher" />
       ) : labClassId ? (
         <TeacherLabClassWorkspace />
       ) : courseId ? (

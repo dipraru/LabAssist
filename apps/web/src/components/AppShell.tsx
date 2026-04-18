@@ -40,7 +40,7 @@ const roleNavItems: Record<string, { label: string; href: string; icon: ReactNod
     { label: 'Courses', href: '/office/courses', icon: <BookOpen size={18} /> },
     { label: 'Semesters', href: '/office/semesters', icon: <CalendarRange size={18} /> },
     { label: 'Temp Judges', href: '/office/temp-judges', icon: <ShieldUser size={18} /> },
-    { label: 'Application', href: '/office/application', icon: <FileStack size={18} /> },
+    { label: 'Applications', href: '/office/applications', icon: <FileStack size={18} /> },
   ],
   teacher: [
     { label: 'Dashboard', href: '/teacher', icon: <LayoutDashboard size={18} /> },

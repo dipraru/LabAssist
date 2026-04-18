@@ -15,6 +15,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { LabDiscussionPanel } from '../../components/LabDiscussionPanel';
 import {
   TeacherAvatar,
   formatDateOnly,
@@ -77,10 +78,15 @@ function getActivityDurationLabel(activity: any): string {
 }
 
 function getAttendanceOutcomeLabel(status: string | null | undefined): string {
-  return status === 'present' ? 'Attended' : 'Missed';
+  if (status === 'present') return 'Attended';
+  if (status === 'not_taken') return 'Upcoming';
+  return 'Missed';
 }
 
 function getAttendanceOutcomeClasses(status: string | null | undefined): string {
+  if (status === 'not_taken') {
+    return 'bg-amber-50 text-amber-700';
+  }
   return status === 'present'
     ? 'bg-emerald-50 text-emerald-700'
     : 'bg-rose-50 text-rose-700';
@@ -427,6 +433,12 @@ export function StudentLabClassWorkspace() {
               </div>
             )}
           </section>
+
+          <LabDiscussionPanel
+            role="student"
+            courseId={String(courseId)}
+            labClass={labClass}
+          />
         </div>
 
         <aside className="space-y-6">

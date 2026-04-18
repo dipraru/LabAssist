@@ -15,6 +15,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TeacherDesignation } from '../../users/entities/teacher.entity';
+import { ProfileChangeApplicationStatus } from '../entities/profile-change-application.entity';
 
 export class CreateTeacherDto {
   @IsString()
@@ -191,4 +192,9 @@ export class CreateBatchDto {
 export class UpdateSemesterStartDateDto {
   @IsDateString()
   startDate: string;
+}
+
+export class UpdateProfileChangeApplicationStatusDto {
+  @IsEnum(ProfileChangeApplicationStatus)
+  status: ProfileChangeApplicationStatus;
 }

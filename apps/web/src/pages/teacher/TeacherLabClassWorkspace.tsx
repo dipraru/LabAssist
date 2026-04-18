@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import { Modal } from '../../components/Modal';
+import { LabDiscussionPanel } from '../../components/LabDiscussionPanel';
 import { api } from '../../lib/api';
 import { studentDisplayName } from '../../lib/display';
 import { TeacherLabActivityManager } from './TeacherLabActivityManager';
@@ -1285,6 +1286,12 @@ export function TeacherLabClassWorkspace() {
                 </div>
               </div>
             </section>
+
+            <LabDiscussionPanel
+              role="teacher"
+              courseId={String(courseId)}
+              labClass={labClass}
+            />
           </div>
 
           {selectedLabTaskId || showNewTaskWorkspace ? (

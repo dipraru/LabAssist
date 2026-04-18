@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Patch,
   Post,
@@ -16,13 +17,14 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UsersService } from './users.service';
 import { StorageService } from '../storage/storage.service';
-import { IsOptional, IsString, IsDateString } from 'class-validator';
+import { IsDateString, IsEmail, IsOptional, IsString } from 'class-validator';
 import { v4 as uuidv4 } from 'uuid';
+import { UserRole } from '../../common/enums/role.enum';
 
 class UpdateStudentProfileDto {
   @IsOptional() @IsString() fullName?: string;
   @IsOptional() @IsString() phone?: string;
-  @IsOptional() @IsString() email?: string;
+  @IsOptional() @IsEmail() email?: string;
   @IsOptional() @IsDateString() dateOfBirth?: string;
   @IsOptional() @IsString() guardianPhone?: string;
   @IsOptional() @IsString() fathersName?: string;
@@ -30,6 +32,14 @@ class UpdateStudentProfileDto {
   @IsOptional() @IsString() presentAddress?: string;
   @IsOptional() @IsString() permanentAddress?: string;
   @IsOptional() @IsString() gender?: string;
+}
+
+class CreateProfileChangeApplicationDto {
+  @IsOptional() @IsString() fullName?: string;
+  @IsOptional() @IsEmail() email?: string;
+  @IsOptional() @IsDateString() dateOfBirth?: string;
+  @IsOptional() @IsString() fathersName?: string;
+  @IsOptional() @IsString() mothersName?: string;
 }
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -52,7 +62,7 @@ export class UsersController {
   ) {
     const student = await this.users.findStudentByUserId(user.id);
     if (student) {
-      const updated = await this.users.updateStudent(user.id, {
+      const updated = await this.users.updateStudentSelfService(user.id, {
         fullName: dto.fullName,
         phone: dto.phone,
         email: dto.email,
@@ -63,14 +73,13 @@ export class UsersController {
         presentAddress: dto.presentAddress,
         permanentAddress: dto.permanentAddress,
         gender: dto.gender,
-        profileCompleted: true,
       });
       return updated;
     }
     // For teachers, delegate to teacher fields
     const teacher = await this.users.findTeacherByUserId(user.id);
     if (teacher) {
-      return this.users.updateTeacher(user.id, {
+      return this.users.updateTeacherSelfService(user.id, {
         fullName: dto.fullName,
         email: dto.email,
         phone: dto.phone,
@@ -86,24 +95,69 @@ export class UsersController {
     @CurrentUser() user: any,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    if (!file) return { message: 'No file provided' };
-    if (!file.mimetype?.startsWith('image/')) {
-      throw new BadRequestException('Photo must be an image');
-    }
-    const saved = await this.storage.saveBuffer(
-      file.buffer,
-      `${uuidv4()}_${file.originalname}`,
-      'profiles',
-      5 * 1024 * 1024, // 5MB max
-    );
     const student = await this.users.findStudentByUserId(user.id);
-    if (student) {
-      await this.users.updateStudent(user.id, { profilePhoto: saved.url });
-    }
     const teacher = await this.users.findTeacherByUserId(user.id);
-    if (teacher) {
-      await this.users.updateTeacher(user.id, { profilePhoto: saved.url });
+
+    if (student || teacher) {
+      throw new ForbiddenException(
+        'Submit an office application to change your profile photo',
+      );
     }
-    return { url: saved.url };
+
+    if (!file) return { message: 'No file provided' };
+    return { message: 'Photo uploads are not enabled for this account' };
+  }
+
+  @Get('profile-change-applications')
+  async getMyProfileChangeApplications(@CurrentUser() user: any) {
+    return this.users.getProfileChangeApplicationsForUser(user.id);
+  }
+
+  @Post('profile-change-applications')
+  @UseInterceptors(FileInterceptor('photo', { storage: memoryStorage() }))
+  async createProfileChangeApplication(
+    @CurrentUser() user: { id: string; role: UserRole },
+    @Body() dto: CreateProfileChangeApplicationDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    let savedPhoto:
+      | {
+          url: string;
+          filePath: string;
+        }
+      | undefined;
+
+    if (file) {
+      if (!file.mimetype?.startsWith('image/')) {
+        throw new BadRequestException('Requested photo must be an image');
+      }
+
+      savedPhoto = await this.storage.saveBuffer(
+        file.buffer,
+        `${uuidv4()}_${file.originalname}`,
+        'profiles',
+        5 * 1024 * 1024,
+      );
+    }
+
+    try {
+      return await this.users.createProfileChangeApplication(
+        user.id,
+        user.role,
+        {
+          fullName: dto.fullName,
+          email: dto.email,
+          dateOfBirth: dto.dateOfBirth,
+          fathersName: dto.fathersName,
+          mothersName: dto.mothersName,
+        },
+        savedPhoto?.url,
+      );
+    } catch (error) {
+      if (savedPhoto) {
+        this.storage.deleteFile(savedPhoto.filePath);
+      }
+      throw error;
+    }
   }
 }

@@ -16,6 +16,10 @@ import { Semester } from '../courses/entities/semester.entity';
 import { Course } from '../courses/entities/course.entity';
 import { Enrollment } from '../courses/entities/enrollment.entity';
 import { Batch, BatchSection } from './entities/batch.entity';
+import {
+  ProfileChangeApplication,
+  ProfileChangeApplicationStatus,
+} from './entities/profile-change-application.entity';
 import { SemesterName } from '../../common/enums';
 import { UserRole } from '../../common/enums/role.enum';
 import { LabTest, LabTestStatus } from '../lab-tests/entities/lab-test.entity';
@@ -238,6 +242,8 @@ export class OfficeService {
     @InjectRepository(Course) private courseRepo: Repository<Course>,
     @InjectRepository(Batch) private batchRepo: Repository<Batch>,
     @InjectRepository(LabTest) private labTestRepo: Repository<LabTest>,
+    @InjectRepository(ProfileChangeApplication)
+    private profileChangeApplicationRepo: Repository<ProfileChangeApplication>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -910,6 +916,102 @@ export class OfficeService {
 
   async toggleUserActive(userId: string, isActive: boolean): Promise<void> {
     await this.userRepo.update(userId, { isActive });
+  }
+
+  async getProfileChangeApplications(): Promise<ProfileChangeApplication[]> {
+    return this.profileChangeApplicationRepo.find({
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async getProfileChangeApplicationById(
+    id: string,
+  ): Promise<ProfileChangeApplication> {
+    const application = await this.profileChangeApplicationRepo.findOne({
+      where: { id },
+    });
+    if (!application) {
+      throw new NotFoundException('Application not found');
+    }
+    return application;
+  }
+
+  async reviewProfileChangeApplication(
+    id: string,
+    status: ProfileChangeApplicationStatus,
+    officeUserId: string,
+  ): Promise<ProfileChangeApplication> {
+    const application = await this.getProfileChangeApplicationById(id);
+    if (application.status !== ProfileChangeApplicationStatus.PENDING) {
+      throw new BadRequestException('This application has already been reviewed');
+    }
+
+    const officeUser = await this.userRepo.findOne({
+      where: { id: officeUserId },
+    });
+
+    if (status === ProfileChangeApplicationStatus.APPROVED) {
+      if (application.requesterRole === UserRole.STUDENT) {
+        const student = await this.studentRepo.findOne({
+          where: { userId: application.requesterUserId },
+        });
+        if (!student) {
+          throw new NotFoundException('Student not found');
+        }
+
+        if (application.requestedData.fullName) {
+          student.fullName = application.requestedData.fullName;
+        }
+        if (application.requestedData.email) {
+          student.email = application.requestedData.email;
+        }
+        if (application.requestedData.dateOfBirth) {
+          student.dateOfBirth = new Date(application.requestedData.dateOfBirth);
+        }
+        if (application.requestedData.fathersName) {
+          student.fathersName = application.requestedData.fathersName;
+        }
+        if (application.requestedData.mothersName) {
+          student.mothersName = application.requestedData.mothersName;
+        }
+        if (application.requestedPhoto) {
+          student.profilePhoto = application.requestedPhoto;
+        }
+        student.profileCompleted = Boolean(
+          student.phone &&
+            student.email &&
+            student.fathersName &&
+            student.mothersName &&
+            student.dateOfBirth,
+        );
+        await this.studentRepo.save(student);
+      } else if (application.requesterRole === UserRole.TEACHER) {
+        const teacher = await this.teacherRepo.findOne({
+          where: { userId: application.requesterUserId },
+        });
+        if (!teacher) {
+          throw new NotFoundException('Teacher not found');
+        }
+
+        if (application.requestedData.fullName) {
+          teacher.fullName = application.requestedData.fullName;
+        }
+        if (application.requestedData.email) {
+          teacher.email = application.requestedData.email;
+        }
+        if (application.requestedPhoto) {
+          teacher.profilePhoto = application.requestedPhoto;
+        }
+        await this.teacherRepo.save(teacher);
+      }
+    }
+
+    application.status = status;
+    application.reviewedByOfficeId = officeUserId;
+    application.reviewedByName = officeUser?.username ?? 'Office';
+    application.reviewedAt = new Date();
+
+    return this.profileChangeApplicationRepo.save(application);
   }
 
   // ────────────────────────────────────────────────────────

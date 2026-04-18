@@ -12,6 +12,7 @@ import { Course } from './course.entity';
 import { User } from '../../users/entities/user.entity';
 import { UserRole } from '../../../common/enums/role.enum';
 import { CoursePostComment } from './course-post-comment.entity';
+import { LabClass } from './lab-class.entity';
 
 export enum CoursePostType {
   ANNOUNCEMENT = 'announcement',
@@ -43,6 +44,16 @@ export class CoursePost {
   @Column({ type: 'text' })
   body: string;
 
+  @ManyToOne(() => LabClass, { nullable: true, onDelete: 'CASCADE', eager: true })
+  @JoinColumn()
+  labClass: LabClass | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  labClassId: string | null;
+
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  targetSectionNames: string[];
+
   @ManyToOne(() => User, { eager: true, onDelete: 'CASCADE' })
   @JoinColumn()
   postedByUser: User;
@@ -55,6 +66,27 @@ export class CoursePost {
 
   @Column()
   postedByName: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  postedByIdentifier: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  postedByPhoto: string | null;
+
+  @Column({ default: false })
+  isSolved: boolean;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  solvedAt: Date | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  solvedByUserId: string | null;
+
+  @Column({ type: 'enum', enum: UserRole, nullable: true })
+  solvedByRole: UserRole | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  solvedByName: string | null;
 
   @OneToMany(() => CoursePostComment, (comment) => comment.post, {
     cascade: true,

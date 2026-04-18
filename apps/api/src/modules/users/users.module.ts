@@ -7,6 +7,7 @@ import { TempJudge } from './entities/temp-judge.entity';
 import { TempParticipant } from './entities/temp-participant.entity';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
+import { ProfileChangeApplication } from '../office/entities/profile-change-application.entity';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { UsersController } from './users.controller';
       Teacher,
       TempJudge,
       TempParticipant,
+      ProfileChangeApplication,
     ]),
   ],
   providers: [UsersService],

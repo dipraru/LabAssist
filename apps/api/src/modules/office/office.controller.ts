@@ -34,6 +34,7 @@ import {
   CreateStudentDto,
   CreateBatchDto,
   UpdateSemesterStartDateDto,
+  UpdateProfileChangeApplicationStatusDto,
 } from './dto/office.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -228,6 +229,29 @@ export class OfficeController {
   @Patch('students/correct')
   correctStudent(@Body() dto: CorrectStudentDto) {
     return this.officeService.correctStudentInfo(dto);
+  }
+
+  @Get('profile-change-applications')
+  getProfileChangeApplications() {
+    return this.officeService.getProfileChangeApplications();
+  }
+
+  @Get('profile-change-applications/:id')
+  getProfileChangeApplication(@Param('id') id: string) {
+    return this.officeService.getProfileChangeApplicationById(id);
+  }
+
+  @Patch('profile-change-applications/:id/status')
+  updateProfileChangeApplicationStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateProfileChangeApplicationStatusDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.officeService.reviewProfileChangeApplication(
+      id,
+      dto.status,
+      user.id,
+    );
   }
 
   // ── PDF credential generation ─────────────────────────────
