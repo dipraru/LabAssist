@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Assignment } from './entities/assignment.entity';
 import { AssignmentLink } from './entities/assignment-link.entity';
 import {
@@ -17,6 +17,7 @@ import { Course } from '../courses/entities/course.entity';
 import { Student } from '../users/entities/student.entity';
 import { Teacher } from '../users/entities/teacher.entity';
 import { AssignmentStatus } from '../../common/enums';
+import { UserRole } from '../../common/enums/role.enum';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { StorageService } from '../storage/storage.service';
@@ -68,6 +69,44 @@ export class AssignmentsService {
     );
 
     return endDay < todayStart;
+  }
+
+  private async getStudentByUserId(studentUserId: string): Promise<Student> {
+    const student = await this.studentRepo.findOne({
+      where: { userId: studentUserId },
+    });
+    if (!student) throw new NotFoundException('Student not found');
+    return student;
+  }
+
+  private async mapAssignmentsWithStudentSubmission(
+    assignments: Assignment[],
+    studentId: string,
+  ): Promise<Array<Assignment & { mySubmission: AssignmentSubmission | null }>> {
+    if (!assignments.length) {
+      return [];
+    }
+
+    const submissions = await this.submissionRepo.find({
+      where: assignments.map((assignment) => ({
+        assignmentId: assignment.id,
+        studentId,
+      })),
+      order: { updatedAt: 'DESC' },
+    });
+    const submissionByAssignmentId = new Map<string, AssignmentSubmission>();
+
+    for (const submission of submissions) {
+      if (!submissionByAssignmentId.has(submission.assignmentId)) {
+        submissionByAssignmentId.set(submission.assignmentId, submission);
+      }
+    }
+
+    return assignments.map((assignment) =>
+      Object.assign(assignment, {
+        mySubmission: submissionByAssignmentId.get(assignment.id) ?? null,
+      }),
+    );
   }
 
   async createAssignment(
@@ -145,12 +184,61 @@ export class AssignmentsService {
     return a;
   }
 
-  async getAssignmentsByCourse(courseId: string): Promise<Assignment[]> {
-    return this.assignmentRepo.find({
+  async getAssignmentsByCourse(
+    courseId: string,
+    requesterUserId?: string,
+    requesterRole?: UserRole,
+  ): Promise<Array<Assignment & { mySubmission?: AssignmentSubmission | null }>> {
+    const assignments = await this.assignmentRepo.find({
       where: { courseId, status: AssignmentStatus.PUBLISHED },
       relations: ['links', 'createdBy'],
       order: { createdAt: 'DESC' },
     });
+
+    if (requesterRole !== UserRole.STUDENT || !requesterUserId) {
+      return assignments;
+    }
+
+    const student = await this.getStudentByUserId(requesterUserId);
+    const enrollment = await this.enrollmentRepo.findOne({
+      where: { courseId, studentId: student.id, isActive: true },
+    });
+    if (!enrollment) {
+      throw new ForbiddenException('You are not enrolled in this course');
+    }
+
+    return this.mapAssignmentsWithStudentSubmission(assignments, student.id);
+  }
+
+  async getAssignmentsForStudent(
+    studentUserId: string,
+  ): Promise<Array<Assignment & { mySubmission: AssignmentSubmission | null }>> {
+    const student = await this.getStudentByUserId(studentUserId);
+    const enrollments = await this.enrollmentRepo.find({
+      where: { studentId: student.id, isActive: true },
+    });
+    const courseIds = Array.from(
+      new Set(
+        enrollments
+          .map((enrollment) => enrollment.courseId)
+          .filter((courseId): courseId is string => Boolean(courseId)),
+      ),
+    );
+
+    if (!courseIds.length) {
+      return [];
+    }
+
+    const assignments = await this.assignmentRepo.find({
+      where: {
+        courseId: In(courseIds),
+        status: AssignmentStatus.PUBLISHED,
+      },
+      relations: ['links', 'createdBy'],
+      order: { createdAt: 'DESC' },
+    });
+
+    return this.mapAssignmentsWithStudentSubmission(assignments, student.id);
   }
 
   async updateAssignment(

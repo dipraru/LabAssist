@@ -113,6 +113,9 @@ function getTeacherHeaderLabel(pathname: string): string {
 
 function getStudentHeaderLabel(pathname: string): string {
   if (pathname === '/student') return 'Dashboard';
+  if (pathname.startsWith('/student/courses/') && pathname.includes('/lab-classes/')) {
+    return 'Lab Class';
+  }
   if (pathname.startsWith('/student/courses/')) return 'Course Workspace';
   if (pathname.startsWith('/student/courses')) return 'Courses';
   if (pathname.startsWith('/student/assignments')) return 'Assignments';
@@ -417,14 +420,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           { label: 'Change Password', href: changePasswordHref },
         ].filter(Boolean) as { label: string; href: string }[]
       : [
-          { label: 'Dashboard', href: '/student' },
-          { label: 'Courses', href: '/student/courses' },
-          { label: 'Assignments', href: '/student/assignments' },
-          { label: 'Lab Tests', href: '/student/lab-tests' },
-          { label: 'Notifications', href: '/student/notifications' },
           profileHref
             ? { label: 'My Profile', href: profileHref }
             : null,
+          { label: 'Dashboard', href: '/student' },
+          { label: 'Courses', href: '/student/courses' },
+          { label: 'Assignments', href: '/student/assignments' },
           { label: 'Change Password', href: changePasswordHref },
         ].filter(Boolean) as { label: string; href: string }[];
 

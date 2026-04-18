@@ -38,9 +38,25 @@ export class AssignmentsController {
     return this.assignmentsService.createAssignment(dto, user.id);
   }
 
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.TEACHER, UserRole.STUDENT)
   @Get('course/:courseId')
-  getByCourse(@Param('courseId') courseId: string) {
-    return this.assignmentsService.getAssignmentsByCourse(courseId);
+  getByCourse(
+    @Param('courseId') courseId: string,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.assignmentsService.getAssignmentsByCourse(
+      courseId,
+      user.id,
+      user.role,
+    );
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.STUDENT)
+  @Get('my')
+  getMyAssignments(@CurrentUser() user: { id: string }) {
+    return this.assignmentsService.getAssignmentsForStudent(user.id);
   }
 
   @Get(':id')

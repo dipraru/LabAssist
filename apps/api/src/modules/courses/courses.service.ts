@@ -321,6 +321,97 @@ export class CoursesService {
     );
   }
 
+  private resolveStudentLabClassView(
+    labClass: LabClass,
+    studentId: string,
+    viewerSectionName: string,
+  ): {
+    sections: LabClassSection[];
+    viewerEffectiveSectionName: string;
+    viewerAttendance: {
+      status: 'present' | 'absent' | 'not_taken';
+      sectionName: string | null;
+      takenAt: Date | null;
+    };
+    shouldInclude: boolean;
+  } {
+    const sections = [...(labClass.sections ?? [])].sort((left, right) =>
+      compareSectionNames(left.sectionName, right.sectionName),
+    );
+    const normalizedViewerSectionName = normalizeSectionName(viewerSectionName);
+    const fallbackSection =
+      sections.find(
+        (section) =>
+          normalizeSectionName(section.sectionName) === normalizedViewerSectionName,
+      ) ??
+      sections.find(
+        (section) => normalizeSectionName(section.sectionName) === 'All Students',
+      ) ??
+      null;
+    const attendanceEntries = sections
+      .map((section) => ({
+        section,
+        record: (section.attendanceRecords ?? []).find(
+          (record) => record.studentId === studentId,
+        ),
+      }))
+      .filter(
+        (
+          item,
+        ): item is {
+          section: LabClassSection;
+          record: LabAttendanceRecord;
+        } => Boolean(item.record),
+      );
+
+    const presentParticipation = attendanceEntries.find(
+      ({ record, section }) =>
+        record.isPresent &&
+        (section.status === LabClassSectionStatus.CONDUCTED ||
+          section.attendanceTakenAt != null),
+    );
+    const recordedAbsence = attendanceEntries.find(
+      ({ record, section }) =>
+        !record.isPresent &&
+        (section.status === LabClassSectionStatus.CONDUCTED ||
+          section.attendanceTakenAt != null),
+    );
+    const fallbackAttendanceTaken =
+      fallbackSection &&
+      (fallbackSection.status === LabClassSectionStatus.CONDUCTED ||
+        fallbackSection.attendanceTakenAt != null)
+        ? fallbackSection
+        : null;
+
+    const attendanceSection =
+      presentParticipation?.section ??
+      recordedAbsence?.section ??
+      fallbackAttendanceTaken ??
+      null;
+    const viewerAttendanceStatus: 'present' | 'absent' | 'not_taken' =
+      presentParticipation != null
+        ? 'present'
+        : attendanceSection
+          ? 'absent'
+          : 'not_taken';
+
+    return {
+      sections,
+      viewerEffectiveSectionName:
+        attendanceSection?.sectionName ??
+        fallbackSection?.sectionName ??
+        viewerSectionName,
+      viewerAttendance: {
+        status: viewerAttendanceStatus,
+        sectionName: attendanceSection?.sectionName ?? null,
+        takenAt: attendanceSection?.attendanceTakenAt ?? null,
+      },
+      shouldInclude: Boolean(
+        presentParticipation || recordedAbsence || fallbackAttendanceTaken,
+      ),
+    };
+  }
+
   private async validateLectureSheetPlacement(
     courseId: string,
     labClassId?: string | null,
@@ -661,7 +752,7 @@ export class CoursesService {
       where: { userId: studentUserId },
     });
     if (!student) throw new NotFoundException('Student not found');
-    return this.courseRepo
+    const courses = await this.courseRepo
       .createQueryBuilder('course')
       .innerJoin(
         'course.enrollments',
@@ -671,8 +762,19 @@ export class CoursesService {
       )
       .leftJoinAndSelect('course.teachers', 'teacher')
       .leftJoinAndSelect('course.semester', 'semester')
+      .leftJoinAndSelect('course.schedules', 'schedules')
       .where('course.isActive = true')
       .getMany();
+
+    return Promise.all(
+      courses.map(async (course) =>
+        Object.assign(course, {
+          batchSections: (await this.getCourseBatchSections(course)).sort(
+            (left, right) => compareSectionNames(left.name, right.name),
+          ),
+        }),
+      ),
+    );
   }
 
   async enrollStudents(
@@ -925,8 +1027,23 @@ export class CoursesService {
   async getLabClassesForStudent(
     courseId: string,
     studentUserId: string,
-  ): Promise<LabClass[]> {
-    await this.getStudentWithCourseAccess(courseId, studentUserId);
+  ): Promise<
+    Array<
+      LabClass & {
+        viewerSectionName: string;
+        viewerEffectiveSectionName: string;
+        viewerAttendance: {
+          status: 'present' | 'absent';
+          sectionName: string;
+          takenAt: Date | null;
+        };
+      }
+    >
+  > {
+    const { student, sectionName } = await this.getStudentWithCourseAccess(
+      courseId,
+      studentUserId,
+    );
 
     const labClasses = await this.labClassRepo.find({
       where: { courseId },
@@ -934,20 +1051,65 @@ export class CoursesService {
       order: { labNumber: 'DESC', createdAt: 'DESC' },
     });
 
-    return labClasses.map((labClass) => ({
-      ...labClass,
-      sections: [...(labClass.sections ?? [])].sort((left, right) =>
-        compareSectionNames(left.sectionName, right.sectionName),
-      ),
-    }));
+    return labClasses
+      .map((labClass) => {
+        const labClassView = this.resolveStudentLabClassView(
+          labClass,
+          student.id,
+          sectionName,
+        );
+        if (
+          !labClassView.shouldInclude ||
+          labClassView.viewerAttendance.status === 'not_taken' ||
+          !labClassView.viewerAttendance.sectionName
+        ) {
+          return null;
+        }
+
+        return {
+          ...labClass,
+          sections: labClassView.sections,
+          viewerSectionName: sectionName,
+          viewerEffectiveSectionName: labClassView.viewerEffectiveSectionName,
+          viewerAttendance: {
+            status: labClassView.viewerAttendance.status,
+            sectionName: labClassView.viewerAttendance.sectionName,
+            takenAt: labClassView.viewerAttendance.takenAt,
+          },
+        };
+      })
+      .filter(
+        (
+          labClass,
+        ): labClass is LabClass & {
+          viewerSectionName: string;
+          viewerEffectiveSectionName: string;
+          viewerAttendance: {
+            status: 'present' | 'absent';
+            sectionName: string;
+            takenAt: Date | null;
+          };
+        } => Boolean(labClass),
+      );
   }
 
   async getLabClassByIdForStudent(
     courseId: string,
     labClassId: string,
     studentUserId: string,
-  ): Promise<LabClass & { course: Course; viewerSectionName: string }> {
-    const { course, sectionName } = await this.getStudentWithCourseAccess(
+  ): Promise<
+    LabClass & {
+      course: Course;
+      viewerSectionName: string;
+      viewerEffectiveSectionName: string;
+      viewerAttendance: {
+        status: 'present' | 'absent' | 'not_taken';
+        sectionName: string | null;
+        takenAt: Date | null;
+      };
+    }
+  > {
+    const { course, sectionName, student } = await this.getStudentWithCourseAccess(
       courseId,
       studentUserId,
     );
@@ -959,16 +1121,28 @@ export class CoursesService {
     if (!labClass || labClass.courseId !== courseId) {
       throw new NotFoundException('Lab class not found');
     }
+    const labClassView = this.resolveStudentLabClassView(
+      labClass,
+      student.id,
+      sectionName,
+    );
+    if (!labClassView.shouldInclude) {
+      throw new NotFoundException('Lab class not found');
+    }
 
     labClass.course = Object.assign(labClass.course, {
       batchSections: course.batchSections,
     });
-    labClass.sections = [...(labClass.sections ?? [])].sort((left, right) =>
-      compareSectionNames(left.sectionName, right.sectionName),
-    );
+    labClass.sections = labClassView.sections;
 
     return Object.assign(labClass, {
       viewerSectionName: sectionName,
+      viewerEffectiveSectionName: labClassView.viewerEffectiveSectionName,
+      viewerAttendance: {
+        status: labClassView.viewerAttendance.status,
+        sectionName: labClassView.viewerAttendance.sectionName,
+        takenAt: labClassView.viewerAttendance.takenAt,
+      },
     });
   }
 

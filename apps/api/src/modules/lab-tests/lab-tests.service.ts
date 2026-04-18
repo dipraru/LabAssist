@@ -256,6 +256,91 @@ export class LabTestsService {
     };
   }
 
+  private async getStudentActivityParticipation(
+    courseId: string,
+    studentId: string,
+  ): Promise<{
+    presentSectionsByLabClassId: Map<string, Set<string>>;
+    submittedActivityIds: Set<string>;
+  }> {
+    const labClasses = await this.labClassRepo.find({
+      where: { courseId },
+      relations: ['sections'],
+    });
+    const presentSectionsByLabClassId = new Map<string, Set<string>>();
+
+    for (const labClass of labClasses) {
+      for (const section of labClass.sections ?? []) {
+        const attendanceRecord = (section.attendanceRecords ?? []).find(
+          (record) => record.studentId === studentId && record.isPresent,
+        );
+        if (!attendanceRecord) {
+          continue;
+        }
+
+        const normalizedSectionName = normalizeSectionName(section.sectionName);
+        if (!presentSectionsByLabClassId.has(labClass.id)) {
+          presentSectionsByLabClassId.set(labClass.id, new Set());
+        }
+        presentSectionsByLabClassId.get(labClass.id)?.add(normalizedSectionName);
+      }
+    }
+
+    const submittedActivityRows = await this.submissionRepo
+      .createQueryBuilder('submission')
+      .innerJoin('submission.problem', 'problem')
+      .innerJoin('problem.labTest', 'labTest')
+      .select('labTest.id', 'labTestId')
+      .where('submission.studentId = :studentId', { studentId })
+      .andWhere('labTest.courseId = :courseId', { courseId })
+      .groupBy('labTest.id')
+      .getRawMany<{ labTestId: string }>();
+
+    return {
+      presentSectionsByLabClassId,
+      submittedActivityIds: new Set(
+        submittedActivityRows
+          .map((item) => item.labTestId)
+          .filter((labTestId): labTestId is string => Boolean(labTestId)),
+      ),
+    };
+  }
+
+  private canStudentAccessActivity(
+    labTest: Pick<LabTest, 'id' | 'sectionName' | 'labClassId'>,
+    viewerSectionName: string,
+    participation: {
+      presentSectionsByLabClassId: Map<string, Set<string>>;
+      submittedActivityIds: Set<string>;
+    },
+  ): boolean {
+    const scopedSectionName = labTest.sectionName
+      ? normalizeSectionName(labTest.sectionName)
+      : null;
+
+    if (!scopedSectionName || scopedSectionName === 'All Students') {
+      return true;
+    }
+
+    if (scopedSectionName === normalizeSectionName(viewerSectionName)) {
+      return true;
+    }
+
+    if (participation.submittedActivityIds.has(labTest.id)) {
+      return true;
+    }
+
+    if (!labTest.labClassId) {
+      return false;
+    }
+
+    return (
+      participation.presentSectionsByLabClassId
+        .get(labTest.labClassId)
+        ?.has(scopedSectionName) ?? false
+    );
+  }
+
   private async ensureStudentCanAccessLabTest(
     labTest: LabTest,
     studentUserId: string,
@@ -265,15 +350,12 @@ export class LabTestsService {
     sectionName: string;
   }> {
     const access = await this.getStudentCourseAccess(labTest.courseId, studentUserId);
-    const scopedSectionName = labTest.sectionName
-      ? normalizeSectionName(labTest.sectionName)
-      : null;
+    const participation = await this.getStudentActivityParticipation(
+      labTest.courseId,
+      access.student.id,
+    );
 
-    if (
-      scopedSectionName &&
-      scopedSectionName !== 'All Students' &&
-      scopedSectionName !== access.sectionName
-    ) {
+    if (!this.canStudentAccessActivity(labTest, access.sectionName, participation)) {
       throw new ForbiddenException('This lab activity is not assigned to your section');
     }
 
@@ -999,11 +1081,21 @@ export class LabTestsService {
     labClassId?: string,
   ): Promise<LabTest[]> {
     let viewerSectionName: string | null = null;
+    let participation:
+      | {
+          presentSectionsByLabClassId: Map<string, Set<string>>;
+          submittedActivityIds: Set<string>;
+        }
+      | null = null;
     if (role === UserRole.TEACHER) {
       await this.getTeacherCourseAccess(courseId, requesterUserId);
     } else {
       const studentAccess = await this.getStudentCourseAccess(courseId, requesterUserId);
       viewerSectionName = studentAccess.sectionName;
+      participation = await this.getStudentActivityParticipation(
+        courseId,
+        studentAccess.student.id,
+      );
     }
 
     const where: Record<string, any> = { courseId };
@@ -1029,14 +1121,14 @@ export class LabTestsService {
           return false;
         }
 
-        const scopedSectionName = labTest.sectionName
-          ? normalizeSectionName(labTest.sectionName)
-          : null;
-        if (!scopedSectionName || scopedSectionName === 'All Students') {
-          return true;
-        }
-
-        return scopedSectionName === viewerSectionName;
+        return this.canStudentAccessActivity(
+          labTest,
+          viewerSectionName ?? 'All Students',
+          participation ?? {
+            presentSectionsByLabClassId: new Map(),
+            submittedActivityIds: new Set(),
+          },
+        );
       });
     }
 
@@ -1162,9 +1254,20 @@ export class LabTestsService {
       relations: ['semester', 'schedules'],
     });
     const sectionByCourseId = new Map<string, string>();
+    const participationByCourseId = new Map<
+      string,
+      {
+        presentSectionsByLabClassId: Map<string, Set<string>>;
+        submittedActivityIds: Set<string>;
+      }
+    >();
     for (const course of courses) {
       const batchSections = await this.getCourseBatchSections(course);
       sectionByCourseId.set(course.id, this.resolveStudentSection(student, batchSections));
+      participationByCourseId.set(
+        course.id,
+        await this.getStudentActivityParticipation(course.id, student.id),
+      );
     }
 
     const activities = await this.labTestRepo
@@ -1179,14 +1282,14 @@ export class LabTestsService {
         return false;
       }
 
-      const scopedSectionName = labTest.sectionName
-        ? normalizeSectionName(labTest.sectionName)
-        : null;
-      if (!scopedSectionName || scopedSectionName === 'All Students') {
-        return true;
-      }
-
-      return scopedSectionName === sectionByCourseId.get(labTest.courseId);
+      return this.canStudentAccessActivity(
+        labTest,
+        sectionByCourseId.get(labTest.courseId) ?? 'All Students',
+        participationByCourseId.get(labTest.courseId) ?? {
+          presentSectionsByLabClassId: new Map(),
+          submittedActivityIds: new Set(),
+        },
+      );
     });
   }
 
