@@ -9,6 +9,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { SafeImage } from '../lib/media';
 import { useAuthStore } from '../store/auth.store';
 
 type Role = 'teacher' | 'student';
@@ -66,7 +67,12 @@ function PersonAvatar({
   return (
     <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl bg-slate-900 font-semibold text-white shadow-sm">
       {photo ? (
-        <img src={photo} alt={name} className="h-full w-full object-cover" />
+        <SafeImage
+          src={photo}
+          alt={name}
+          className="h-full w-full object-cover"
+          fallback={getInitials(name || 'User')}
+        />
       ) : (
         getInitials(name || 'User')
       )}
@@ -287,15 +293,18 @@ export function LabDiscussionPanel({
                     />
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold text-slate-900">
+                          {question.postedByName ?? 'User'}
+                        </span>
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                          {question.postedByIdentifier ?? 'Identity unavailable'}
+                        </span>
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-semibold ${getRoleBadgeClasses(
                             question.postedByRole,
                           )}`}
                         >
                           {question.postedByRole === 'teacher' ? 'Teacher' : 'Student'}
-                        </span>
-                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
-                          {question.postedByIdentifier ?? 'Identity unavailable'}
                         </span>
                         <span className="text-xs font-medium text-slate-400">
                           {formatDateTime(question.createdAt)}
@@ -309,9 +318,6 @@ export function LabDiscussionPanel({
                       </div>
                       <p className="mt-3 text-lg font-semibold text-slate-900">
                         {question.title}
-                      </p>
-                      <p className="mt-2 text-sm font-medium text-slate-700">
-                        {question.postedByName}
                       </p>
                       <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">
                         {question.body}
@@ -360,6 +366,12 @@ export function LabDiscussionPanel({
                             />
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-semibold text-slate-900">
+                                  {comment.commentedByName ?? 'User'}
+                                </span>
+                                <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                                  {comment.commentedByIdentifier ?? 'Identity unavailable'}
+                                </span>
                                 <span
                                   className={`rounded-full px-3 py-1 text-xs font-semibold ${getRoleBadgeClasses(
                                     comment.commentedByRole,
@@ -367,16 +379,10 @@ export function LabDiscussionPanel({
                                 >
                                   {comment.commentedByRole === 'teacher' ? 'Teacher' : 'Student'}
                                 </span>
-                                <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
-                                  {comment.commentedByIdentifier ?? 'Identity unavailable'}
-                                </span>
                                 <span className="text-xs font-medium text-slate-400">
                                   {formatDateTime(comment.createdAt)}
                                 </span>
                               </div>
-                              <p className="mt-2 text-sm font-semibold text-slate-900">
-                                {comment.commentedByName}
-                              </p>
                               <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
                                 {comment.body}
                               </p>

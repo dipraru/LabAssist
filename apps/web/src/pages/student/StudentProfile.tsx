@@ -7,7 +7,6 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   CalendarDays,
-  FileStack,
   Home,
   LockKeyhole,
   Mail,
@@ -19,6 +18,7 @@ import {
   UserRound,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { SafeImage } from '../../lib/media';
 import { useAuthStore } from '../../store/auth.store';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
@@ -40,14 +40,37 @@ function buildProfileSchema(isFirstLogin: boolean) {
     mothersName: isFirstLogin
       ? z.string().trim().min(1, "Mother's name is required")
       : z.string().optional().or(z.literal('')),
-    guardianPhone: z.string().optional().or(z.literal('')),
     presentAddress: z.string().optional().or(z.literal('')),
-    permanentAddress: z.string().optional().or(z.literal('')),
-    gender: z.enum(['male', 'female', 'other']).optional(),
   });
 }
 
 type FormData = z.infer<ReturnType<typeof buildProfileSchema>>;
+type StudentVerifiedFieldKey =
+  | 'fullName'
+  | 'email'
+  | 'dateOfBirth'
+  | 'fathersName'
+  | 'mothersName'
+  | 'guardianPhone'
+  | 'permanentAddress'
+  | 'gender'
+  | 'photo';
+
+const studentVerifiedFieldOptions: {
+  key: StudentVerifiedFieldKey;
+  label: string;
+  kind: 'text' | 'email' | 'date' | 'textarea' | 'select' | 'photo';
+}[] = [
+  { key: 'fullName', label: 'Full Name', kind: 'text' },
+  { key: 'email', label: 'Email', kind: 'email' },
+  { key: 'dateOfBirth', label: 'Date of Birth', kind: 'date' },
+  { key: 'fathersName', label: "Father's Name", kind: 'text' },
+  { key: 'mothersName', label: "Mother's Name", kind: 'text' },
+  { key: 'guardianPhone', label: 'Guardian Phone', kind: 'text' },
+  { key: 'permanentAddress', label: 'Permanent Address', kind: 'textarea' },
+  { key: 'gender', label: 'Gender', kind: 'select' },
+  { key: 'photo', label: 'Requested Photo', kind: 'photo' },
+];
 
 function getInitials(name: string): string {
   return name
@@ -79,19 +102,21 @@ function formatDateTime(value: string | null | undefined) {
 }
 
 function fieldKeysToLabel(keys: string[]) {
+  const labels: Record<string, string> = {
+    dateOfBirth: 'Date of Birth',
+    fathersName: "Father's Name",
+    mothersName: "Mother's Name",
+    guardianPhone: 'Guardian Phone',
+    permanentAddress: 'Permanent Address',
+    profilePhoto: 'Photo',
+  };
+
   return keys
     .map((key) =>
-      key === 'dateOfBirth'
-        ? 'Date of Birth'
-        : key === 'fathersName'
-          ? "Father's Name"
-          : key === 'mothersName'
-            ? "Mother's Name"
-            : key === 'profilePhoto'
-              ? 'Photo'
-              : key
-                  .replace(/([A-Z])/g, ' $1')
-                  .replace(/^./, (char) => char.toUpperCase()),
+      labels[key] ??
+        key
+          .replace(/([A-Z])/g, ' $1')
+          .replace(/^./, (char) => char.toUpperCase()),
     )
     .join(', ');
 }
@@ -109,8 +134,14 @@ export function StudentProfile() {
     dateOfBirth: '',
     fathersName: '',
     mothersName: '',
+    guardianPhone: '',
+    permanentAddress: '',
+    gender: '',
   });
   const [applicationPhoto, setApplicationPhoto] = useState<File | null>(null);
+  const [selectedApplicationFields, setSelectedApplicationFields] = useState<
+    StudentVerifiedFieldKey[]
+  >([]);
 
   const profileSchema = useMemo(() => buildProfileSchema(isFirstLogin), [isFirstLogin]);
 
@@ -145,10 +176,7 @@ export function StudentProfile() {
       dateOfBirth: '',
       fathersName: '',
       mothersName: '',
-      guardianPhone: '',
       presentAddress: '',
-      permanentAddress: '',
-      gender: 'male',
     },
   });
 
@@ -161,10 +189,7 @@ export function StudentProfile() {
       dateOfBirth: source.dateOfBirth ? String(source.dateOfBirth).slice(0, 10) : '',
       fathersName: source.fathersName ?? '',
       mothersName: source.mothersName ?? '',
-      guardianPhone: source.guardianPhone ?? '',
       presentAddress: source.presentAddress ?? '',
-      permanentAddress: source.permanentAddress ?? '',
-      gender: source.gender ?? 'male',
     });
   }, [profile, reset, user?.profile]);
 
@@ -188,12 +213,36 @@ export function StudentProfile() {
   const applicationMutation = useMutation({
     mutationFn: async () => {
       const body = new FormData();
-      if (applicationDraft.fullName.trim()) body.append('fullName', applicationDraft.fullName.trim());
-      if (applicationDraft.email.trim()) body.append('email', applicationDraft.email.trim());
-      if (applicationDraft.dateOfBirth) body.append('dateOfBirth', applicationDraft.dateOfBirth);
-      if (applicationDraft.fathersName.trim()) body.append('fathersName', applicationDraft.fathersName.trim());
-      if (applicationDraft.mothersName.trim()) body.append('mothersName', applicationDraft.mothersName.trim());
-      if (applicationPhoto) body.append('photo', applicationPhoto);
+      if (selectedApplicationFields.includes('fullName') && applicationDraft.fullName.trim()) {
+        body.append('fullName', applicationDraft.fullName.trim());
+      }
+      if (selectedApplicationFields.includes('email') && applicationDraft.email.trim()) {
+        body.append('email', applicationDraft.email.trim());
+      }
+      if (selectedApplicationFields.includes('dateOfBirth') && applicationDraft.dateOfBirth) {
+        body.append('dateOfBirth', applicationDraft.dateOfBirth);
+      }
+      if (selectedApplicationFields.includes('fathersName') && applicationDraft.fathersName.trim()) {
+        body.append('fathersName', applicationDraft.fathersName.trim());
+      }
+      if (selectedApplicationFields.includes('mothersName') && applicationDraft.mothersName.trim()) {
+        body.append('mothersName', applicationDraft.mothersName.trim());
+      }
+      if (selectedApplicationFields.includes('guardianPhone') && applicationDraft.guardianPhone.trim()) {
+        body.append('guardianPhone', applicationDraft.guardianPhone.trim());
+      }
+      if (
+        selectedApplicationFields.includes('permanentAddress') &&
+        applicationDraft.permanentAddress.trim()
+      ) {
+        body.append('permanentAddress', applicationDraft.permanentAddress.trim());
+      }
+      if (selectedApplicationFields.includes('gender') && applicationDraft.gender.trim()) {
+        body.append('gender', applicationDraft.gender.trim());
+      }
+      if (selectedApplicationFields.includes('photo') && applicationPhoto) {
+        body.append('photo', applicationPhoto);
+      }
       return api.post('/users/profile-change-applications', body, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
@@ -202,6 +251,7 @@ export function StudentProfile() {
       toast.success('Application submitted to office');
       setShowApplicationModal(false);
       setApplicationPhoto(null);
+      setSelectedApplicationFields([]);
       queryClient.invalidateQueries({ queryKey: ['my-profile-change-applications'] });
     },
     onError: (error: any) =>
@@ -236,8 +286,12 @@ export function StudentProfile() {
       dateOfBirth: source.dateOfBirth ? String(source.dateOfBirth).slice(0, 10) : '',
       fathersName: source.fathersName ?? '',
       mothersName: source.mothersName ?? '',
+      guardianPhone: source.guardianPhone ?? '',
+      permanentAddress: source.permanentAddress ?? '',
+      gender: source.gender ?? '',
     });
     setApplicationPhoto(null);
+    setSelectedApplicationFields([]);
     setShowApplicationModal(true);
   };
 
@@ -265,6 +319,28 @@ export function StudentProfile() {
   );
   const completionCount = readinessItems.filter((item) => item.done).length;
 
+  const toggleApplicationField = (fieldKey: StudentVerifiedFieldKey) => {
+    setSelectedApplicationFields((current) =>
+      current.includes(fieldKey)
+        ? current.filter((item) => item !== fieldKey)
+        : [...current, fieldKey],
+    );
+  };
+
+  const submitApplication = () => {
+    if (!selectedApplicationFields.length) {
+      toast.error('Choose at least one field to change');
+      return;
+    }
+
+    if (selectedApplicationFields.includes('photo') && !applicationPhoto) {
+      toast.error('Choose a photo for the photo change request');
+      return;
+    }
+
+    applicationMutation.mutate();
+  };
+
   const renderEditableForm = () => (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       {isFirstLogin ? (
@@ -280,7 +356,7 @@ export function StudentProfile() {
         <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
           <p className="text-sm font-semibold text-slate-900">Self-service fields</p>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            You can update your phone, guardian phone, addresses, and gender here. Verified fields are managed through office approval.
+            You can update your phone and present address here. Gender, guardian phone, permanent address, and all verified fields are managed through office approval.
           </p>
         </div>
       )}
@@ -289,59 +365,28 @@ export function StudentProfile() {
         <Field label="Phone" error={errors.phone?.message}>
           <input {...register('phone')} className={inputClass} />
         </Field>
-        <Field label="Email" error={errors.email?.message}>
-          <input
-            type="email"
-            {...register('email')}
-            className={inputClass}
-            disabled={!isFirstLogin}
-          />
-        </Field>
-        <Field label="Date of Birth" error={errors.dateOfBirth?.message}>
-          <input
-            type="date"
-            {...register('dateOfBirth')}
-            className={inputClass}
-            disabled={!isFirstLogin}
-          />
-        </Field>
-        <Field label="Guardian Phone" error={errors.guardianPhone?.message}>
-          <input {...register('guardianPhone')} className={inputClass} />
-        </Field>
-        <Field label="Father's Name" error={errors.fathersName?.message}>
-          <input
-            {...register('fathersName')}
-            className={inputClass}
-            disabled={!isFirstLogin}
-          />
-        </Field>
-        <Field label="Mother's Name" error={errors.mothersName?.message}>
-          <input
-            {...register('mothersName')}
-            className={inputClass}
-            disabled={!isFirstLogin}
-          />
-        </Field>
-        <Field label="Gender" error={errors.gender?.message}>
-          <select {...register('gender')} className={inputClass}>
-            <option value="male">Male</option>
-            <option value="female">Female</option>
-            <option value="other">Other</option>
-          </select>
-        </Field>
+        {isFirstLogin ? (
+          <>
+            <Field label="Email" error={errors.email?.message}>
+              <input type="email" {...register('email')} className={inputClass} />
+            </Field>
+            <Field label="Date of Birth" error={errors.dateOfBirth?.message}>
+              <input type="date" {...register('dateOfBirth')} className={inputClass} />
+            </Field>
+            <Field label="Father's Name" error={errors.fathersName?.message}>
+              <input {...register('fathersName')} className={inputClass} />
+            </Field>
+            <Field label="Mother's Name" error={errors.mothersName?.message}>
+              <input {...register('mothersName')} className={inputClass} />
+            </Field>
+          </>
+        ) : null}
       </div>
 
       <div className="grid gap-4">
         <Field label="Present Address" error={errors.presentAddress?.message}>
           <textarea
             {...register('presentAddress')}
-            rows={3}
-            className={`${inputClass} min-h-28 resize-none`}
-          />
-        </Field>
-        <Field label="Permanent Address" error={errors.permanentAddress?.message}>
-          <textarea
-            {...register('permanentAddress')}
             rows={3}
             className={`${inputClass} min-h-28 resize-none`}
           />
@@ -370,10 +415,7 @@ export function StudentProfile() {
                   : '',
                 fathersName: currentProfile.fathersName ?? '',
                 mothersName: currentProfile.mothersName ?? '',
-                guardianPhone: currentProfile.guardianPhone ?? '',
                 presentAddress: currentProfile.presentAddress ?? '',
-                permanentAddress: currentProfile.permanentAddress ?? '',
-                gender: currentProfile.gender ?? 'male',
               });
             }}
             className="rounded-full border border-slate-200 px-5 py-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
@@ -554,6 +596,9 @@ export function StudentProfile() {
               <InfoCard icon={<CalendarDays size={16} />} label="Date of Birth" value={currentProfile.dateOfBirth ? String(currentProfile.dateOfBirth).slice(0, 10) : null} />
               <InfoCard icon={<UserRound size={16} />} label="Father's Name" value={currentProfile.fathersName} />
               <InfoCard icon={<UserRound size={16} />} label="Mother's Name" value={currentProfile.mothersName} />
+              <InfoCard icon={<MapPinned size={16} />} label="Gender" value={currentProfile.gender} />
+              <InfoCard icon={<Phone size={16} />} label="Guardian Phone" value={currentProfile.guardianPhone} />
+              <InfoCard icon={<Home size={16} />} label="Permanent Address" value={currentProfile.permanentAddress} />
               <InfoCard icon={<ShieldCheck size={16} />} label="Student ID" value={currentProfile.studentId ?? user?.username ?? null} />
             </div>
           </section>
@@ -575,10 +620,7 @@ export function StudentProfile() {
             ) : (
               <div className="mt-6 grid gap-4 md:grid-cols-2">
                 <InfoCard icon={<Phone size={16} />} label="Phone" value={currentProfile.phone} />
-                <InfoCard icon={<Phone size={16} />} label="Guardian Phone" value={currentProfile.guardianPhone} />
-                <InfoCard icon={<MapPinned size={16} />} label="Gender" value={currentProfile.gender} />
                 <InfoCard icon={<Home size={16} />} label="Present Address" value={currentProfile.presentAddress} />
-                <InfoCard icon={<Home size={16} />} label="Permanent Address" value={currentProfile.permanentAddress} />
               </div>
             )}
           </section>
@@ -595,14 +637,6 @@ export function StudentProfile() {
                   Verified change requests
                 </h2>
               </div>
-              <button
-                type="button"
-                onClick={openApplicationModal}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-              >
-                <FileStack size={15} />
-                New request
-              </button>
             </div>
 
             {(applications as any[]).length ? (
@@ -694,87 +728,178 @@ export function StudentProfile() {
           <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-600">
             <p className="font-semibold text-slate-900">Office approval required</p>
             <p className="mt-2 leading-6">
-              Use this form to request changes to your verified name, email, date of birth, parents&apos; names, or profile photo.
+              Add only the verified fields you want to correct. Office will review and apply the approved changes after verification.
             </p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Full Name">
-              <input
-                value={applicationDraft.fullName}
-                onChange={(event) =>
-                  setApplicationDraft((current) => ({
-                    ...current,
-                    fullName: event.target.value,
-                  }))
-                }
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Email">
-              <input
-                type="email"
-                value={applicationDraft.email}
-                onChange={(event) =>
-                  setApplicationDraft((current) => ({
-                    ...current,
-                    email: event.target.value,
-                  }))
-                }
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Date of Birth">
-              <input
-                type="date"
-                value={applicationDraft.dateOfBirth}
-                onChange={(event) =>
-                  setApplicationDraft((current) => ({
-                    ...current,
-                    dateOfBirth: event.target.value,
-                  }))
-                }
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Father's Name">
-              <input
-                value={applicationDraft.fathersName}
-                onChange={(event) =>
-                  setApplicationDraft((current) => ({
-                    ...current,
-                    fathersName: event.target.value,
-                  }))
-                }
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Mother's Name">
-              <input
-                value={applicationDraft.mothersName}
-                onChange={(event) =>
-                  setApplicationDraft((current) => ({
-                    ...current,
-                    mothersName: event.target.value,
-                  }))
-                }
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Requested Photo">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  setApplicationPhoto(event.target.files?.[0] ?? null)
-                }
-                className={inputClass}
-              />
-              {applicationPhoto ? (
-                <p className="mt-2 text-xs text-slate-500">{applicationPhoto.name}</p>
-              ) : null}
-            </Field>
+          <div className="rounded-[24px] border border-slate-200 bg-white p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Choose fields to include
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {studentVerifiedFieldOptions.map((field) => {
+                const active = selectedApplicationFields.includes(field.key);
+                return (
+                  <button
+                    key={field.key}
+                    type="button"
+                    onClick={() => toggleApplicationField(field.key)}
+                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                      active
+                        ? 'bg-slate-900 text-white'
+                        : 'border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    {active ? `Remove ${field.label}` : `Add ${field.label}`}
+                  </button>
+                );
+              })}
+            </div>
           </div>
+
+          {selectedApplicationFields.length ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              {selectedApplicationFields.includes('fullName') ? (
+                <Field label="Full Name">
+                  <input
+                    value={applicationDraft.fullName}
+                    onChange={(event) =>
+                      setApplicationDraft((current) => ({
+                        ...current,
+                        fullName: event.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+              ) : null}
+              {selectedApplicationFields.includes('email') ? (
+                <Field label="Email">
+                  <input
+                    type="email"
+                    value={applicationDraft.email}
+                    onChange={(event) =>
+                      setApplicationDraft((current) => ({
+                        ...current,
+                        email: event.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+              ) : null}
+              {selectedApplicationFields.includes('dateOfBirth') ? (
+                <Field label="Date of Birth">
+                  <input
+                    type="date"
+                    value={applicationDraft.dateOfBirth}
+                    onChange={(event) =>
+                      setApplicationDraft((current) => ({
+                        ...current,
+                        dateOfBirth: event.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+              ) : null}
+              {selectedApplicationFields.includes('fathersName') ? (
+                <Field label="Father's Name">
+                  <input
+                    value={applicationDraft.fathersName}
+                    onChange={(event) =>
+                      setApplicationDraft((current) => ({
+                        ...current,
+                        fathersName: event.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+              ) : null}
+              {selectedApplicationFields.includes('mothersName') ? (
+                <Field label="Mother's Name">
+                  <input
+                    value={applicationDraft.mothersName}
+                    onChange={(event) =>
+                      setApplicationDraft((current) => ({
+                        ...current,
+                        mothersName: event.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+              ) : null}
+              {selectedApplicationFields.includes('guardianPhone') ? (
+                <Field label="Guardian Phone">
+                  <input
+                    value={applicationDraft.guardianPhone}
+                    onChange={(event) =>
+                      setApplicationDraft((current) => ({
+                        ...current,
+                        guardianPhone: event.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+              ) : null}
+              {selectedApplicationFields.includes('permanentAddress') ? (
+                <Field label="Permanent Address">
+                  <textarea
+                    value={applicationDraft.permanentAddress}
+                    onChange={(event) =>
+                      setApplicationDraft((current) => ({
+                        ...current,
+                        permanentAddress: event.target.value,
+                      }))
+                    }
+                    rows={3}
+                    className={`${inputClass} min-h-28 resize-none`}
+                  />
+                </Field>
+              ) : null}
+              {selectedApplicationFields.includes('gender') ? (
+                <Field label="Gender">
+                  <select
+                    value={applicationDraft.gender}
+                    onChange={(event) =>
+                      setApplicationDraft((current) => ({
+                        ...current,
+                        gender: event.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                  >
+                    <option value="">Select gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                  </select>
+                </Field>
+              ) : null}
+              {selectedApplicationFields.includes('photo') ? (
+                <Field label="Requested Photo">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                      setApplicationPhoto(event.target.files?.[0] ?? null)
+                    }
+                    className={inputClass}
+                  />
+                  {applicationPhoto ? (
+                    <p className="mt-2 text-xs text-slate-500">{applicationPhoto.name}</p>
+                  ) : null}
+                </Field>
+              ) : null}
+            </div>
+          ) : (
+            <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
+              Select one or more verified fields to start this request.
+            </div>
+          )}
 
           <div className="flex justify-end gap-3">
             <button
@@ -786,8 +911,8 @@ export function StudentProfile() {
             </button>
             <button
               type="button"
-              onClick={() => applicationMutation.mutate()}
-              disabled={applicationMutation.isPending}
+              onClick={submitApplication}
+              disabled={!selectedApplicationFields.length || applicationMutation.isPending}
               className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {applicationMutation.isPending ? 'Submitting...' : 'Submit application'}
@@ -818,7 +943,12 @@ function StudentProfileAvatar({
       className={`flex ${classes} items-center justify-center overflow-hidden bg-slate-900 font-semibold text-white shadow-sm`}
     >
       {photo ? (
-        <img src={photo} alt={name} className="h-full w-full object-cover" />
+        <SafeImage
+          src={photo}
+          alt={name}
+          className="h-full w-full object-cover"
+          fallback={getInitials(name || 'Student')}
+        />
       ) : (
         getInitials(name || 'Student')
       )}

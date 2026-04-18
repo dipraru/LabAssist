@@ -13,6 +13,7 @@ import {
   semesterLabel,
   studentDisplayName,
 } from '../../lib/display';
+import { SafeImage } from '../../lib/media';
 
 export function getInitials(name: string): string {
   return name
@@ -521,7 +522,12 @@ export function TeacherAvatar({
       className={`flex ${classes} items-center justify-center overflow-hidden bg-slate-900 font-semibold text-white shadow-sm`}
     >
       {teacher?.profilePhoto ? (
-        <img src={teacher.profilePhoto} alt={name} className="h-full w-full object-cover" />
+        <SafeImage
+          src={teacher.profilePhoto}
+          alt={name}
+          className="h-full w-full object-cover"
+          fallback={getInitials(name)}
+        />
       ) : (
         getInitials(name)
       )}
@@ -552,7 +558,12 @@ export function StudentAvatar({
       className={`flex ${classes} items-center justify-center overflow-hidden bg-slate-900 font-semibold text-white shadow-sm`}
     >
       {profilePhoto ? (
-        <img src={profilePhoto} alt={name} className="h-full w-full object-cover" />
+        <SafeImage
+          src={profilePhoto}
+          alt={name}
+          className="h-full w-full object-cover"
+          fallback={getInitials(name)}
+        />
       ) : (
         getInitials(name)
       )}

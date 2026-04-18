@@ -275,97 +275,16 @@ export function StudentLabClassWorkspace() {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.85fr)_minmax(340px,0.95fr)]">
         <div className="space-y-6">
+          <LabDiscussionPanel
+            role="student"
+            courseId={String(courseId)}
+            labClass={labClass}
+          />
+
           <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
             <div className="flex items-center gap-3">
               <div className="rounded-2xl bg-sky-100 p-3 text-sky-700">
                 <FlaskConical size={18} />
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                  Lab Materials
-                </p>
-                <h2 className="mt-1 text-2xl font-semibold text-slate-900">
-                  Current Lab Workspace
-                </h2>
-              </div>
-            </div>
-
-            {visibleMaterials.length ? (
-              <div className="mt-6 space-y-4">
-                {visibleMaterials.map((sheet: any) => (
-                  <article
-                    key={sheet.id}
-                    className="rounded-[26px] border border-sky-200 bg-[linear-gradient(135deg,#f0f9ff_0%,#ffffff_100%)] p-5 shadow-[0_18px_48px_-36px_rgba(15,23,42,0.35)]"
-                  >
-                    <a
-                      href={getMaterialHref(courseId, sheet.id)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
-                          {sheet.sectionName ? `${sheet.sectionName} only` : 'All sections'}
-                        </span>
-                        <span className="text-xs font-medium text-slate-400">
-                          {formatDateOnly(sheet.createdAt)}
-                        </span>
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600">
-                          Open material
-                          <ExternalLink size={12} />
-                        </span>
-                      </div>
-                      <h3 className="mt-3 text-lg font-semibold text-slate-900">{sheet.title}</h3>
-                      {sheet.description ? (
-                        <p className="mt-2 text-sm leading-6 text-slate-600">{sheet.description}</p>
-                      ) : null}
-                    </a>
-
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {(sheet.links ?? []).map((link: any, index: number) => (
-                        <a
-                          key={`${sheet.id}-${index}`}
-                          href={link.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50"
-                        >
-                          <ExternalLink size={12} />
-                          {link.label || 'Open material'}
-                        </a>
-                      ))}
-                    </div>
-
-                    <div className="mt-5 flex items-center justify-between border-t border-white/80 pt-4">
-                      <div className="flex flex-wrap gap-2">
-                        <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
-                          {sheet.sectionName ? 'Section-scoped' : 'Shared resource'}
-                        </span>
-                      </div>
-                      <a
-                        href={getMaterialHref(courseId, sheet.id)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-sm font-semibold text-slate-900"
-                      >
-                        View detail
-                        <ArrowRight size={16} />
-                      </a>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-6 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-12 text-center text-sm text-slate-500">
-                No lecture material has been posted for this lab yet.
-              </div>
-            )}
-          </section>
-
-          <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
-            <div className="flex items-center gap-3">
-              <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
-                <BookOpen size={18} />
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
@@ -387,25 +306,17 @@ export function StudentLabClassWorkspace() {
                     )}`}
                   >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span
-                            className={`rounded-full px-3 py-1 text-xs font-semibold ${getActivityStatusClasses(
-                              activity.status,
-                            )}`}
-                          >
-                            {String(activity.status ?? 'draft').replace(/_/g, ' ')}
-                          </span>
-                          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
-                            {getActivityDurationLabel(activity)}
-                          </span>
-                        </div>
-                        <h3 className="mt-3 text-lg font-semibold text-slate-900">
-                          {getActivityTitle(activity)}
-                        </h3>
-                        {activity.description ? (
-                          <p className="mt-2 text-sm text-slate-500">{activity.description}</p>
-                        ) : null}
+                      <div className="flex flex-wrap gap-2">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${getActivityStatusClasses(
+                            activity.status,
+                          )}`}
+                        >
+                          {String(activity.status ?? 'draft').replace(/_/g, ' ')}
+                        </span>
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                          {getActivityDurationLabel(activity)}
+                        </span>
                       </div>
 
                       <div className="flex flex-wrap gap-2">
@@ -414,6 +325,13 @@ export function StudentLabClassWorkspace() {
                         </span>
                       </div>
                     </div>
+
+                    <h3 className="mt-3 text-lg font-semibold text-slate-900">
+                      {getActivityTitle(activity)}
+                    </h3>
+                    {activity.description ? (
+                      <p className="mt-2 text-sm text-slate-500">{activity.description}</p>
+                    ) : null}
 
                     <div className="mt-4">
                       <Link
@@ -433,15 +351,79 @@ export function StudentLabClassWorkspace() {
               </div>
             )}
           </section>
-
-          <LabDiscussionPanel
-            role="student"
-            courseId={String(courseId)}
-            labClass={labClass}
-          />
         </div>
 
         <aside className="space-y-6">
+          <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl bg-sky-100 p-3 text-sky-700">
+                <BookOpen size={18} />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                  Lab Materials
+                </p>
+                <h2 className="mt-1 text-lg font-semibold text-slate-900">
+                  Lecture resources
+                </h2>
+              </div>
+            </div>
+
+            {visibleMaterials.length ? (
+              <div className="mt-5 space-y-4">
+                {visibleMaterials.map((sheet: any) => (
+                  <article
+                    key={sheet.id}
+                    className="rounded-[24px] border border-sky-200 bg-[linear-gradient(135deg,#f0f9ff_0%,#ffffff_100%)] p-5 shadow-[0_18px_48px_-36px_rgba(15,23,42,0.35)]"
+                  >
+                    <a
+                      href={getMaterialHref(courseId, sheet.id)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                          {sheet.sectionName ? `${sheet.sectionName} only` : 'All sections'}
+                        </span>
+                        <span className="text-xs font-medium text-slate-400">
+                          {formatDateOnly(sheet.createdAt)}
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600">
+                          Open material
+                          <ExternalLink size={12} />
+                        </span>
+                      </div>
+                      <h3 className="mt-3 text-base font-semibold text-slate-900">{sheet.title}</h3>
+                      {sheet.description ? (
+                        <p className="mt-2 text-sm leading-6 text-slate-600">{sheet.description}</p>
+                      ) : null}
+                    </a>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {(sheet.links ?? []).map((link: any, index: number) => (
+                        <a
+                          key={`${sheet.id}-${index}`}
+                          href={link.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50"
+                        >
+                          <ExternalLink size={12} />
+                          {link.label || 'Open material'}
+                        </a>
+                      ))}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-5 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
+                No lecture material has been posted for this lab yet.
+              </div>
+            )}
+          </section>
+
           <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
               Lab Details

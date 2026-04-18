@@ -968,11 +968,20 @@ export class OfficeService {
         if (application.requestedData.dateOfBirth) {
           student.dateOfBirth = new Date(application.requestedData.dateOfBirth);
         }
+        if (application.requestedData.guardianPhone) {
+          student.guardianPhone = application.requestedData.guardianPhone;
+        }
         if (application.requestedData.fathersName) {
           student.fathersName = application.requestedData.fathersName;
         }
+        if (application.requestedData.gender) {
+          student.gender = application.requestedData.gender;
+        }
         if (application.requestedData.mothersName) {
           student.mothersName = application.requestedData.mothersName;
+        }
+        if (application.requestedData.permanentAddress) {
+          student.permanentAddress = application.requestedData.permanentAddress;
         }
         if (application.requestedPhoto) {
           student.profilePhoto = application.requestedPhoto;
@@ -998,6 +1007,9 @@ export class OfficeService {
         }
         if (application.requestedData.email) {
           teacher.email = application.requestedData.email;
+        }
+        if (application.requestedData.gender) {
+          teacher.gender = application.requestedData.gender;
         }
         if (application.requestedPhoto) {
           teacher.profilePhoto = application.requestedPhoto;

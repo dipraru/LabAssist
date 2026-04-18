@@ -5,7 +5,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  FileStack,
   LockKeyhole,
   Mail,
   Pencil,
@@ -22,10 +21,21 @@ import { TeacherAvatar } from './teacher.shared';
 
 const schema = z.object({
   phone: z.string().trim().min(6, 'Phone number is required'),
-  gender: z.enum(['male', 'female', 'other']).optional(),
 });
 
 type TeacherProfileFormValues = z.infer<typeof schema>;
+type TeacherVerifiedFieldKey = 'fullName' | 'email' | 'gender' | 'photo';
+
+const teacherVerifiedFieldOptions: {
+  key: TeacherVerifiedFieldKey;
+  label: string;
+  kind: 'text' | 'email' | 'select' | 'photo';
+}[] = [
+  { key: 'fullName', label: 'Full Name', kind: 'text' },
+  { key: 'email', label: 'Email', kind: 'email' },
+  { key: 'gender', label: 'Gender', kind: 'select' },
+  { key: 'photo', label: 'Requested Photo', kind: 'photo' },
+];
 
 function getApplicationStatusClasses(status: string | null | undefined) {
   if (status === 'approved') return 'bg-emerald-100 text-emerald-700';
@@ -47,13 +57,16 @@ function formatDateTime(value: string | null | undefined) {
 }
 
 function fieldKeysToLabel(keys: string[]) {
+  const labels: Record<string, string> = {
+    profilePhoto: 'Photo',
+  };
+
   return keys
     .map((key) =>
-      key === 'profilePhoto'
-        ? 'Photo'
-        : key
-            .replace(/([A-Z])/g, ' $1')
-            .replace(/^./, (char) => char.toUpperCase()),
+      labels[key] ??
+        key
+          .replace(/([A-Z])/g, ' $1')
+          .replace(/^./, (char) => char.toUpperCase()),
     )
     .join(', ');
 }
@@ -69,8 +82,12 @@ export function TeacherProfile() {
   const [applicationDraft, setApplicationDraft] = useState({
     fullName: '',
     email: '',
+    gender: '',
   });
   const [applicationPhoto, setApplicationPhoto] = useState<File | null>(null);
+  const [selectedApplicationFields, setSelectedApplicationFields] = useState<
+    TeacherVerifiedFieldKey[]
+  >([]);
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['teacher-profile'],
@@ -99,7 +116,6 @@ export function TeacherProfile() {
     resolver: zodResolver(schema),
     defaultValues: {
       phone: '',
-      gender: 'male',
     },
   });
 
@@ -107,7 +123,6 @@ export function TeacherProfile() {
     const currentProfile = (profile ?? user?.profile ?? {}) as any;
     reset({
       phone: currentProfile.phone ?? '',
-      gender: currentProfile.gender ?? 'male',
     });
   }, [profile, reset, user?.profile]);
 
@@ -130,9 +145,18 @@ export function TeacherProfile() {
   const applicationMutation = useMutation({
     mutationFn: async () => {
       const body = new FormData();
-      if (applicationDraft.fullName.trim()) body.append('fullName', applicationDraft.fullName.trim());
-      if (applicationDraft.email.trim()) body.append('email', applicationDraft.email.trim());
-      if (applicationPhoto) body.append('photo', applicationPhoto);
+      if (selectedApplicationFields.includes('fullName') && applicationDraft.fullName.trim()) {
+        body.append('fullName', applicationDraft.fullName.trim());
+      }
+      if (selectedApplicationFields.includes('email') && applicationDraft.email.trim()) {
+        body.append('email', applicationDraft.email.trim());
+      }
+      if (selectedApplicationFields.includes('gender') && applicationDraft.gender.trim()) {
+        body.append('gender', applicationDraft.gender.trim());
+      }
+      if (selectedApplicationFields.includes('photo') && applicationPhoto) {
+        body.append('photo', applicationPhoto);
+      }
       return api.post('/users/profile-change-applications', body, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
@@ -141,6 +165,7 @@ export function TeacherProfile() {
       toast.success('Application submitted to office');
       setShowApplicationModal(false);
       setApplicationPhoto(null);
+      setSelectedApplicationFields([]);
       queryClient.invalidateQueries({ queryKey: ['my-profile-change-applications'] });
     },
     onError: (error: any) =>
@@ -165,8 +190,10 @@ export function TeacherProfile() {
     setApplicationDraft({
       fullName: currentProfile.fullName ?? '',
       email: currentProfile.email ?? '',
+      gender: currentProfile.gender ?? '',
     });
     setApplicationPhoto(null);
+    setSelectedApplicationFields([]);
     setShowApplicationModal(true);
   };
 
@@ -186,6 +213,10 @@ export function TeacherProfile() {
         done: Boolean(currentProfile.email),
       },
       {
+        label: 'Verified gender',
+        done: Boolean(currentProfile.gender),
+      },
+      {
         label: 'Phone number',
         done: Boolean(currentProfile.phone),
       },
@@ -196,8 +227,30 @@ export function TeacherProfile() {
         emptyLabel: 'None open',
       },
     ],
-    [applications, currentProfile.email, currentProfile.phone, currentProfile.profilePhoto],
+    [applications, currentProfile.email, currentProfile.gender, currentProfile.phone, currentProfile.profilePhoto],
   );
+
+  const toggleApplicationField = (fieldKey: TeacherVerifiedFieldKey) => {
+    setSelectedApplicationFields((current) =>
+      current.includes(fieldKey)
+        ? current.filter((item) => item !== fieldKey)
+        : [...current, fieldKey],
+    );
+  };
+
+  const submitApplication = () => {
+    if (!selectedApplicationFields.length) {
+      toast.error('Choose at least one field to change');
+      return;
+    }
+
+    if (selectedApplicationFields.includes('photo') && !applicationPhoto) {
+      toast.error('Choose a photo for the photo change request');
+      return;
+    }
+
+    applicationMutation.mutate();
+  };
 
   return (
     <AppShell>
@@ -300,6 +353,7 @@ export function TeacherProfile() {
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               <InfoCard icon={<UserRound size={16} />} label="Full Name" value={currentProfile.fullName} />
               <InfoCard icon={<Mail size={16} />} label="Email" value={currentProfile.email} />
+              <InfoCard icon={<UserRound size={16} />} label="Gender" value={currentProfile.gender} />
               <InfoCard icon={<ShieldCheck size={16} />} label="Teacher ID" value={currentProfile.teacherId ?? user?.username ?? null} />
               <InfoCard icon={<ShieldCheck size={16} />} label="Designation" value={currentProfile.designation} />
               <InfoCard icon={<ShieldCheck size={16} />} label="Department" value={currentProfile.department} />
@@ -307,7 +361,7 @@ export function TeacherProfile() {
             </div>
 
             <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 text-sm leading-6 text-slate-600">
-              Name, email, and profile photo are now protected fields. If any of them needs correction, submit a verified change request so office can review and approve it before the update goes live.
+              Name, email, gender, and profile photo are protected fields. If any of them needs correction, submit a verified change request so office can review and approve it before the update goes live.
             </div>
           </section>
 
@@ -328,20 +382,13 @@ export function TeacherProfile() {
                 <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
                   <p className="text-sm font-semibold text-slate-900">Editable here</p>
                   <p className="mt-2 text-sm leading-6 text-slate-600">
-                    You can update your phone number and gender directly. Verified identity fields are locked and routed through office approval.
+                    You can update your phone number directly. Verified identity fields are locked and routed through office approval.
                   </p>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4">
                   <Field label="Phone" error={errors.phone?.message}>
                     <input {...register('phone')} className={inputClass} />
-                  </Field>
-                  <Field label="Gender" error={errors.gender?.message}>
-                    <select {...register('gender')} className={inputClass}>
-                      <option value="male">Male</option>
-                      <option value="female">Female</option>
-                      <option value="other">Other</option>
-                    </select>
                   </Field>
                 </div>
 
@@ -360,7 +407,6 @@ export function TeacherProfile() {
                       setIsEditing(false);
                       reset({
                         phone: currentProfile.phone ?? '',
-                        gender: currentProfile.gender ?? 'male',
                       });
                     }}
                     className="rounded-full border border-slate-200 px-5 py-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
@@ -372,7 +418,6 @@ export function TeacherProfile() {
             ) : (
               <div className="mt-6 grid gap-4 md:grid-cols-2">
                 <InfoCard icon={<Phone size={16} />} label="Phone" value={currentProfile.phone} />
-                <InfoCard icon={<UserRound size={16} />} label="Gender" value={currentProfile.gender} />
                 <InfoCard icon={<ShieldCheck size={16} />} label="Change Requests" value={(applications as any[]).length ? `${(applications as any[]).length} submitted` : 'No requests yet'} />
                 <InfoCard icon={<ShieldCheck size={16} />} label="Latest Status" value={(applications as any[])[0]?.status ? String((applications as any[])[0].status).replace(/^\w/, (char) => char.toUpperCase()) : 'No request submitted'} />
               </div>
@@ -391,14 +436,6 @@ export function TeacherProfile() {
                   Verified change requests
                 </h2>
               </div>
-              <button
-                type="button"
-                onClick={openApplicationModal}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-              >
-                <FileStack size={15} />
-                New request
-              </button>
             </div>
 
             {(applications as any[]).length ? (
@@ -490,50 +527,106 @@ export function TeacherProfile() {
           <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-600">
             <p className="font-semibold text-slate-900">Office approval required</p>
             <p className="mt-2 leading-6">
-              Use this request when your verified full name, email, or profile photo needs to be corrected. Office will review and commit the change after approval.
+              Add only the verified fields you want to correct. Office will review and commit the approved changes after verification.
             </p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Full Name">
-              <input
-                value={applicationDraft.fullName}
-                onChange={(event) =>
-                  setApplicationDraft((current) => ({
-                    ...current,
-                    fullName: event.target.value,
-                  }))
-                }
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Email">
-              <input
-                type="email"
-                value={applicationDraft.email}
-                onChange={(event) =>
-                  setApplicationDraft((current) => ({
-                    ...current,
-                    email: event.target.value,
-                  }))
-                }
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Requested Photo">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  setApplicationPhoto(event.target.files?.[0] ?? null)
-                }
-                className={inputClass}
-              />
-              {applicationPhoto ? (
-                <p className="mt-2 text-xs text-slate-500">{applicationPhoto.name}</p>
-              ) : null}
-            </Field>
+          <div className="rounded-[24px] border border-slate-200 bg-white p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Choose fields to include
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {teacherVerifiedFieldOptions.map((field) => {
+                const active = selectedApplicationFields.includes(field.key);
+                return (
+                  <button
+                    key={field.key}
+                    type="button"
+                    onClick={() => toggleApplicationField(field.key)}
+                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                      active
+                        ? 'bg-slate-900 text-white'
+                        : 'border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    {active ? `Remove ${field.label}` : `Add ${field.label}`}
+                  </button>
+                );
+              })}
+            </div>
           </div>
+
+          {selectedApplicationFields.length ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              {selectedApplicationFields.includes('fullName') ? (
+                <Field label="Full Name">
+                  <input
+                    value={applicationDraft.fullName}
+                    onChange={(event) =>
+                      setApplicationDraft((current) => ({
+                        ...current,
+                        fullName: event.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+              ) : null}
+              {selectedApplicationFields.includes('email') ? (
+                <Field label="Email">
+                  <input
+                    type="email"
+                    value={applicationDraft.email}
+                    onChange={(event) =>
+                      setApplicationDraft((current) => ({
+                        ...current,
+                        email: event.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+              ) : null}
+              {selectedApplicationFields.includes('gender') ? (
+                <Field label="Gender">
+                  <select
+                    value={applicationDraft.gender}
+                    onChange={(event) =>
+                      setApplicationDraft((current) => ({
+                        ...current,
+                        gender: event.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                  >
+                    <option value="">Select gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                  </select>
+                </Field>
+              ) : null}
+              {selectedApplicationFields.includes('photo') ? (
+                <Field label="Requested Photo">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                      setApplicationPhoto(event.target.files?.[0] ?? null)
+                    }
+                    className={inputClass}
+                  />
+                  {applicationPhoto ? (
+                    <p className="mt-2 text-xs text-slate-500">{applicationPhoto.name}</p>
+                  ) : null}
+                </Field>
+              ) : null}
+            </div>
+          ) : (
+            <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
+              Select one or more verified fields to start this request.
+            </div>
+          )}
 
           <div className="flex justify-end gap-3">
             <button
@@ -545,8 +638,8 @@ export function TeacherProfile() {
             </button>
             <button
               type="button"
-              onClick={() => applicationMutation.mutate()}
-              disabled={applicationMutation.isPending}
+              onClick={submitApplication}
+              disabled={!selectedApplicationFields.length || applicationMutation.isPending}
               className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {applicationMutation.isPending ? 'Submitting...' : 'Submit application'}

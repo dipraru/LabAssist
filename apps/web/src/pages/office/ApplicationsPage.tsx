@@ -14,6 +14,7 @@ import {
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
 import { api } from '../../lib/api';
+import { SafeImage } from '../../lib/media';
 
 function getStatusClasses(status: string | null | undefined) {
   if (status === 'approved') return 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200';
@@ -615,7 +616,12 @@ function RequesterAvatar({
       className={`flex ${classes} items-center justify-center overflow-hidden bg-slate-900 font-semibold text-white`}
     >
       {photo ? (
-        <img src={photo} alt={name} className="h-full w-full object-cover" />
+        <SafeImage
+          src={photo}
+          alt={name}
+          className="h-full w-full object-cover"
+          fallback={getInitials(name || 'User')}
+        />
       ) : (
         getInitials(name || 'User')
       )}
@@ -658,7 +664,16 @@ function PhotoCard({
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{title}</p>
       <div className="mt-4 overflow-hidden rounded-[22px] border border-slate-200 bg-white">
         {src ? (
-          <img src={src} alt={title} className="aspect-[4/3] w-full object-cover" />
+          <SafeImage
+            src={src}
+            alt={title}
+            className="aspect-[4/3] w-full object-cover"
+            fallback={
+              <div className="flex aspect-[4/3] items-center justify-center text-sm text-slate-400">
+                No photo provided
+              </div>
+            }
+          />
         ) : (
           <div className="flex aspect-[4/3] items-center justify-center text-sm text-slate-400">
             No photo provided

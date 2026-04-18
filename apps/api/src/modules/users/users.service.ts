@@ -153,8 +153,11 @@ export class UsersService {
       updates.fullName,
       updates.email,
       updates.dateOfBirth,
+      updates.guardianPhone,
       updates.fathersName,
+      updates.gender,
       updates.mothersName,
+      updates.permanentAddress,
       updates.profilePhoto,
     ].some((value) => value !== undefined);
 
@@ -167,17 +170,8 @@ export class UsersService {
     if (updates.phone !== undefined) {
       student.phone = normalizeOptionalText(updates.phone);
     }
-    if (updates.guardianPhone !== undefined) {
-      student.guardianPhone = normalizeOptionalText(updates.guardianPhone);
-    }
     if (updates.presentAddress !== undefined) {
       student.presentAddress = normalizeOptionalText(updates.presentAddress);
-    }
-    if (updates.permanentAddress !== undefined) {
-      student.permanentAddress = normalizeOptionalText(updates.permanentAddress);
-    }
-    if (updates.gender !== undefined) {
-      student.gender = normalizeOptionalText(updates.gender);
     }
 
     if (allowSensitiveFields) {
@@ -229,6 +223,7 @@ export class UsersService {
     const attemptedSensitiveUpdate = [
       updates.fullName,
       updates.email,
+      updates.gender,
       updates.profilePhoto,
     ].some((value) => value !== undefined);
     if (attemptedSensitiveUpdate) {
@@ -239,9 +234,6 @@ export class UsersService {
 
     if (updates.phone !== undefined) {
       teacher.phone = normalizeOptionalText(updates.phone);
-    }
-    if (updates.gender !== undefined) {
-      teacher.gender = normalizeOptionalText(updates.gender);
     }
 
     return this.teacherRepo.save(teacher);
@@ -265,8 +257,11 @@ export class UsersService {
         ['fullName', normalizeOptionalText(student.fullName), normalizeOptionalText(requestedUpdates.fullName)],
         ['email', normalizeOptionalText(student.email), normalizeOptionalText(requestedUpdates.email)],
         ['dateOfBirth', formatDateValue(student.dateOfBirth), formatDateValue(requestedUpdates.dateOfBirth)],
+        ['guardianPhone', normalizeOptionalText(student.guardianPhone), normalizeOptionalText(requestedUpdates.guardianPhone)],
         ['fathersName', normalizeOptionalText(student.fathersName), normalizeOptionalText(requestedUpdates.fathersName)],
+        ['gender', normalizeOptionalText(student.gender), normalizeOptionalText(requestedUpdates.gender)],
         ['mothersName', normalizeOptionalText(student.mothersName), normalizeOptionalText(requestedUpdates.mothersName)],
+        ['permanentAddress', normalizeOptionalText(student.permanentAddress), normalizeOptionalText(requestedUpdates.permanentAddress)],
       ] as const;
 
       fieldEntries.forEach(([field, currentValue, nextValue]) => {
@@ -314,6 +309,7 @@ export class UsersService {
       const fieldEntries = [
         ['fullName', normalizeOptionalText(teacher.fullName), normalizeOptionalText(requestedUpdates.fullName)],
         ['email', normalizeOptionalText(teacher.email), normalizeOptionalText(requestedUpdates.email)],
+        ['gender', normalizeOptionalText(teacher.gender), normalizeOptionalText(requestedUpdates.gender)],
       ] as const;
 
       fieldEntries.forEach(([field, currentValue, nextValue]) => {

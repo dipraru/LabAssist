@@ -1554,7 +1554,9 @@ export class CoursesService {
       order: { createdAt: 'DESC' },
     });
 
-    return posts
+    const hydratedPosts = await this.hydrateCoursePostActors(posts);
+
+    return hydratedPosts
       .filter((post) => this.canViewerSeeCoursePost(post, viewerSectionName))
       .map((post) => this.sortCoursePost(post));
   }
@@ -1572,7 +1574,8 @@ export class CoursesService {
     }
 
     await this.ensureViewerCanAccessCoursePost(post, user);
-    return this.sortCoursePost(post);
+    const [hydratedPost] = await this.hydrateCoursePostActors([post]);
+    return this.sortCoursePost(hydratedPost ?? post);
   }
 
   async createCoursePost(
@@ -2262,6 +2265,122 @@ export class CoursesService {
         (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
       ),
     };
+  }
+
+  private async hydrateCoursePostActors(posts: CoursePost[]): Promise<CoursePost[]> {
+    if (!posts.length) {
+      return posts;
+    }
+
+    const studentUserIds = new Set<string>();
+    const teacherUserIds = new Set<string>();
+
+    posts.forEach((post) => {
+      if (post.postedByRole === UserRole.STUDENT && post.postedByUserId) {
+        studentUserIds.add(post.postedByUserId);
+      }
+      if (post.postedByRole === UserRole.TEACHER && post.postedByUserId) {
+        teacherUserIds.add(post.postedByUserId);
+      }
+
+      (post.comments ?? []).forEach((comment) => {
+        if (comment.commentedByRole === UserRole.STUDENT && comment.commentedByUserId) {
+          studentUserIds.add(comment.commentedByUserId);
+        }
+        if (comment.commentedByRole === UserRole.TEACHER && comment.commentedByUserId) {
+          teacherUserIds.add(comment.commentedByUserId);
+        }
+      });
+    });
+
+    const [students, teachers] = await Promise.all([
+      studentUserIds.size
+        ? this.studentRepo.find({
+            where: { userId: In([...studentUserIds]) },
+          })
+        : Promise.resolve([]),
+      teacherUserIds.size
+        ? this.teacherRepo.find({
+            where: { userId: In([...teacherUserIds]) },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const studentMap = new Map(
+      students.map((student) => [student.userId, student] as const),
+    );
+    const teacherMap = new Map(
+      teachers.map((teacher) => [teacher.userId, teacher] as const),
+    );
+
+    const resolveActor = (
+      role: UserRole,
+      userId: string | null | undefined,
+      fallbackName: string,
+      fallbackIdentifier: string | null | undefined,
+      fallbackPhoto: string | null | undefined,
+    ) => {
+      if (role === UserRole.STUDENT && userId) {
+        const student = studentMap.get(userId);
+        if (student) {
+          return {
+            name: student.fullName ?? fallbackName,
+            identifier: student.studentId ?? fallbackIdentifier ?? null,
+            photo: student.profilePhoto ?? fallbackPhoto ?? null,
+          };
+        }
+      }
+
+      if (role === UserRole.TEACHER && userId) {
+        const teacher = teacherMap.get(userId);
+        if (teacher) {
+          return {
+            name: teacher.fullName ?? fallbackName,
+            identifier: teacher.teacherId ?? fallbackIdentifier ?? null,
+            photo: teacher.profilePhoto ?? fallbackPhoto ?? null,
+          };
+        }
+      }
+
+      return {
+        name: fallbackName,
+        identifier: fallbackIdentifier ?? null,
+        photo: fallbackPhoto ?? null,
+      };
+    };
+
+    return posts.map((post) => {
+      const postActor = resolveActor(
+        post.postedByRole,
+        post.postedByUserId,
+        post.postedByName,
+        post.postedByIdentifier,
+        post.postedByPhoto,
+      );
+
+      return {
+        ...post,
+        postedByName: postActor.name,
+        postedByIdentifier: postActor.identifier,
+        postedByPhoto: postActor.photo,
+        comments: (post.comments ?? []).map((comment) => {
+          const commentActor = resolveActor(
+            comment.commentedByRole,
+            comment.commentedByUserId,
+            comment.commentedByName,
+            comment.commentedByIdentifier,
+            comment.commentedByPhoto,
+          );
+
+          return {
+            ...comment,
+            commentedByName: commentActor.name,
+            commentedByIdentifier: commentActor.identifier,
+            commentedByPhoto: commentActor.photo,
+          };
+        }),
+      };
+    });
   }
 
   private buildCoursePostTargetPath(

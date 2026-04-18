@@ -26,12 +26,9 @@ class UpdateStudentProfileDto {
   @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsEmail() email?: string;
   @IsOptional() @IsDateString() dateOfBirth?: string;
-  @IsOptional() @IsString() guardianPhone?: string;
   @IsOptional() @IsString() fathersName?: string;
   @IsOptional() @IsString() mothersName?: string;
   @IsOptional() @IsString() presentAddress?: string;
-  @IsOptional() @IsString() permanentAddress?: string;
-  @IsOptional() @IsString() gender?: string;
 }
 
 class CreateProfileChangeApplicationDto {
@@ -40,6 +37,9 @@ class CreateProfileChangeApplicationDto {
   @IsOptional() @IsDateString() dateOfBirth?: string;
   @IsOptional() @IsString() fathersName?: string;
   @IsOptional() @IsString() mothersName?: string;
+  @IsOptional() @IsString() guardianPhone?: string;
+  @IsOptional() @IsString() permanentAddress?: string;
+  @IsOptional() @IsString() gender?: string;
 }
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -67,12 +67,9 @@ export class UsersController {
         phone: dto.phone,
         email: dto.email,
         dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
-        guardianPhone: dto.guardianPhone,
         fathersName: dto.fathersName,
         mothersName: dto.mothersName,
         presentAddress: dto.presentAddress,
-        permanentAddress: dto.permanentAddress,
-        gender: dto.gender,
       });
       return updated;
     }
@@ -83,7 +80,6 @@ export class UsersController {
         fullName: dto.fullName,
         email: dto.email,
         phone: dto.phone,
-        gender: dto.gender,
       });
     }
     return { message: 'No profile to update for this role' };
@@ -150,6 +146,9 @@ export class UsersController {
           dateOfBirth: dto.dateOfBirth,
           fathersName: dto.fathersName,
           mothersName: dto.mothersName,
+          guardianPhone: dto.guardianPhone,
+          permanentAddress: dto.permanentAddress,
+          gender: dto.gender,
         },
         savedPhoto?.url,
       );
