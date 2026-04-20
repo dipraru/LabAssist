@@ -21,6 +21,8 @@ import { Semester } from './modules/courses/entities/semester.entity';
 import { Course } from './modules/courses/entities/course.entity';
 import { Enrollment } from './modules/courses/entities/enrollment.entity';
 import { LabSchedule } from './modules/courses/entities/lab-schedule.entity';
+import { LabClass } from './modules/courses/entities/lab-class.entity';
+import { LabClassSection } from './modules/courses/entities/lab-class-section.entity';
 import { LectureSheet } from './modules/courses/entities/lecture-sheet.entity';
 import { CoursePost } from './modules/courses/entities/course-post.entity';
 import { CoursePostComment } from './modules/courses/entities/course-post-comment.entity';
@@ -30,6 +32,7 @@ import { AssignmentSubmission } from './modules/assignments/entities/assignment-
 import { LabTest } from './modules/lab-tests/entities/lab-test.entity';
 import { LabTestProblem } from './modules/lab-tests/entities/lab-test-problem.entity';
 import { LabSubmission } from './modules/lab-tests/entities/lab-submission.entity';
+import { LabProctoringEvent } from './modules/lab-tests/entities/lab-proctoring-event.entity';
 import { Contest } from './modules/contests/entities/contest.entity';
 import { Problem } from './modules/contests/entities/problem.entity';
 import { ContestProblem } from './modules/contests/entities/contest-problem.entity';
@@ -58,6 +61,8 @@ async function seed() {
       Course,
       Enrollment,
       LabSchedule,
+      LabClass,
+      LabClassSection,
       LectureSheet,
       CoursePost,
       CoursePostComment,
@@ -67,6 +72,7 @@ async function seed() {
       LabTest,
       LabTestProblem,
       LabSubmission,
+      LabProctoringEvent,
       Contest,
       Problem,
       ContestProblem,
