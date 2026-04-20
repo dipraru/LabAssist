@@ -120,6 +120,34 @@ function combineDateAndTime(dateValue: Date | null | undefined, timeValue: strin
   return result;
 }
 
+function hasLabClassStarted(labClass: LabClass): boolean {
+  const now = Date.now();
+  const sections = labClass.sections ?? [];
+
+  if (!sections.length) {
+    return new Date(labClass.classDate).getTime() <= now;
+  }
+
+  return sections.some((section) => {
+    if (
+      section.status === LabClassSectionStatus.CONDUCTED ||
+      section.attendanceTakenAt != null ||
+      section.conductedAt != null
+    ) {
+      return true;
+    }
+
+    if (!section.scheduledDate) {
+      return false;
+    }
+
+    const scheduledStart =
+      combineDateAndTime(section.scheduledDate, section.scheduledStartTime) ??
+      new Date(section.scheduledDate);
+    return scheduledStart.getTime() <= now;
+  });
+}
+
 function studentIdFallsInsideSection(
   studentId: string,
   fromStudentId: string,
@@ -824,8 +852,16 @@ export class CoursesService {
   }
 
   async deleteCourse(id: string): Promise<void> {
-    const course = await this.courseRepo.findOne({ where: { id } });
+    const course = await this.courseRepo.findOne({
+      where: { id },
+      relations: ['labClasses', 'labClasses.sections'],
+    });
     if (!course) throw new NotFoundException('Course not found');
+    if ((course.labClasses ?? []).some((labClass) => hasLabClassStarted(labClass))) {
+      throw new BadRequestException(
+        'Cannot delete a course after any lab class for that course has started',
+      );
+    }
     await this.courseRepo.remove(course);
   }
 
@@ -2124,10 +2160,34 @@ export class CoursesService {
   }
 
   async getAllCourses(): Promise<Course[]> {
-    return this.courseRepo.find({
-      relations: ['semester', 'teachers', 'schedules', 'enrollments', 'enrollments.student'],
+    const courses = await this.courseRepo.find({
+      relations: [
+        'semester',
+        'teachers',
+        'schedules',
+        'enrollments',
+        'enrollments.student',
+        'labClasses',
+        'labClasses.sections',
+      ],
       where: { isActive: true },
       order: { createdAt: 'DESC' },
+    });
+
+    return courses.map((course) => {
+      const startedLabClassCount = (course.labClasses ?? []).filter((labClass) =>
+        hasLabClassStarted(labClass),
+      ).length;
+
+      return Object.assign(course, {
+        canDelete: startedLabClassCount === 0,
+        deleteBlockReason:
+          startedLabClassCount > 0
+            ? 'Delete is available only before any lab class for this course starts.'
+            : null,
+        labClassCount: course.labClasses?.length ?? 0,
+        startedLabClassCount,
+      });
     });
   }
 

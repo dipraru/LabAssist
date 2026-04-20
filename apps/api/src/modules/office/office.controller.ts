@@ -349,6 +349,12 @@ export class OfficeController {
     return this.officeService.getAllBatches();
   }
 
+  @Delete('batches/:id')
+  async deleteBatch(@Param('id') id: string) {
+    await this.officeService.deleteBatch(id);
+    return { success: true };
+  }
+
   @Post('semesters')
   createSemester(@Body() dto: CreateSemesterDto) {
     return this.officeService.createSemester(dto);

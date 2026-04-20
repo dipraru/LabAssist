@@ -49,6 +49,10 @@ export type BatchRecord = {
   year: string;
   sectionCount: number;
   sections: BatchSection[];
+  semesterCount?: number;
+  studentCount?: number;
+  canDelete?: boolean;
+  deleteBlockReason?: string | null;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -60,6 +64,9 @@ export type SemesterRecord = {
   startDate: string | null;
   endDate?: string | null;
   isCurrent: boolean;
+  courseCount?: number;
+  canDelete?: boolean;
+  deleteBlockReason?: string | null;
 };
 
 export function isValidBatchYear(value: string): boolean {

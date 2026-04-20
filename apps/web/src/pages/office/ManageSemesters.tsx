@@ -423,11 +423,20 @@ export function ManageSemesters() {
                           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
                             Batch {semester.batchYear}
                           </span>
+                          <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-xs font-medium text-cyan-700 ring-1 ring-cyan-200">
+                            {semester.courseCount ?? 0} course
+                            {(semester.courseCount ?? 0) === 1 ? '' : 's'}
+                          </span>
                         </div>
                         <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-400">
                           <CalendarDays size={11} />
                           Starts {formatShortDate(semester.startDate)}
                         </p>
+                        {!semester.canDelete && semester.deleteBlockReason ? (
+                          <p className="mt-2 text-xs text-slate-500">
+                            {semester.deleteBlockReason}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
 
@@ -442,7 +451,9 @@ export function ManageSemesters() {
                       </button>
                       <button
                         type="button"
+                        disabled={!semester.canDelete || deleteMutation.isPending}
                         onClick={() => {
+                          if (!semester.canDelete) return;
                           if (
                             window.confirm(
                               `Delete ${semesterLabels[semester.name] ?? semester.name} of batch ${semester.batchYear}?`,
@@ -451,8 +462,16 @@ export function ManageSemesters() {
                             deleteMutation.mutate(semester.id);
                           }
                         }}
-                        title="Delete semester"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red-100 text-red-400 transition-all hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+                        title={
+                          semester.canDelete
+                            ? 'Delete semester'
+                            : semester.deleteBlockReason ?? 'Semester cannot be deleted yet'
+                        }
+                        className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border transition-all ${
+                          semester.canDelete
+                            ? 'border-red-100 text-red-400 hover:border-red-300 hover:bg-red-50 hover:text-red-600'
+                            : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-300'
+                        }`}
                       >
                         <Trash2 size={14} />
                       </button>

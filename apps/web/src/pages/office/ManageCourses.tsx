@@ -128,6 +128,10 @@ type CourseRecord = {
   courseCode: string;
   type: 'theory' | 'lab';
   semesterId: string;
+  canDelete?: boolean;
+  deleteBlockReason?: string | null;
+  labClassCount?: number;
+  startedLabClassCount?: number;
   semester?: SemesterRecord;
   teachers?: TeacherRecord[];
   enrollments?: { id: string; student?: { studentId: string } }[];
@@ -945,6 +949,13 @@ export function ManageCourses() {
                           ? semesterLabels[course.semester.name] ?? course.semester.name
                           : 'Unavailable'}
                       </p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        {course.startedLabClassCount ?? 0} started of {course.labClassCount ?? 0}{' '}
+                        lab class{(course.labClassCount ?? 0) === 1 ? '' : 'es'}
+                      </p>
+                      {!course.canDelete && course.deleteBlockReason ? (
+                        <p className="mt-1 text-xs text-rose-500">{course.deleteBlockReason}</p>
+                      ) : null}
                     </td>
                     <td className="px-5 py-4 text-slate-500">
                       {course.schedules?.length ? (
@@ -993,13 +1004,23 @@ export function ManageCourses() {
                         </button>
                         <button
                           type="button"
+                          disabled={!course.canDelete || deleteMutation.isPending}
                           onClick={() => {
+                            if (!course.canDelete) return;
                             if (window.confirm(`Delete course ${course.courseCode}?`)) {
                               deleteMutation.mutate(course.id);
                             }
                           }}
-                          title="Delete course"
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-100 text-red-400 transition-all hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+                          title={
+                            course.canDelete
+                              ? 'Delete course'
+                              : course.deleteBlockReason ?? 'Course cannot be deleted yet'
+                          }
+                          className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-all ${
+                            course.canDelete
+                              ? 'border-red-100 text-red-400 hover:border-red-300 hover:bg-red-50 hover:text-red-600'
+                              : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-300'
+                          }`}
                         >
                           <Trash2 size={14} />
                         </button>
