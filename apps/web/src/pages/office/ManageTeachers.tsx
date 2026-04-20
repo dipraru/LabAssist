@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
+import { SafeImage } from '../../lib/media';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
 import { Plus, Download, Trash2, Upload, Users } from 'lucide-react';
@@ -285,10 +286,11 @@ export function ManageTeachers() {
                       <div className="flex items-center gap-3">
                         <div className={`w-9 h-9 rounded-xl ${t.profilePhoto ? 'bg-slate-100' : avatarColors[i % avatarColors.length]} flex items-center justify-center overflow-hidden text-white text-xs font-bold flex-shrink-0`}>
                           {t.profilePhoto ? (
-                            <img
+                            <SafeImage
                               src={t.profilePhoto}
                               alt={t.fullName}
                               className="h-full w-full object-cover"
+                              fallback={getInitials(t.fullName)}
                             />
                           ) : (
                             getInitials(t.fullName)

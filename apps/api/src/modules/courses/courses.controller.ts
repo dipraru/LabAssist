@@ -33,6 +33,8 @@ import {
   CreateLabClassDto,
   TakeLabClassAttendanceDto,
   UpdateLabClassSectionScheduleDto,
+  UpdateCoursePostSolvedDto,
+  UpsertUpcomingSectionScheduleDto,
 } from './dto/courses.dto';
 
 @UseGuards(JwtAuthGuard)
@@ -138,9 +140,22 @@ export class CoursesController {
   @Get(':id/posts')
   getCoursePosts(
     @Param('id') courseId: string,
+    @Query('type') type: string | undefined,
+    @Query('labClassId') labClassId: string | undefined,
     @CurrentUser() user: { id: string; role: UserRole },
   ) {
-    return this.coursesService.getCoursePosts(courseId, user);
+    return this.coursesService.getCoursePosts(courseId, user, {
+      type,
+      labClassId,
+    });
+  }
+
+  @Get('posts/:postId')
+  getCoursePostById(
+    @Param('postId') postId: string,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.coursesService.getCoursePostById(postId, user);
   }
 
   @UseGuards(RolesGuard)
@@ -163,6 +178,17 @@ export class CoursesController {
     @CurrentUser() user: { id: string; role: UserRole },
   ) {
     return this.coursesService.addCoursePostComment(postId, dto, user);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.TEACHER, UserRole.STUDENT)
+  @Patch('posts/:postId/solved')
+  updateCoursePostSolved(
+    @Param('postId') postId: string,
+    @Body() dto: UpdateCoursePostSolvedDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.coursesService.updateCoursePostSolved(postId, dto, user);
   }
 
   @Get(':id/enrollments')
@@ -320,6 +346,21 @@ export class CoursesController {
     @CurrentUser() user: { id: string },
   ) {
     return this.coursesService.deleteLectureSheet(id, user.id);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.TEACHER)
+  @Post(':courseId/schedule-overrides')
+  upsertUpcomingSectionSchedule(
+    @Param('courseId') courseId: string,
+    @Body() dto: UpsertUpcomingSectionScheduleDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.coursesService.upsertUpcomingSectionSchedule(
+      courseId,
+      dto,
+      user.id,
+    );
   }
 
   @UseGuards(RolesGuard)

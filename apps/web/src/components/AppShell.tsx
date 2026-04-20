@@ -27,6 +27,7 @@ import {
   UserCircle2,
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { SafeImage } from '../lib/media';
 import { resolveNotificationHref } from '../lib/notification-links';
 import { disconnectSocket, getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/auth.store';
@@ -40,7 +41,7 @@ const roleNavItems: Record<string, { label: string; href: string; icon: ReactNod
     { label: 'Courses', href: '/office/courses', icon: <BookOpen size={18} /> },
     { label: 'Semesters', href: '/office/semesters', icon: <CalendarRange size={18} /> },
     { label: 'Temp Judges', href: '/office/temp-judges', icon: <ShieldUser size={18} /> },
-    { label: 'Application', href: '/office/application', icon: <FileStack size={18} /> },
+    { label: 'Applications', href: '/office/applications', icon: <FileStack size={18} /> },
   ],
   teacher: [
     { label: 'Dashboard', href: '/teacher', icon: <LayoutDashboard size={18} /> },
@@ -124,6 +125,19 @@ function getStudentHeaderLabel(pathname: string): string {
   if (pathname.startsWith('/student/profile')) return 'Profile';
   if (pathname.startsWith('/student/change-password')) return 'Account';
   return 'Student Workspace';
+}
+
+function getOfficeHeaderLabel(pathname: string): string {
+  if (pathname === '/office') return 'Office Dashboard';
+  if (pathname.startsWith('/office/teachers')) return 'Teacher Management';
+  if (pathname.startsWith('/office/students')) return 'Student Management';
+  if (pathname.startsWith('/office/batches')) return 'Batch Management';
+  if (pathname.startsWith('/office/courses')) return 'Course Management';
+  if (pathname.startsWith('/office/semesters')) return 'Semester Management';
+  if (pathname.startsWith('/office/temp-judges')) return 'Temporary Judge Access';
+  if (pathname.startsWith('/office/applications')) return 'Verified Applications';
+  if (pathname.startsWith('/office/change-password')) return 'Account Security';
+  return 'Office Workspace';
 }
 
 function NotificationMenu({
@@ -225,7 +239,7 @@ function NotificationMenu({
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuthStore();
+  const { user, logout, setUser } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -252,14 +266,24 @@ export function AppShell({ children }: { children: ReactNode }) {
       : user?.role === 'teacher'
         ? '/teacher/profile'
         : null;
+  const shouldLoadShellProfile = user?.role === 'student' || user?.role === 'teacher';
+  const { data: shellProfile } = useQuery({
+    queryKey: ['shell-profile', user?.id],
+    queryFn: () => api.get('/users/profile').then((response) => response.data),
+    enabled: Boolean(user?.id && shouldLoadShellProfile),
+    staleTime: 30_000,
+  });
+  const activeProfile =
+    (shellProfile as { fullName?: string; profilePhoto?: string } | undefined) ??
+    (user?.profile as { fullName?: string; profilePhoto?: string } | undefined) ??
+    undefined;
   const displayName =
     String(
-      (user?.profile as { fullName?: string } | undefined)?.fullName ??
+      activeProfile?.fullName ??
         user?.username ??
         'User',
     );
-  const profilePhoto =
-    (user?.profile as { profilePhoto?: string } | undefined)?.profilePhoto ?? null;
+  const profilePhoto = activeProfile?.profilePhoto ?? null;
   const isTeacherLayout = user?.role === 'teacher';
   const isStudentLayout = user?.role === 'student';
   const navItems = user ? roleNavItems[user.role] ?? [] : [];
@@ -290,6 +314,15 @@ export function AppShell({ children }: { children: ReactNode }) {
     () => (Array.isArray(notificationsData) ? notificationsData : []),
     [notificationsData],
   );
+
+  useEffect(() => {
+    if (!user || !shellProfile || !shouldLoadShellProfile) return;
+    if (user.profile === shellProfile) return;
+    setUser({
+      ...user,
+      profile: shellProfile,
+    });
+  }, [setUser, shellProfile, shouldLoadShellProfile, user]);
 
   const markAllReadMutation = useMutation({
     mutationFn: () => api.patch('/notifications/mark-all-read'),
@@ -464,10 +497,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                 >
                   <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-slate-900 text-sm font-semibold text-white">
                     {profilePhoto ? (
-                      <img
+                      <SafeImage
                         src={profilePhoto}
                         alt={displayName}
                         className="h-full w-full object-cover"
+                        fallback={getInitials(displayName)}
                       />
                     ) : (
                       getInitials(displayName)
@@ -519,120 +553,179 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
-      <aside
-        className={`${sidebarOpen ? 'w-60' : 'w-16'} flex h-screen shrink-0 flex-col bg-slate-900 text-white transition-all duration-200`}
-      >
-        {sidebarOpen ? (
-          <div className="flex items-center justify-between border-b border-slate-700">
-            <div className="flex min-w-0 items-center gap-3 px-4 py-4">
-              <FlaskConical size={20} className="shrink-0 text-indigo-400" />
-              <span className="truncate text-lg font-bold tracking-tight">LabAssist</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(false)}
-              className="group flex h-14 w-14 shrink-0 items-center justify-center border-l border-slate-700 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
-              aria-label="Collapse sidebar"
-            >
-              <PanelLeftClose size={18} />
-            </button>
-          </div>
-        ) : (
-          <div className="border-b border-slate-700">
-            <div className="flex items-center justify-center px-0 py-4">
-              <FlaskConical size={20} className="text-indigo-400" />
-            </div>
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(true)}
-              className="flex h-12 w-full items-center justify-center border-t border-slate-800 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
-              aria-label="Expand sidebar"
-            >
-              <PanelLeftOpen size={18} />
-            </button>
-          </div>
-        )}
+  const officeTitle = getOfficeHeaderLabel(location.pathname);
+  const officeDateLabel = new Intl.DateTimeFormat([], {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date());
 
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-4">
-          {navItems.map((item) => {
-            const active = isActivePath(location.pathname, item.href);
-            return (
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#e0f2fe,transparent_26%),radial-gradient(circle_at_bottom_right,#d1fae5,transparent_24%),linear-gradient(180deg,#f8fafc_0%,#eef4ff_50%,#f8fafc_100%)] text-slate-900">
+      <div className="flex min-h-screen">
+        <aside
+          className={`${
+            sidebarOpen ? 'w-72' : 'w-20'
+          } sticky top-0 flex h-screen shrink-0 border-r border-white/20 bg-[linear-gradient(180deg,#0f172a_0%,#111827_28%,#0f766e_100%)] text-white shadow-[24px_0_80px_-48px_rgba(15,23,42,0.65)] transition-all duration-300`}
+        >
+          <div className="flex h-full w-full flex-col px-3 py-4">
+            <div className="rounded-[28px] border border-white/10 bg-white/5 p-2 backdrop-blur">
+              {sidebarOpen ? (
+                <div className="flex items-center justify-between">
+                  <div className="flex min-w-0 items-center gap-3 px-3 py-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-teal-200 shadow-inner shadow-white/10">
+                      <FlaskConical size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-base font-semibold tracking-tight">LabAssist</p>
+                      <p className="truncate text-xs text-teal-100/70">Office control center</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSidebarOpen(false)}
+                    className="flex h-11 w-11 items-center justify-center rounded-2xl text-white/70 transition hover:bg-white/10 hover:text-white"
+                    aria-label="Collapse sidebar"
+                  >
+                    <PanelLeftClose size={18} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-3 py-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-teal-200 shadow-inner shadow-white/10">
+                    <FlaskConical size={20} />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSidebarOpen(true)}
+                    className="flex h-10 w-10 items-center justify-center rounded-2xl text-white/70 transition hover:bg-white/10 hover:text-white"
+                    aria-label="Expand sidebar"
+                  >
+                    <PanelLeftOpen size={18} />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <nav className="mt-4 flex-1 space-y-1.5 overflow-y-auto">
+              {navItems.map((item) => {
+                const active = isActivePath(location.pathname, item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    to={item.href}
+                    title={!sidebarOpen ? item.label : undefined}
+                    className={`group relative flex items-center rounded-[22px] transition ${
+                      sidebarOpen ? 'gap-3 px-3 py-3' : 'justify-center px-0 py-3'
+                    } ${
+                      active
+                        ? 'bg-white text-slate-950 shadow-[0_18px_48px_-28px_rgba(255,255,255,0.55)]'
+                        : 'text-white/72 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    <span
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${
+                        active ? 'bg-slate-900 text-white' : 'bg-white/8 text-white/80'
+                      }`}
+                    >
+                      {item.icon}
+                    </span>
+                    {sidebarOpen ? (
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{item.label}</p>
+                        <p className="truncate text-[11px] text-current/60">
+                          {active ? 'Current section' : 'Open workspace'}
+                        </p>
+                      </div>
+                    ) : null}
+                    {!sidebarOpen && (
+                      <span className="pointer-events-none absolute left-full z-20 ml-3 whitespace-nowrap rounded-xl bg-slate-950 px-3 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg shadow-black/20 ring-1 ring-white/10 transition-all group-hover:opacity-100">
+                        {item.label}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </nav>
+
+            <div className="mt-4 space-y-2 rounded-[28px] border border-white/10 bg-white/5 p-3 backdrop-blur">
+              {sidebarOpen ? (
+                <div className="rounded-[22px] bg-white/5 px-4 py-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">
+                    Signed in
+                  </p>
+                  <p className="mt-2 truncate text-sm font-semibold text-white">
+                    {user?.username ?? 'Office'}
+                  </p>
+                  <p className="mt-1 text-xs text-teal-100/70">Office administrator</p>
+                </div>
+              ) : null}
+
               <Link
-                key={item.href}
-                to={item.href}
-                title={!sidebarOpen ? item.label : undefined}
-                className={`group relative flex items-center rounded-lg text-sm font-medium transition-colors
-                  ${sidebarOpen ? 'gap-3 px-3 py-2' : 'justify-center px-0 py-2.5'}
-                  ${
-                    active
-                      ? 'bg-indigo-600 text-white'
-                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                  }`}
+                to={changePasswordHref}
+                title={!sidebarOpen ? 'Change Password' : undefined}
+                className={`group relative flex items-center rounded-[20px] text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white ${
+                  sidebarOpen ? 'gap-3 px-3 py-3' : 'justify-center px-0 py-3'
+                }`}
               >
-                {item.icon}
-                {sidebarOpen && <span>{item.label}</span>}
+                <KeyRound size={17} />
+                {sidebarOpen && 'Change Password'}
                 {!sidebarOpen && (
-                  <span className="pointer-events-none absolute left-full z-20 ml-3 whitespace-nowrap rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg shadow-black/20 ring-1 ring-slate-700 transition-all group-hover:opacity-100">
-                    {item.label}
+                  <span className="pointer-events-none absolute left-full z-20 ml-3 whitespace-nowrap rounded-xl bg-slate-950 px-3 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg shadow-black/20 ring-1 ring-white/10 transition-all group-hover:opacity-100">
+                    Change Password
                   </span>
                 )}
               </Link>
-            );
-          })}
-        </nav>
 
-        <div className="border-t border-slate-700 p-3">
-          {sidebarOpen && (
-            <div className="mb-2 px-2">
-              <p className="text-xs text-slate-400">Logged in as</p>
-              <p className="truncate text-sm font-medium">{user?.username}</p>
-              <p className="text-xs text-indigo-400">{user?.role}</p>
+              <button
+                type="button"
+                onClick={handleLogout}
+                title={!sidebarOpen ? 'Sign Out' : undefined}
+                className={`group relative flex items-center rounded-[20px] text-sm font-medium text-rose-100 transition hover:bg-rose-500/20 hover:text-white ${
+                  sidebarOpen ? 'gap-3 px-3 py-3' : 'justify-center px-0 py-3'
+                }`}
+              >
+                <LogOut size={17} />
+                {sidebarOpen && 'Sign Out'}
+                {!sidebarOpen && (
+                  <span className="pointer-events-none absolute left-full z-20 ml-3 whitespace-nowrap rounded-xl bg-slate-950 px-3 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg shadow-black/20 ring-1 ring-white/10 transition-all group-hover:opacity-100">
+                    Sign Out
+                  </span>
+                )}
+              </button>
             </div>
-          )}
-          <Link
-            to={changePasswordHref}
-            title={!sidebarOpen ? 'Change Password' : undefined}
-            className={`group relative mb-1 flex w-full items-center rounded-lg text-sm text-slate-300 transition-colors hover:bg-slate-800 hover:text-white ${
-              sidebarOpen ? 'gap-2 px-3 py-2' : 'justify-center px-0 py-2.5'
-            }`}
-          >
-            <KeyRound size={16} />
-            {sidebarOpen && 'Change Password'}
-            {!sidebarOpen && (
-              <span className="pointer-events-none absolute left-full z-20 ml-3 whitespace-nowrap rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg shadow-black/20 ring-1 ring-slate-700 transition-all group-hover:opacity-100">
-                Change Password
-              </span>
-            )}
-          </Link>
-          <button
-            type="button"
-            onClick={handleLogout}
-            title={!sidebarOpen ? 'Sign Out' : undefined}
-            className={`group relative flex w-full items-center rounded-lg text-sm text-slate-300 transition-colors hover:bg-red-900 hover:text-white ${
-              sidebarOpen ? 'gap-2 px-3 py-2' : 'justify-center px-0 py-2.5'
-            }`}
-          >
-            <LogOut size={16} />
-            {sidebarOpen && 'Sign Out'}
-            {!sidebarOpen && (
-              <span className="pointer-events-none absolute left-full z-20 ml-3 whitespace-nowrap rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg shadow-black/20 ring-1 ring-slate-700 transition-all group-hover:opacity-100">
-                Sign Out
-              </span>
-            )}
-          </button>
-        </div>
-      </aside>
+          </div>
+        </aside>
 
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
-          <div />
-          <div className="flex items-center gap-3">{notificationButton}</div>
-        </header>
+        <main className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/72 backdrop-blur-xl">
+            <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-5 py-5 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">
+                  Office Workspace
+                </p>
+                <h1 className="mt-2 text-2xl font-semibold text-slate-950">{officeTitle}</h1>
+                <p className="mt-1 text-sm text-slate-500">
+                  {officeDateLabel} · Coordinating people, courses, and approvals from one place.
+                </p>
+              </div>
 
-        <div className="flex-1 overflow-auto p-6">{children}</div>
-      </main>
+              <div className="flex flex-wrap items-center gap-3">
+                {notificationButton}
+                <div className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm">
+                  {user?.username ?? 'Office'}
+                </div>
+              </div>
+            </div>
+          </header>
+
+          <div className="flex-1">
+            <div className="mx-auto w-full max-w-[1680px] px-5 py-6 sm:px-8 sm:py-8">
+              {children}
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

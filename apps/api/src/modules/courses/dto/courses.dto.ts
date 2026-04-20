@@ -287,15 +287,52 @@ export class CreateCoursePostDto {
   @IsEnum(CoursePostType)
   type?: CoursePostType;
 
-  @IsOptional()
   @IsString()
-  title?: string;
+  title: string;
 
   @IsString()
   body: string;
+
+  @IsOptional()
+  @IsUUID()
+  labClassId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  targetSectionNames?: string[];
 }
 
 export class CreateCoursePostCommentDto {
   @IsString()
   body: string;
+}
+
+export class UpdateCoursePostSolvedDto {
+  @IsBoolean()
+  isSolved: boolean;
+}
+
+export class UpsertUpcomingSectionScheduleDto {
+  @IsString()
+  sectionName: string;
+
+  @IsDateString()
+  scheduledDate: string;
+
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
+    message: 'startTime must be in HH:mm format',
+  })
+  startTime: string;
+
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
+    message: 'endTime must be in HH:mm format',
+  })
+  endTime: string;
+
+  @IsOptional()
+  @IsString()
+  roomNumber?: string;
 }

@@ -15,6 +15,7 @@ import {
 import { api } from '../../lib/api';
 import { studentDisplayName } from '../../lib/display';
 import { useAuthStore } from '../../store/auth.store';
+import { CourseAnnouncementsPanel } from '../../components/CourseAnnouncementsPanel';
 import {
   StudentAvatar,
   TeacherAvatar,
@@ -40,6 +41,7 @@ type CourseTab =
   | 'lab-tasks'
   | 'lab-tests'
   | 'assignments'
+  | 'announcements'
   | 'members';
 
 const tabItems: { key: CourseTab; label: string; icon: ReactNode }[] = [
@@ -48,6 +50,7 @@ const tabItems: { key: CourseTab; label: string; icon: ReactNode }[] = [
   { key: 'lab-tasks', label: 'Lab Tasks', icon: <BookOpen size={16} /> },
   { key: 'lab-tests', label: 'Lab Tests', icon: <BookOpen size={16} /> },
   { key: 'assignments', label: 'Assignments', icon: <FilePlus2 size={16} /> },
+  { key: 'announcements', label: 'Announcements', icon: <BookOpen size={16} /> },
   { key: 'members', label: 'Members', icon: <Users size={16} /> },
 ];
 
@@ -138,16 +141,24 @@ function getSubmissionStatusClasses(assignment: any): string {
 }
 
 function getAttendanceOutcomeLabel(status: string | null | undefined): string {
-  return status === 'present' ? 'Attended' : 'Missed';
+  if (status === 'present') return 'Attended';
+  if (status === 'not_taken') return 'Upcoming';
+  return 'Missed';
 }
 
 function getAttendanceOutcomeClasses(status: string | null | undefined): string {
+  if (status === 'not_taken') {
+    return 'bg-amber-50 text-amber-700';
+  }
   return status === 'present'
     ? 'bg-emerald-50 text-emerald-700'
     : 'bg-rose-50 text-rose-700';
 }
 
 function getAttendanceOutcomeSurface(status: string | null | undefined): string {
+  if (status === 'not_taken') {
+    return 'border-amber-200 bg-[linear-gradient(135deg,#fffbeb_0%,#ffffff_100%)]';
+  }
   return status === 'present'
     ? 'border-emerald-200 bg-[linear-gradient(135deg,#ecfdf5_0%,#ffffff_100%)]'
     : 'border-rose-200 bg-[linear-gradient(135deg,#fff1f2_0%,#ffffff_100%)]';
@@ -742,6 +753,14 @@ export function StudentCourseDetail() {
             <EmptyState title="No assignments yet" />
           )}
         </section>
+      ) : null}
+
+      {activeTab === 'announcements' ? (
+        <CourseAnnouncementsPanel
+          role="student"
+          course={course}
+          sectionNames={sectionNames}
+        />
       ) : null}
 
       {activeTab === 'members' ? (

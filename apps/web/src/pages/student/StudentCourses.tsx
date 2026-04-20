@@ -4,6 +4,7 @@ import { CalendarClock, FolderArchive, Layers3 } from 'lucide-react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { AppShell } from '../../components/AppShell';
 import { CourseMaterialDetail } from '../../components/CourseMaterialDetail';
+import { CourseAnnouncementDetail } from '../../components/CourseAnnouncementDetail';
 import { api } from '../../lib/api';
 import { courseCode } from '../../lib/display';
 import { useAuthStore } from '../../store/auth.store';
@@ -136,16 +137,19 @@ function formatDayLabel(value: Date): string {
 }
 
 export function StudentCourses() {
-  const { courseId, labClassId, sheetId } = useParams<{
+  const { courseId, labClassId, sheetId, announcementId } = useParams<{
     courseId: string;
     labClassId: string;
     sheetId: string;
+    announcementId: string;
   }>();
 
   return (
     <AppShell>
       {sheetId ? (
         <CourseMaterialDetail role="student" />
+      ) : announcementId ? (
+        <CourseAnnouncementDetail role="student" />
       ) : labClassId ? (
         <StudentLabClassWorkspace />
       ) : courseId ? (

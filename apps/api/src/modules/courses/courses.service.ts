@@ -41,6 +41,8 @@ import {
   CreateLabClassDto,
   TakeLabClassAttendanceDto,
   UpdateLabClassSectionScheduleDto,
+  UpdateCoursePostSolvedDto,
+  UpsertUpcomingSectionScheduleDto,
 } from './dto/courses.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
@@ -136,6 +138,20 @@ function studentIdFallsInsideSection(
   }
 
   return current >= Math.min(from, to) && current <= Math.max(from, to);
+}
+
+function normalizeOptionalText(value: string | null | undefined): string | null {
+  const normalized = String(value ?? '').trim();
+  return normalized ? normalized : null;
+}
+
+function normalizeDateValue(value: string | Date | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date.toISOString().slice(0, 10);
 }
 
 @Injectable()
@@ -321,6 +337,109 @@ export class CoursesService {
     );
   }
 
+  private buildLabClassSectionDrafts(course: Course, baseDate: Date) {
+    const normalizedSections = Array.from(
+      new Set(
+        (course.schedules ?? []).map((schedule) =>
+          normalizeSectionName(schedule.sectionName),
+        ),
+      ),
+    ).sort(compareSectionNames);
+
+    if (!normalizedSections.length) {
+      normalizedSections.push('All Students');
+    }
+
+    return normalizedSections.map((sectionName) => {
+      const schedule = this.getScheduleForSection(course, sectionName);
+      const scheduledDate = schedule?.dayOfWeek
+        ? nextOccurrenceDate(schedule.dayOfWeek, baseDate)
+        : new Date(baseDate);
+
+      return this.labClassSectionRepo.create({
+        sectionName,
+        status: LabClassSectionStatus.PENDING,
+        attendanceRecords: [],
+        scheduledDate,
+        scheduledStartTime: schedule?.startTime ?? null,
+        scheduledEndTime: schedule?.endTime ?? null,
+        roomNumber: schedule?.roomNumber ?? null,
+        attendanceTakenAt: null,
+        conductedAt: null,
+      });
+    });
+  }
+
+  private async createAutoLabClassForSchedule(
+    course: Course,
+    teacher: Teacher,
+    baseDate: Date,
+  ): Promise<LabClass> {
+    const existingMax = await this.labClassRepo
+      .createQueryBuilder('labClass')
+      .select('MAX(labClass.labNumber)', 'max')
+      .where('labClass.courseId = :courseId', { courseId: course.id })
+      .getRawOne<{ max: string | null }>();
+
+    const nextLabNumber = Number(existingMax?.max ?? 0) + 1;
+    const labClass = this.labClassRepo.create({
+      courseId: course.id,
+      title: `Lab Class ${nextLabNumber}`,
+      description: 'Auto-created from schedule planning',
+      labNumber: nextLabNumber,
+      classDate: new Date(baseDate),
+      createdById: teacher.id,
+      sections: this.buildLabClassSectionDrafts(course, baseDate),
+    });
+
+    return this.labClassRepo.save(labClass);
+  }
+
+  private async notifyStudentsAboutLabScheduleChange(
+    course: Course,
+    section: LabClassSection,
+    labClass: LabClass,
+  ) {
+    const students = await this.getStudentsForCourseSection(course, section.sectionName);
+    const userIds = Array.from(
+      new Set(
+        students
+          .map((student) => student.userId)
+          .filter((userId): userId is string => Boolean(userId)),
+      ),
+    );
+
+    if (!userIds.length) {
+      return;
+    }
+
+    const dateLabel = normalizeDateValue(section.scheduledDate);
+    const bodyParts = [
+      `Lab ${labClass.labNumber} schedule changed for ${section.sectionName}.`,
+      dateLabel ? `Date: ${dateLabel}.` : null,
+      section.scheduledStartTime && section.scheduledEndTime
+        ? `Time: ${section.scheduledStartTime} - ${section.scheduledEndTime}.`
+        : null,
+      section.roomNumber ? `Room: ${section.roomNumber}.` : null,
+    ].filter(Boolean);
+
+    try {
+      await this.notificationsService.createBulk(userIds, {
+        type: NotificationType.SYSTEM,
+        title: `${course.courseCode}: lab schedule updated`,
+        body: bodyParts.join(' '),
+        referenceId: labClass.id,
+        targetPath: `/student/courses/${course.id}/lab-classes/${labClass.id}`,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown notification error';
+      this.logger.warn(
+        `Failed to notify students about schedule change for course ${course.id}: ${message}`,
+      );
+    }
+  }
+
   private resolveStudentLabClassView(
     labClass: LabClass,
     studentId: string,
@@ -407,7 +526,10 @@ export class CoursesService {
         takenAt: attendanceSection?.attendanceTakenAt ?? null,
       },
       shouldInclude: Boolean(
-        presentParticipation || recordedAbsence || fallbackAttendanceTaken,
+        presentParticipation ||
+          recordedAbsence ||
+          fallbackAttendanceTaken ||
+          fallbackSection,
       ),
     };
   }
@@ -921,16 +1043,6 @@ export class CoursesService {
       .getRawOne<{ max: string | null }>();
 
     const nextLabNumber = Number(existingMax?.max ?? 0) + 1;
-    const normalizedSections = Array.from(
-      new Set(
-        (course.schedules ?? []).map((schedule) =>
-          normalizeSectionName(schedule.sectionName),
-        ),
-      ),
-    ).sort(compareSectionNames);
-    if (!normalizedSections.length) {
-      normalizedSections.push('All Students');
-    }
 
     const baseDate = dto.classDate ? new Date(dto.classDate) : new Date();
 
@@ -941,26 +1053,7 @@ export class CoursesService {
       labNumber: nextLabNumber,
       classDate: new Date(baseDate),
       createdById: teacher.id,
-      sections: normalizedSections.map((sectionName) =>
-        {
-          const schedule = this.getScheduleForSection(course, sectionName);
-          const scheduledDate = schedule?.dayOfWeek
-            ? nextOccurrenceDate(schedule.dayOfWeek, baseDate)
-            : new Date(baseDate);
-
-          return this.labClassSectionRepo.create({
-            sectionName,
-            status: LabClassSectionStatus.PENDING,
-            attendanceRecords: [],
-            scheduledDate,
-            scheduledStartTime: schedule?.startTime ?? null,
-            scheduledEndTime: schedule?.endTime ?? null,
-            roomNumber: schedule?.roomNumber ?? null,
-            attendanceTakenAt: null,
-            conductedAt: null,
-          });
-        },
-      ),
+      sections: this.buildLabClassSectionDrafts(course, baseDate),
     });
 
     const saved = await this.labClassRepo.save(labClass);
@@ -1033,8 +1126,8 @@ export class CoursesService {
         viewerSectionName: string;
         viewerEffectiveSectionName: string;
         viewerAttendance: {
-          status: 'present' | 'absent';
-          sectionName: string;
+          status: 'present' | 'absent' | 'not_taken';
+          sectionName: string | null;
           takenAt: Date | null;
         };
       }
@@ -1058,11 +1151,7 @@ export class CoursesService {
           student.id,
           sectionName,
         );
-        if (
-          !labClassView.shouldInclude ||
-          labClassView.viewerAttendance.status === 'not_taken' ||
-          !labClassView.viewerAttendance.sectionName
-        ) {
+        if (!labClassView.shouldInclude) {
           return null;
         }
 
@@ -1085,8 +1174,8 @@ export class CoursesService {
           viewerSectionName: string;
           viewerEffectiveSectionName: string;
           viewerAttendance: {
-            status: 'present' | 'absent';
-            sectionName: string;
+            status: 'present' | 'absent' | 'not_taken';
+            sectionName: string | null;
             takenAt: Date | null;
           };
         } => Boolean(labClass),
@@ -1186,7 +1275,98 @@ export class CoursesService {
     section.roomNumber =
       dto.roomNumber?.trim() || baseSchedule?.roomNumber || null;
 
-    return this.labClassSectionRepo.save(section);
+    const saved = await this.labClassSectionRepo.save(section);
+    await this.notifyStudentsAboutLabScheduleChange(course, saved, section.labClass);
+    return saved;
+  }
+
+  async upsertUpcomingSectionSchedule(
+    courseId: string,
+    dto: UpsertUpcomingSectionScheduleDto,
+    teacherUserId: string,
+  ): Promise<LabClassSection> {
+    const { course, teacher } = await this.getTeacherWithCourseAccess(
+      courseId,
+      teacherUserId,
+    );
+
+    if (course.type !== CourseType.LAB) {
+      throw new BadRequestException(
+        'Schedule overrides can be created only for lab courses',
+      );
+    }
+
+    const normalizedSectionName = normalizeSectionName(dto.sectionName);
+    const courseSections = Array.from(
+      new Set(
+        [
+          ...(course.schedules ?? []).map((schedule) =>
+            normalizeSectionName(schedule.sectionName),
+          ),
+          ...(await this.getCourseBatchSections(course)).map((section) =>
+            normalizeSectionName(section.name),
+          ),
+        ].filter(Boolean),
+      ),
+    );
+    if (
+      courseSections.length > 0 &&
+      !courseSections.includes(normalizedSectionName)
+    ) {
+      throw new BadRequestException('Invalid section for this course');
+    }
+
+    if (!isValidTimeRange(dto.startTime, dto.endTime)) {
+      throw new BadRequestException('End time must be after start time');
+    }
+
+    const pendingLabClasses = await this.labClassRepo.find({
+      where: { courseId },
+      relations: ['sections'],
+      order: { labNumber: 'ASC', createdAt: 'ASC' },
+    });
+
+    let targetLabClass =
+      pendingLabClasses.find((labClass) =>
+        (labClass.sections ?? []).some(
+          (section) =>
+            normalizeSectionName(section.sectionName) === normalizedSectionName &&
+            section.status !== LabClassSectionStatus.CONDUCTED,
+        ),
+      ) ?? null;
+
+    if (!targetLabClass) {
+      targetLabClass = await this.createAutoLabClassForSchedule(
+        course,
+        teacher,
+        parseDateStringAsLocalDate(dto.scheduledDate),
+      );
+      targetLabClass = await this.labClassRepo.findOne({
+        where: { id: targetLabClass.id },
+        relations: ['sections'],
+      });
+    }
+
+    const targetSection = (targetLabClass?.sections ?? []).find(
+      (section) =>
+        normalizeSectionName(section.sectionName) === normalizedSectionName,
+    );
+    if (!targetLabClass || !targetSection) {
+      throw new NotFoundException('Lab class section not found');
+    }
+
+    return this.updateLabClassSectionSchedule(
+      courseId,
+      targetLabClass.id,
+      targetSection.id,
+      {
+        scheduledDate: dto.scheduledDate,
+        startTime: dto.startTime,
+        endTime: dto.endTime,
+        roomNumber: dto.roomNumber,
+      },
+      teacherUserId,
+    );
   }
 
   async takeLabClassAttendance(
@@ -1351,21 +1531,51 @@ export class CoursesService {
   async getCoursePosts(
     courseId: string,
     user: { id: string; role: UserRole },
+    filters?: {
+      type?: string;
+      labClassId?: string;
+    },
   ): Promise<CoursePost[]> {
-    await this.resolveCourseActor(courseId, user);
+    const actor = await this.resolveCourseActor(courseId, user);
+    const viewerSectionName =
+      actor.role === UserRole.STUDENT ? actor.sectionName ?? 'All Students' : null;
+
+    if (filters?.labClassId && actor.role === UserRole.STUDENT) {
+      await this.getLabClassByIdForStudent(courseId, filters.labClassId, user.id);
+    }
 
     const posts = await this.coursePostRepo.find({
-      where: { courseId },
+      where: {
+        courseId,
+        ...(filters?.type ? { type: filters.type as CoursePostType } : {}),
+        ...(filters?.labClassId ? { labClassId: filters.labClassId } : {}),
+      },
       relations: ['comments'],
       order: { createdAt: 'DESC' },
     });
 
-    return posts.map((post) => ({
-      ...post,
-      comments: [...(post.comments ?? [])].sort(
-        (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-      ),
-    }));
+    const hydratedPosts = await this.hydrateCoursePostActors(posts);
+
+    return hydratedPosts
+      .filter((post) => this.canViewerSeeCoursePost(post, viewerSectionName))
+      .map((post) => this.sortCoursePost(post));
+  }
+
+  async getCoursePostById(
+    postId: string,
+    user: { id: string; role: UserRole },
+  ): Promise<CoursePost> {
+    const post = await this.coursePostRepo.findOne({
+      where: { id: postId },
+      relations: ['comments', 'course', 'labClass'],
+    });
+    if (!post) {
+      throw new NotFoundException('Course post not found');
+    }
+
+    await this.ensureViewerCanAccessCoursePost(post, user);
+    const [hydratedPost] = await this.hydrateCoursePostActors([post]);
+    return this.sortCoursePost(hydratedPost ?? post);
   }
 
   async createCoursePost(
@@ -1374,6 +1584,13 @@ export class CoursesService {
     user: { id: string; role: UserRole },
   ): Promise<CoursePost> {
     const actor = await this.resolveCourseActor(courseId, user);
+    const normalizedTitle = dto.title?.trim();
+    if (!normalizedTitle) {
+      throw new BadRequestException('Post title is required');
+    }
+    if (!dto.body?.trim()) {
+      throw new BadRequestException('Post details are required');
+    }
 
     let type =
       dto.type ??
@@ -1381,31 +1598,85 @@ export class CoursesService {
         ? CoursePostType.ANNOUNCEMENT
         : CoursePostType.QUESTION);
 
-    if (
-      actor.role === UserRole.STUDENT &&
-      type === CoursePostType.ANNOUNCEMENT
-    ) {
-      type = CoursePostType.QUESTION;
+    if (actor.role === UserRole.STUDENT && type === CoursePostType.ANNOUNCEMENT) {
+      throw new ForbiddenException('Students cannot publish announcements');
+    }
+
+    let labClass: LabClass | null = null;
+    if (dto.labClassId) {
+      labClass = await this.labClassRepo.findOne({
+        where: { id: dto.labClassId },
+        relations: ['sections'],
+      });
+      if (!labClass || labClass.courseId !== courseId) {
+        throw new BadRequestException('Selected lab class does not belong to this course');
+      }
+
+      if (actor.role === UserRole.STUDENT) {
+        await this.getLabClassByIdForStudent(courseId, dto.labClassId, actor.userId);
+      }
+    }
+
+    let targetSectionNames: string[] = [];
+    if (type === CoursePostType.ANNOUNCEMENT) {
+      if (dto.labClassId) {
+        throw new BadRequestException('Announcements cannot be attached to a lab class');
+      }
+
+      const availableSections = Array.from(
+        new Set(
+          [
+            ...(actor.course.batchSections ?? []).map((section: any) =>
+              normalizeSectionName(section?.name),
+            ),
+            ...(actor.course.schedules ?? []).map((schedule: any) =>
+              normalizeSectionName(schedule?.sectionName),
+            ),
+          ].filter(Boolean),
+        ),
+      ).sort(compareSectionNames);
+      const requestedTargets = Array.from(
+        new Set((dto.targetSectionNames ?? []).map((sectionName) => normalizeSectionName(sectionName))),
+      );
+      const effectiveTargets = requestedTargets.length
+        ? requestedTargets
+        : availableSections.length
+          ? availableSections
+          : ['All Students'];
+
+      if (
+        availableSections.length &&
+        effectiveTargets.some((sectionName) => !availableSections.includes(sectionName))
+      ) {
+        throw new BadRequestException('Announcement contains an invalid course section');
+      }
+      targetSectionNames = effectiveTargets;
     }
 
     const post = this.coursePostRepo.create({
       courseId,
       type,
-      title: dto.title?.trim() || null,
+      title: normalizedTitle,
       body: dto.body.trim(),
+      labClassId: labClass?.id ?? null,
+      targetSectionNames,
       postedByUserId: actor.userId,
       postedByRole: actor.role,
       postedByName: actor.displayName,
+      postedByIdentifier: actor.identifier,
+      postedByPhoto: actor.photo,
+      isSolved: false,
+      solvedAt: null,
+      solvedByUserId: null,
+      solvedByRole: null,
+      solvedByName: null,
     });
 
     const saved = await this.coursePostRepo.save(post);
 
     await this.notifyUsersAboutCoursePost(saved, actor);
 
-    return this.coursePostRepo.findOneOrFail({
-      where: { id: saved.id },
-      relations: ['comments'],
-    });
+    return this.getCoursePostById(saved.id, user);
   }
 
   async addCoursePostComment(
@@ -1415,10 +1686,15 @@ export class CoursesService {
   ): Promise<CoursePostComment> {
     const post = await this.coursePostRepo.findOne({
       where: { id: postId },
-      relations: ['course'],
+      relations: ['course', 'course.teachers', 'labClass'],
     });
     if (!post) throw new NotFoundException('Course post not found');
 
+    if (post.isSolved) {
+      throw new BadRequestException('This question is solved and can no longer receive replies');
+    }
+
+    await this.ensureViewerCanAccessCoursePost(post, user);
     const actor = await this.resolveCourseActor(post.courseId, user);
 
     const comment = this.coursePostCommentRepo.create({
@@ -1427,6 +1703,8 @@ export class CoursesService {
       commentedByUserId: actor.userId,
       commentedByRole: actor.role,
       commentedByName: actor.displayName,
+      commentedByIdentifier: actor.identifier,
+      commentedByPhoto: actor.photo,
     });
 
     const saved = await this.coursePostCommentRepo.save(comment);
@@ -1435,13 +1713,10 @@ export class CoursesService {
       try {
         await this.notificationsService.createBulk([post.postedByUserId], {
           type: NotificationType.SYSTEM,
-          title: `New comment in ${post.course?.courseCode ?? 'course'}`,
-          body: `${actor.displayName} commented on your course post.`,
+          title: `${post.course?.courseCode ?? 'Course'}: new discussion reply`,
+          body: `${actor.displayName} replied to "${post.title ?? 'your discussion'}".`,
           referenceId: post.id,
-          targetPath:
-            post.postedByRole === UserRole.TEACHER
-              ? `/teacher/courses/${post.courseId}`
-              : `/student/courses/${post.courseId}`,
+          targetPath: this.buildCoursePostTargetPath(post, post.postedByRole),
         });
       } catch (error) {
         const message =
@@ -1452,7 +1727,69 @@ export class CoursesService {
       }
     }
 
+    if (actor.role === UserRole.STUDENT) {
+      const teacherUserIds = (post.course?.teachers ?? [])
+        .map((teacher) => teacher.userId)
+        .filter((userId): userId is string => Boolean(userId))
+        .filter((userId) => userId !== actor.userId);
+
+      if (teacherUserIds.length) {
+        try {
+          await this.notificationsService.createBulk(teacherUserIds, {
+            type: NotificationType.SYSTEM,
+            title: `${post.course?.courseCode ?? 'Course'}: new lab discussion reply`,
+            body: `${actor.displayName} replied in ${
+              post.labClass?.title ?? 'the lab discussion'
+            }.`,
+            referenceId: post.id,
+            targetPath: this.buildCoursePostTargetPath(post, UserRole.TEACHER),
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : 'Unknown notification error';
+          this.logger.warn(
+            `Failed to notify teachers about reply on post ${post.id}: ${message}`,
+          );
+        }
+      }
+    }
+
     return saved;
+  }
+
+  async updateCoursePostSolved(
+    postId: string,
+    dto: UpdateCoursePostSolvedDto,
+    user: { id: string; role: UserRole },
+  ): Promise<CoursePost> {
+    const post = await this.coursePostRepo.findOne({
+      where: { id: postId },
+      relations: ['comments', 'course', 'labClass'],
+    });
+    if (!post) {
+      throw new NotFoundException('Course post not found');
+    }
+
+    await this.ensureViewerCanAccessCoursePost(post, user);
+    const actor = await this.resolveCourseActor(post.courseId, user);
+
+    if (post.type !== CoursePostType.QUESTION) {
+      throw new BadRequestException('Only discussion questions can be marked as solved');
+    }
+    if (actor.role !== UserRole.TEACHER && post.postedByUserId !== actor.userId) {
+      throw new ForbiddenException(
+        'Only the teacher or the student who asked can update the solved status',
+      );
+    }
+
+    post.isSolved = dto.isSolved;
+    post.solvedAt = dto.isSolved ? new Date() : null;
+    post.solvedByUserId = dto.isSolved ? actor.userId : null;
+    post.solvedByRole = dto.isSolved ? actor.role : null;
+    post.solvedByName = dto.isSolved ? actor.displayName : null;
+
+    const saved = await this.coursePostRepo.save(post);
+    return this.sortCoursePost(saved);
   }
 
   async getLectureSheets(courseId: string): Promise<LectureSheet[]> {
@@ -1808,13 +2145,29 @@ export class CoursesService {
     userId: string;
     role: UserRole;
     displayName: string;
-    course: Course;
+    identifier: string | null;
+    photo: string | null;
+    sectionName?: string;
+    course: Course & { batchSections?: any[] };
   }> {
     const course = await this.courseRepo.findOne({
       where: { id: courseId, isActive: true },
-      relations: ['teachers', 'semester', 'schedules'],
+      relations: [
+        'teachers',
+        'semester',
+        'schedules',
+        'enrollments',
+        'enrollments.student',
+      ],
     });
     if (!course) throw new NotFoundException('Course not found');
+
+    const batchSections = await this.getCourseBatchSections(course);
+    const courseWithSections = Object.assign(course, {
+      batchSections: batchSections.sort((left, right) =>
+        compareSectionNames(left.name, right.name),
+      ),
+    });
 
     if (user.role === UserRole.TEACHER) {
       const teacher = await this.teacherRepo.findOne({
@@ -1831,7 +2184,9 @@ export class CoursesService {
         userId: user.id,
         role: user.role,
         displayName: teacher.fullName || teacher.teacherId,
-        course,
+        identifier: teacher.teacherId,
+        photo: teacher.profilePhoto ?? null,
+        course: courseWithSections,
       };
     }
 
@@ -1848,15 +2203,205 @@ export class CoursesService {
         throw new ForbiddenException('You are not enrolled in this course');
       }
 
+      const sectionName =
+        batchSections.find((section) =>
+          studentIdFallsInsideSection(
+            student.studentId,
+            section.fromStudentId,
+            section.toStudentId,
+          ),
+        )?.name ?? 'All Students';
+
       return {
         userId: user.id,
         role: user.role,
         displayName: student.fullName || student.studentId,
-        course,
+        identifier: student.studentId,
+        photo: student.profilePhoto ?? null,
+        sectionName,
+        course: courseWithSections,
       };
     }
 
     throw new ForbiddenException('Only teachers and students can access the course stream');
+  }
+
+  private canViewerSeeCoursePost(
+    post: CoursePost,
+    viewerSectionName?: string | null,
+  ): boolean {
+    if (!viewerSectionName || post.type !== CoursePostType.ANNOUNCEMENT) {
+      return true;
+    }
+
+    const targetSections = (post.targetSectionNames ?? []).map((sectionName) =>
+      normalizeSectionName(sectionName),
+    );
+    if (!targetSections.length || targetSections.includes('All Students')) {
+      return true;
+    }
+
+    return targetSections.includes(normalizeSectionName(viewerSectionName));
+  }
+
+  private async ensureViewerCanAccessCoursePost(
+    post: CoursePost,
+    user: { id: string; role: UserRole },
+  ) {
+    const actor = await this.resolveCourseActor(post.courseId, user);
+    if (!this.canViewerSeeCoursePost(post, actor.sectionName)) {
+      throw new NotFoundException('Course post not found');
+    }
+
+    if (user.role === UserRole.STUDENT && post.labClassId) {
+      await this.getLabClassByIdForStudent(post.courseId, post.labClassId, user.id);
+    }
+  }
+
+  private sortCoursePost(post: CoursePost): CoursePost {
+    return {
+      ...post,
+      comments: [...(post.comments ?? [])].sort(
+        (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
+      ),
+    };
+  }
+
+  private async hydrateCoursePostActors(posts: CoursePost[]): Promise<CoursePost[]> {
+    if (!posts.length) {
+      return posts;
+    }
+
+    const studentUserIds = new Set<string>();
+    const teacherUserIds = new Set<string>();
+
+    posts.forEach((post) => {
+      if (post.postedByRole === UserRole.STUDENT && post.postedByUserId) {
+        studentUserIds.add(post.postedByUserId);
+      }
+      if (post.postedByRole === UserRole.TEACHER && post.postedByUserId) {
+        teacherUserIds.add(post.postedByUserId);
+      }
+
+      (post.comments ?? []).forEach((comment) => {
+        if (comment.commentedByRole === UserRole.STUDENT && comment.commentedByUserId) {
+          studentUserIds.add(comment.commentedByUserId);
+        }
+        if (comment.commentedByRole === UserRole.TEACHER && comment.commentedByUserId) {
+          teacherUserIds.add(comment.commentedByUserId);
+        }
+      });
+    });
+
+    const [students, teachers] = await Promise.all([
+      studentUserIds.size
+        ? this.studentRepo.find({
+            where: { userId: In([...studentUserIds]) },
+          })
+        : Promise.resolve([]),
+      teacherUserIds.size
+        ? this.teacherRepo.find({
+            where: { userId: In([...teacherUserIds]) },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const studentMap = new Map(
+      students.map((student) => [student.userId, student] as const),
+    );
+    const teacherMap = new Map(
+      teachers.map((teacher) => [teacher.userId, teacher] as const),
+    );
+
+    const resolveActor = (
+      role: UserRole,
+      userId: string | null | undefined,
+      fallbackName: string,
+      fallbackIdentifier: string | null | undefined,
+      fallbackPhoto: string | null | undefined,
+    ) => {
+      if (role === UserRole.STUDENT && userId) {
+        const student = studentMap.get(userId);
+        if (student) {
+          return {
+            name: student.fullName ?? fallbackName,
+            identifier: student.studentId ?? fallbackIdentifier ?? null,
+            photo: student.profilePhoto ?? fallbackPhoto ?? null,
+          };
+        }
+      }
+
+      if (role === UserRole.TEACHER && userId) {
+        const teacher = teacherMap.get(userId);
+        if (teacher) {
+          return {
+            name: teacher.fullName ?? fallbackName,
+            identifier: teacher.teacherId ?? fallbackIdentifier ?? null,
+            photo: teacher.profilePhoto ?? fallbackPhoto ?? null,
+          };
+        }
+      }
+
+      return {
+        name: fallbackName,
+        identifier: fallbackIdentifier ?? null,
+        photo: fallbackPhoto ?? null,
+      };
+    };
+
+    return posts.map((post) => {
+      const postActor = resolveActor(
+        post.postedByRole,
+        post.postedByUserId,
+        post.postedByName,
+        post.postedByIdentifier,
+        post.postedByPhoto,
+      );
+
+      return {
+        ...post,
+        postedByName: postActor.name,
+        postedByIdentifier: postActor.identifier,
+        postedByPhoto: postActor.photo,
+        comments: (post.comments ?? []).map((comment) => {
+          const commentActor = resolveActor(
+            comment.commentedByRole,
+            comment.commentedByUserId,
+            comment.commentedByName,
+            comment.commentedByIdentifier,
+            comment.commentedByPhoto,
+          );
+
+          return {
+            ...comment,
+            commentedByName: commentActor.name,
+            commentedByIdentifier: commentActor.identifier,
+            commentedByPhoto: commentActor.photo,
+          };
+        }),
+      };
+    });
+  }
+
+  private buildCoursePostTargetPath(
+    post: Pick<CoursePost, 'id' | 'type' | 'courseId' | 'labClassId'>,
+    role: UserRole,
+  ): string {
+    const base =
+      role === UserRole.TEACHER ? '/teacher' : role === UserRole.STUDENT ? '/student' : '';
+    if (!base) {
+      return '/';
+    }
+
+    if (post.type === CoursePostType.ANNOUNCEMENT) {
+      return `${base}/courses/${post.courseId}/announcements/${post.id}`;
+    }
+
+    if (post.labClassId) {
+      return `${base}/courses/${post.courseId}/lab-classes/${post.labClassId}#discussion-${post.id}`;
+    }
+
+    return `${base}/courses/${post.courseId}`;
   }
 
   private async notifyUsersAboutCoursePost(
@@ -1865,31 +2410,57 @@ export class CoursesService {
       userId: string;
       role: UserRole;
       displayName: string;
-      course: Course;
+      identifier: string | null;
+      photo: string | null;
+      sectionName?: string;
+      course: Course & { batchSections?: any[] };
     },
   ) {
-    if (actor.role === UserRole.TEACHER) {
-      const enrollments = await this.enrollmentRepo.find({
-        where: { courseId: post.courseId, isActive: true },
-        relations: ['student'],
-      });
-      const recipientUserIds = enrollments
-        .map((enrollment) => enrollment.student?.userId)
-        .filter((userId): userId is string => Boolean(userId));
+    if (actor.role === UserRole.TEACHER && post.type === CoursePostType.ANNOUNCEMENT) {
+      const targetSections = (post.targetSectionNames ?? []).length
+        ? post.targetSectionNames
+        : ['All Students'];
+      const recipientStudents =
+        targetSections.includes('All Students')
+          ? (await this.enrollmentRepo.find({
+              where: { courseId: post.courseId, isActive: true },
+              relations: ['student'],
+            }))
+              .map((enrollment) => enrollment.student)
+              .filter((student): student is Student => Boolean(student))
+          : (
+              await Promise.all(
+                targetSections.map((sectionName) =>
+                  this.getStudentsForCourseSection(actor.course, sectionName),
+                ),
+              )
+            ).flat();
+
+      const recipientUserIds = Array.from(
+        new Set(
+          recipientStudents
+            .map((student) => student.userId)
+            .filter((userId): userId is string => Boolean(userId)),
+        ),
+      );
+
+      if (!recipientUserIds.length) {
+        return;
+      }
 
       try {
         await this.notificationsService.createBulk(recipientUserIds, {
           type: NotificationType.SYSTEM,
-          title: `${actor.course.courseCode}: ${post.title || 'New class post'}`,
-          body: `${actor.displayName} posted an update in ${actor.course.title}.`,
+          title: `${actor.course.courseCode}: ${post.title || 'Announcement'}`,
+          body: `${actor.displayName} posted a new announcement in ${actor.course.title}.`,
           referenceId: post.id,
-          targetPath: `/student/courses/${post.courseId}`,
+          targetPath: this.buildCoursePostTargetPath(post, UserRole.STUDENT),
         });
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Unknown notification error';
         this.logger.warn(
-          `Failed to notify enrolled students about course post ${post.id}: ${message}`,
+          `Failed to notify students about announcement ${post.id}: ${message}`,
         );
       }
       return;
@@ -1903,10 +2474,16 @@ export class CoursesService {
       try {
         await this.notificationsService.createBulk(teacherUserIds, {
           type: NotificationType.SYSTEM,
-          title: `${actor.course.courseCode}: new student question`,
-          body: `${actor.displayName} posted in ${actor.course.title}.`,
+          title: post.labClassId
+            ? `${actor.course.courseCode}: new lab question`
+            : `${actor.course.courseCode}: new student question`,
+          body: post.labClassId
+            ? `${actor.displayName} asked a question in ${
+                post.labClass?.title ?? 'the lab class'
+              }.`
+            : `${actor.displayName} posted in ${actor.course.title}.`,
           referenceId: post.id,
-          targetPath: `/teacher/courses/${post.courseId}`,
+          targetPath: this.buildCoursePostTargetPath(post, UserRole.TEACHER),
         });
       } catch (error) {
         const message =

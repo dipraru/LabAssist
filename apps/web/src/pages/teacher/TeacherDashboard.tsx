@@ -315,24 +315,17 @@ export function TeacherDashboard() {
   };
 
   const updateScheduleMutation = useMutation({
-    mutationFn: () => {
-      if (!scheduleTarget?.labClass || !scheduleTarget?.labClassSection) {
-        throw new Error('Start a lab class first to change its schedule');
-      }
-
-      return api.patch(
-        `/courses/${scheduleTarget.course.id}/lab-classes/${scheduleTarget.labClass.id}/sections/${scheduleTarget.labClassSection.id}/schedule`,
-        {
-          scheduledDate: scheduleDraft.scheduledDate,
-          startTime: normalizeTimeValue(scheduleDraft.startTime),
-          endTime: normalizeTimeValue(scheduleDraft.endTime),
-          roomNumber: scheduleDraft.roomNumber.trim() || undefined,
-        },
-      );
-    },
+    mutationFn: () =>
+      api.post(`/courses/${scheduleTarget?.course?.id}/schedule-overrides`, {
+        sectionName: scheduleTarget?.schedule?.sectionName ?? 'All Students',
+        scheduledDate: scheduleDraft.scheduledDate,
+        startTime: normalizeTimeValue(scheduleDraft.startTime),
+        endTime: normalizeTimeValue(scheduleDraft.endTime),
+        roomNumber: scheduleDraft.roomNumber.trim() || undefined,
+      }),
     onSuccess: () => {
       const overlappedItems = detectDraftOverlap(scheduleTarget);
-      toast.success('Lab schedule changed for this week');
+      toast.success('Lab schedule updated');
       if (overlappedItems.length && scheduleTarget) {
         const firstOverlap = overlappedItems[0];
         const moreCount = overlappedItems.length - 1;
@@ -738,111 +731,101 @@ export function TeacherDashboard() {
         title="Change Lab Schedule"
         maxWidthClass="max-w-xl"
       >
-        {scheduleTarget ? (
-          scheduleTarget.labClass && scheduleTarget.labClassSection ? (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                updateScheduleMutation.mutate();
-              }}
-              className="space-y-4"
+      {scheduleTarget ? (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            updateScheduleMutation.mutate();
+          }}
+          className="space-y-4"
+        >
+          <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-600">
+            <p className="font-semibold text-slate-900">
+              {scheduleTarget.course?.courseCode} · {scheduleTarget.schedule?.sectionName ?? 'All Students'}
+            </p>
+            {scheduleTarget.labClass && scheduleTarget.labClassSection ? (
+              <p className="mt-1">
+                Lab {scheduleTarget.labClass?.labNumber} · {scheduleTarget.labClass?.title}
+              </p>
+            ) : (
+              <p className="mt-1">
+                No lab class exists yet for this slot. Saving this change will create the next lab class automatically.
+              </p>
+            )}
+            <p className="mt-2 text-xs text-slate-500">
+              This change applies to the upcoming lab class schedule for the selected section.
+            </p>
+          </div>
+
+          <Field label="Date">
+            <input
+              type="date"
+              value={scheduleDraft.scheduledDate}
+              onChange={(event) =>
+                setScheduleDraft((current) => ({
+                  ...current,
+                  scheduledDate: event.target.value,
+                }))
+              }
+              className={inputClass}
+            />
+          </Field>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Start Time">
+              <input
+                type="time"
+                value={scheduleDraft.startTime}
+                onChange={(event) =>
+                  setScheduleDraft((current) => ({
+                    ...current,
+                    startTime: event.target.value,
+                  }))
+                }
+                className={inputClass}
+              />
+            </Field>
+
+            <Field label="End Time">
+              <input
+                type="time"
+                value={scheduleDraft.endTime}
+                onChange={(event) =>
+                  setScheduleDraft((current) => ({
+                    ...current,
+                    endTime: event.target.value,
+                  }))
+                }
+                className={inputClass}
+              />
+            </Field>
+          </div>
+
+          <Field label="Room">
+            <input
+              value={scheduleDraft.roomNumber}
+              onChange={(event) =>
+                setScheduleDraft((current) => ({
+                  ...current,
+                  roomNumber: event.target.value,
+                }))
+              }
+              className={inputClass}
+              placeholder="Optional"
+            />
+          </Field>
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={updateScheduleMutation.isPending}
+              className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-600">
-                <p className="font-semibold text-slate-900">
-                  {scheduleTarget.course?.courseCode} · {scheduleTarget.labClassSection?.sectionName}
-                </p>
-                <p className="mt-1">
-                  Lab {scheduleTarget.labClass?.labNumber} · {scheduleTarget.labClass?.title}
-                </p>
-                <p className="mt-2 text-xs text-slate-500">
-                  This change applies only to this lab class, not the admin schedule.
-                </p>
-              </div>
-
-              <Field label="Date">
-                <input
-                  type="date"
-                  value={scheduleDraft.scheduledDate}
-                  onChange={(event) =>
-                    setScheduleDraft((current) => ({
-                      ...current,
-                      scheduledDate: event.target.value,
-                    }))
-                  }
-                  className={inputClass}
-                />
-              </Field>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Start Time">
-                  <input
-                    type="time"
-                    value={scheduleDraft.startTime}
-                    onChange={(event) =>
-                      setScheduleDraft((current) => ({
-                        ...current,
-                        startTime: event.target.value,
-                      }))
-                    }
-                    className={inputClass}
-                  />
-                </Field>
-
-                <Field label="End Time">
-                  <input
-                    type="time"
-                    value={scheduleDraft.endTime}
-                    onChange={(event) =>
-                      setScheduleDraft((current) => ({
-                        ...current,
-                        endTime: event.target.value,
-                      }))
-                    }
-                    className={inputClass}
-                  />
-                </Field>
-              </div>
-
-              <Field label="Room">
-                <input
-                  value={scheduleDraft.roomNumber}
-                  onChange={(event) =>
-                    setScheduleDraft((current) => ({
-                      ...current,
-                      roomNumber: event.target.value,
-                    }))
-                  }
-                  className={inputClass}
-                  placeholder="Optional"
-                />
-              </Field>
-
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  disabled={updateScheduleMutation.isPending}
-                  className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {updateScheduleMutation.isPending ? 'Saving...' : 'Save schedule'}
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div className="space-y-4">
-              <div className="rounded-[22px] border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center text-sm text-slate-600">
-                Start a lab class for this course first, then you can change that lab class schedule here.
-              </div>
-              <div className="flex justify-end">
-                <Link
-                  to={`/teacher/courses/${scheduleTarget.course?.id}?tab=lab-classes`}
-                  className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800"
-                >
-                  Open lab classes
-                </Link>
-              </div>
-            </div>
-          )
-        ) : null}
+              {updateScheduleMutation.isPending ? 'Saving...' : 'Save schedule'}
+            </button>
+          </div>
+        </form>
+      ) : null}
       </Modal>
     </AppShell>
   );

@@ -11,6 +11,7 @@ import { Semester } from '../courses/entities/semester.entity';
 import { Course } from '../courses/entities/course.entity';
 import { Batch } from './entities/batch.entity';
 import { LabTest } from '../lab-tests/entities/lab-test.entity';
+import { ProfileChangeApplication } from './entities/profile-change-application.entity';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { LabTest } from '../lab-tests/entities/lab-test.entity';
       Course,
       Batch,
       LabTest,
+      ProfileChangeApplication,
     ]),
   ],
   controllers: [OfficeController],

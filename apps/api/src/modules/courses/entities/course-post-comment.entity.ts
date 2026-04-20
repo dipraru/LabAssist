@@ -40,6 +40,12 @@ export class CoursePostComment {
   @Column()
   commentedByName: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  commentedByIdentifier: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  commentedByPhoto: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

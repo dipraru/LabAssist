@@ -22,6 +22,7 @@ import {
 import { api } from '../../lib/api';
 import { studentDisplayName } from '../../lib/display';
 import { Modal } from '../../components/Modal';
+import { CourseAnnouncementsPanel } from '../../components/CourseAnnouncementsPanel';
 import { TeacherLabActivityManager } from './TeacherLabActivityManager';
 import {
   StudentAvatar,
@@ -98,6 +99,7 @@ type CourseTab =
   | 'lab-tasks'
   | 'lab-tests'
   | 'assignments'
+  | 'announcements'
   | 'members';
 
 type LabClassFormValues = z.infer<typeof labClassSchema>;
@@ -111,6 +113,7 @@ const tabItems: { key: CourseTab; label: string; icon: ReactNode }[] = [
   { key: 'lab-tasks', label: 'Lab Tasks', icon: <BookOpen size={16} /> },
   { key: 'lab-tests', label: 'Lab Tests', icon: <BookOpen size={16} /> },
   { key: 'assignments', label: 'Assignments', icon: <FilePlus2 size={16} /> },
+  { key: 'announcements', label: 'Announcements', icon: <BookOpen size={16} /> },
   { key: 'members', label: 'Members', icon: <Users size={16} /> },
 ];
 
@@ -776,6 +779,14 @@ export function TeacherCourseDetail() {
             <EmptyState title="No assignments yet" />
           )}
         </section>
+      ) : null}
+
+      {activeTab === 'announcements' ? (
+        <CourseAnnouncementsPanel
+          role="teacher"
+          course={course}
+          sectionNames={sectionNames}
+        />
       ) : null}
 
       {activeTab === 'members' ? (

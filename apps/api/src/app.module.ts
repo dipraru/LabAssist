@@ -40,6 +40,7 @@ import { ContestAnnouncement } from './modules/contests/entities/contest-announc
 import { ContestClarification } from './modules/contests/entities/contest-clarification.entity';
 import { Notification } from './modules/notifications/entities/notification.entity';
 import { Batch } from './modules/office/entities/batch.entity';
+import { ProfileChangeApplication } from './modules/office/entities/profile-change-application.entity';
 
 @Module({
   imports: [
@@ -84,6 +85,7 @@ import { Batch } from './modules/office/entities/batch.entity';
           ContestClarification,
           Notification,
           Batch,
+          ProfileChangeApplication,
         ],
         synchronize: config.get('NODE_ENV') !== 'production',
         logging: config.get('NODE_ENV') === 'development',

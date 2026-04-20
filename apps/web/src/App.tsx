@@ -78,7 +78,8 @@ export default function App() {
         <Route path="/office/courses" element={<ManageCourses />} />
         <Route path="/office/semesters" element={<ManageSemesters />} />
         <Route path="/office/temp-judges" element={<CreateTempJudge />} />
-        <Route path="/office/application" element={<ApplicationsPage />} />
+        <Route path="/office/application" element={<Navigate to="/office/applications" replace />} />
+        <Route path="/office/applications" element={<ApplicationsPage />} />
         <Route path="/office/change-password" element={<ChangePasswordPage />} />
       </Route>
 
@@ -88,6 +89,10 @@ export default function App() {
         <Route path="/teacher/courses" element={<TeacherCourses />} />
         <Route
           path="/teacher/courses/:courseId/materials/:sheetId"
+          element={<TeacherCourses />}
+        />
+        <Route
+          path="/teacher/courses/:courseId/announcements/:announcementId"
           element={<TeacherCourses />}
         />
         <Route path="/teacher/courses/:courseId/lab-classes/:labClassId" element={<TeacherCourses />} />
@@ -106,6 +111,10 @@ export default function App() {
         <Route path="/student/courses" element={<StudentCourses />} />
         <Route
           path="/student/courses/:courseId/materials/:sheetId"
+          element={<StudentCourses />}
+        />
+        <Route
+          path="/student/courses/:courseId/announcements/:announcementId"
           element={<StudentCourses />}
         />
         <Route
