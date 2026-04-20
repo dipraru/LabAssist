@@ -1,125 +1,343 @@
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../../lib/api';
+import type { ElementType } from 'react';
+import {
+  ArrowRight,
+  BookOpen,
+  ClipboardCheck,
+  FlaskConical,
+  FolderKanban,
+  GraduationCap,
+  LayoutDashboard,
+  ShieldCheck,
+  Sparkles,
+  Users,
+} from 'lucide-react';
 import { AppShell } from '../../components/AppShell';
-import { Users, BookOpen, FlaskConical, GraduationCap, ChevronRight, LayoutDashboard } from 'lucide-react';
+import { api } from '../../lib/api';
 
-function StatCard({
+type DashboardStats = {
+  teacherCount: number;
+  studentCount: number;
+  judgeCount: number;
+  batchCount: number;
+  activeSemesterCount: number;
+  courseCount: number;
+  activeLabTestCount: number;
+  pendingApplicationCount: number;
+};
+
+function MetricCard({
   label,
   value,
   icon: Icon,
-  accentClass,
-  iconBg,
+  tintClass,
+  iconClass,
+  note,
 }: {
   label: string;
   value: number;
-  icon: React.ElementType;
-  accentClass: string;
-  iconBg: string;
+  icon: ElementType;
+  tintClass: string;
+  iconClass: string;
+  note: string;
 }) {
   return (
-    <div className="relative bg-white rounded-2xl p-6 shadow-sm ring-1 ring-black/5 overflow-hidden group hover:shadow-md transition-all duration-200">
-      <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl ${accentClass}`} />
-      <div className="flex items-start justify-between">
+    <div className="rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-[0_24px_60px_-46px_rgba(15,23,42,0.45)]">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-2">{label}</p>
-          <p className="text-4xl font-bold text-slate-900 tabular-nums">{value}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+            {label}
+          </p>
+          <p className="mt-3 text-3xl font-semibold text-slate-900 tabular-nums">{value}</p>
+          <p className="mt-2 text-sm text-slate-500">{note}</p>
         </div>
-        <div className={`${iconBg} p-3 rounded-xl`}>
-          <Icon size={20} className="opacity-80" />
+        <div className={`rounded-2xl p-3 ${tintClass}`}>
+          <Icon size={18} className={iconClass} />
         </div>
       </div>
     </div>
   );
 }
 
-const quickActions = [
-  { label: 'Create Teacher', href: '/office/teachers', desc: 'Add faculty member' },
-  { label: 'Bulk Create Students', href: '/office/students', desc: 'Import via CSV' },
-  { label: 'Add Batch', href: '/office/batches', desc: 'Configure new intake' },
-  { label: 'Create Course', href: '/office/courses', desc: 'New course entry' },
-  { label: 'Add Semester', href: '/office/semesters', desc: 'Open a new term' },
-  { label: 'Create Temp Judge', href: '/office/temp-judges', desc: 'Temporary evaluator access' },
-];
+function ActionCard({
+  href,
+  label,
+  description,
+  badge,
+}: {
+  href: string;
+  label: string;
+  description: string;
+  badge: string;
+}) {
+  return (
+    <a
+      href={href}
+      className="group rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-[0_20px_50px_-44px_rgba(15,23,42,0.45)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_24px_60px_-38px_rgba(15,23,42,0.4)]"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">
+            {badge}
+          </span>
+          <h3 className="mt-4 text-lg font-semibold text-slate-900">{label}</h3>
+          <p className="mt-2 text-sm leading-6 text-slate-500">{description}</p>
+        </div>
+        <div className="rounded-full bg-slate-100 p-2 text-slate-400 transition group-hover:bg-slate-900 group-hover:text-white">
+          <ArrowRight size={16} />
+        </div>
+      </div>
+    </a>
+  );
+}
 
 export function OfficeDashboard() {
-  const { data: stats } = useQuery({
+  const { data: stats } = useQuery<DashboardStats>({
     queryKey: ['office-stats'],
-    queryFn: () => api.get('/office/dashboard').then(r => r.data),
+    queryFn: () => api.get('/office/dashboard').then((response) => response.data),
   });
 
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const today = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  const metrics = [
+    {
+      label: 'Teachers',
+      value: stats?.teacherCount ?? 0,
+      icon: Users,
+      tintClass: 'bg-blue-50',
+      iconClass: 'text-blue-600',
+      note: 'Faculty accounts ready for course assignment',
+    },
+    {
+      label: 'Students',
+      value: stats?.studentCount ?? 0,
+      icon: GraduationCap,
+      tintClass: 'bg-emerald-50',
+      iconClass: 'text-emerald-600',
+      note: 'Student accounts managed by office',
+    },
+    {
+      label: 'Courses',
+      value: stats?.courseCount ?? 0,
+      icon: BookOpen,
+      tintClass: 'bg-violet-50',
+      iconClass: 'text-violet-600',
+      note: 'Open course records across active and upcoming terms',
+    },
+    {
+      label: 'Pending Applications',
+      value: stats?.pendingApplicationCount ?? 0,
+      icon: ClipboardCheck,
+      tintClass: 'bg-amber-50',
+      iconClass: 'text-amber-600',
+      note: 'Profile change requests waiting for office review',
+    },
+    {
+      label: 'Active Lab Tests',
+      value: stats?.activeLabTestCount ?? 0,
+      icon: FlaskConical,
+      tintClass: 'bg-rose-50',
+      iconClass: 'text-rose-600',
+      note: 'Currently running lab activities',
+    },
+    {
+      label: 'Temp Judges',
+      value: stats?.judgeCount ?? 0,
+      icon: ShieldCheck,
+      tintClass: 'bg-cyan-50',
+      iconClass: 'text-cyan-600',
+      note: 'Temporary evaluator accounts with controlled access',
+    },
+  ];
 
   return (
     <AppShell>
-      <div className="min-h-screen bg-slate-50">
-        {/* Page Header */}
-        <div className="bg-white border-b border-slate-200 px-8 py-6 mb-8">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="p-2 bg-indigo-50 rounded-xl">
-              <LayoutDashboard size={18} className="text-indigo-600" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">Office Dashboard</h1>
-              <p className="text-xs text-slate-400 mt-0.5">{today}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="px-8 pb-10 space-y-8">
-          {/* Stats Grid */}
-          <div>
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-4">Department Overview</h2>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard
-                label="Teachers"
-                value={stats?.teacherCount ?? 0}
-                icon={Users}
-                accentClass="bg-blue-500"
-                iconBg="bg-blue-50 text-blue-600"
-              />
-              <StatCard
-                label="Students"
-                value={stats?.studentCount ?? 0}
-                icon={GraduationCap}
-                accentClass="bg-emerald-500"
-                iconBg="bg-emerald-50 text-emerald-600"
-              />
-              <StatCard
-                label="Courses"
-                value={stats?.courseCount ?? 0}
-                icon={BookOpen}
-                accentClass="bg-violet-500"
-                iconBg="bg-violet-50 text-violet-600"
-              />
-              <StatCard
-                label="Active Lab Tests"
-                value={stats?.activeLabTestCount ?? 0}
-                icon={FlaskConical}
-                accentClass="bg-amber-500"
-                iconBg="bg-amber-50 text-amber-600"
-              />
-            </div>
-          </div>
-
-          {/* Quick Actions */}
-          <div>
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-4">Quick Actions</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {quickActions.map(item => (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  className="group flex items-center justify-between bg-white rounded-xl px-5 py-4 shadow-sm ring-1 ring-black/5 hover:shadow-md hover:ring-indigo-200 transition-all duration-200"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800 group-hover:text-indigo-700 transition-colors">{item.label}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">{item.desc}</p>
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,#dbeafe_0%,#f8fafc_42%,#f8fafc_100%)] pb-10">
+        <div className="px-6 pt-6 sm:px-8">
+          <section className="overflow-hidden rounded-[34px] border border-slate-200/80 bg-white shadow-[0_30px_90px_-55px_rgba(15,23,42,0.55)]">
+            <div className="bg-[radial-gradient(circle_at_top_left,#1e293b,transparent_30%),linear-gradient(135deg,#0f172a_0%,#0f766e_50%,#67e8f9_100%)] px-6 py-8 text-white sm:px-8 sm:py-10">
+              <div className="flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
+                <div className="max-w-3xl">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-cyan-50/90 backdrop-blur">
+                    <LayoutDashboard size={14} />
+                    Office Control Center
                   </div>
-                  <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all" />
-                </a>
-              ))}
+                  <h1 className="mt-5 text-3xl font-semibold tracking-tight sm:text-4xl">
+                    Keep the academic workflow moving without losing the queue.
+                  </h1>
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-cyan-50/85 sm:text-base">
+                    Review pending applications, manage accounts, and keep sessions, batches, and temporary judge access aligned from one place.
+                  </p>
+                  <p className="mt-4 text-sm font-medium text-cyan-50/80">{today}</p>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="rounded-[26px] border border-white/15 bg-white/10 px-5 py-4 backdrop-blur">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/75">
+                      Pending Review
+                    </p>
+                    <p className="mt-3 text-4xl font-semibold tabular-nums">
+                      {stats?.pendingApplicationCount ?? 0}
+                    </p>
+                    <p className="mt-2 text-sm text-cyan-50/80">
+                      Applications waiting for approval
+                    </p>
+                  </div>
+                  <div className="rounded-[26px] border border-white/15 bg-white/10 px-5 py-4 backdrop-blur">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/75">
+                      Active Semesters
+                    </p>
+                    <p className="mt-3 text-4xl font-semibold tabular-nums">
+                      {stats?.activeSemesterCount ?? 0}
+                    </p>
+                    <p className="mt-2 text-sm text-cyan-50/80">
+                      Terms currently in motion
+                    </p>
+                  </div>
+                  <div className="rounded-[26px] border border-white/15 bg-white/10 px-5 py-4 backdrop-blur">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/75">
+                      Total Batches
+                    </p>
+                    <p className="mt-3 text-4xl font-semibold tabular-nums">
+                      {stats?.batchCount ?? 0}
+                    </p>
+                    <p className="mt-2 text-sm text-cyan-50/80">
+                      Intake groups configured so far
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+
+            <div className="grid gap-4 px-6 py-6 sm:px-8 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.95fr)]">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {metrics.map((metric) => (
+                  <MetricCard key={metric.label} {...metric} />
+                ))}
+              </div>
+
+              <div className="rounded-[30px] border border-slate-200 bg-slate-50/85 p-6">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-2xl bg-slate-900 p-2 text-white">
+                    <Sparkles size={16} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                      Focus Today
+                    </p>
+                    <h2 className="mt-1 text-xl font-semibold text-slate-900">
+                      Office priorities
+                    </h2>
+                  </div>
+                </div>
+
+                <div className="mt-6 space-y-3">
+                  {[
+                    {
+                      title: 'Review profile changes',
+                      value: stats?.pendingApplicationCount ?? 0,
+                      tone:
+                        (stats?.pendingApplicationCount ?? 0) > 0
+                          ? 'bg-amber-50 text-amber-700 ring-amber-200'
+                          : 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+                      helper:
+                        (stats?.pendingApplicationCount ?? 0) > 0
+                          ? 'Queue needs attention from office'
+                          : 'No pending profile requests right now',
+                    },
+                    {
+                      title: 'Monitor active lab tests',
+                      value: stats?.activeLabTestCount ?? 0,
+                      tone: 'bg-rose-50 text-rose-700 ring-rose-200',
+                      helper: 'Running assessments that may require oversight',
+                    },
+                    {
+                      title: 'Coordinate judge access',
+                      value: stats?.judgeCount ?? 0,
+                      tone: 'bg-cyan-50 text-cyan-700 ring-cyan-200',
+                      helper: 'Temporary evaluator accounts currently managed',
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.title}
+                      className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-4"
+                    >
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                        <p className="mt-1 text-xs text-slate-500">{item.helper}</p>
+                      </div>
+                      <span
+                        className={`inline-flex min-w-[3rem] items-center justify-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ${item.tone}`}
+                      >
+                        {item.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+                  Quick Actions
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold text-slate-900">
+                  Jump into the next task
+                </h2>
+              </div>
+              <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-500 shadow-sm sm:flex">
+                <FolderKanban size={16} />
+                Shortcuts tuned for office workflows
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-3">
+              <ActionCard
+                href="/office/applications"
+                badge="Queue"
+                label="Review profile change applications"
+                description="Handle pending profile edits first so identity and account records stay clean."
+              />
+              <ActionCard
+                href="/office/students"
+                badge="Accounts"
+                label="Manage students"
+                description="Filter by batch, onboard new students, and clean up incomplete accounts."
+              />
+              <ActionCard
+                href="/office/courses"
+                badge="Courses"
+                label="Open or maintain courses"
+                description="Create sessional courses, assign instructors, and manage safe course deletions."
+              />
+              <ActionCard
+                href="/office/batches"
+                badge="Structure"
+                label="Configure batches"
+                description="Set up new intakes and remove empty batches that are no longer needed."
+              />
+              <ActionCard
+                href="/office/semesters"
+                badge="Terms"
+                label="Manage semesters"
+                description="Track active terms and keep deletions limited to empty semesters only."
+              />
+              <ActionCard
+                href="/office/temp-judges"
+                badge="Access"
+                label="Issue temp judge credentials"
+                description="Create temporary evaluator access and regenerate credentials directly at download time."
+              />
+            </div>
+          </section>
         </div>
       </div>
     </AppShell>

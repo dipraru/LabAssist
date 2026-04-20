@@ -3,7 +3,7 @@ import { useFieldArray, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Layers3, Plus, Split, UsersRound } from 'lucide-react';
+import { Layers3, Plus, Split, Trash2, UsersRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
@@ -169,6 +169,18 @@ export function ManageBatches() {
     },
     onError: (error: any) =>
       toast.error(error.response?.data?.message ?? 'Failed to create batch'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/office/batches/${id}`),
+    onSuccess: () => {
+      toast.success('Batch deleted');
+      queryClient.invalidateQueries({ queryKey: ['batches'] });
+      queryClient.invalidateQueries({ queryKey: ['semesters'] });
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+    },
+    onError: (error: any) =>
+      toast.error(error.response?.data?.message ?? 'Failed to delete batch'),
   });
 
   const closeForm = () => {
@@ -398,6 +410,25 @@ export function ManageBatches() {
                 </div>
 
                 <div className="space-y-4 px-6 py-5">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        Linked Semesters
+                      </p>
+                      <p className="mt-2 text-2xl font-bold text-slate-900">
+                        {batch.semesterCount ?? 0}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        Linked Students
+                      </p>
+                      <p className="mt-2 text-2xl font-bold text-slate-900">
+                        {batch.studentCount ?? 0}
+                      </p>
+                    </div>
+                  </div>
+
                   {batch.sectionCount === 1 ? (
                     <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                       <UsersRound size={18} className="text-slate-500" />
@@ -429,6 +460,42 @@ export function ManageBatches() {
                       ))}
                     </div>
                   )}
+
+                  <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">
+                        {batch.canDelete ? 'Ready to delete' : 'Deletion blocked'}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {batch.canDelete
+                          ? 'This batch has no linked semesters or student accounts.'
+                          : batch.deleteBlockReason ??
+                            'Remove linked records before deleting this batch.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!batch.canDelete || deleteMutation.isPending}
+                      onClick={() => {
+                        if (window.confirm(`Delete batch ${batch.year}?`)) {
+                          deleteMutation.mutate(batch.id);
+                        }
+                      }}
+                      title={
+                        batch.canDelete
+                          ? 'Delete batch'
+                          : batch.deleteBlockReason ?? 'Batch cannot be deleted yet'
+                      }
+                      className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
+                        batch.canDelete
+                          ? 'bg-red-600 text-white hover:bg-red-700'
+                          : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400'
+                      }`}
+                    >
+                      <Trash2 size={15} />
+                      Delete Batch
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

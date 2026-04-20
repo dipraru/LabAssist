@@ -192,17 +192,12 @@ export function ApplicationsPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 px-6 py-6 sm:px-10 lg:grid-cols-4">
+          <div className="grid gap-4 px-6 py-6 sm:px-10 lg:grid-cols-3">
             {[
               {
                 label: 'Total Requests',
                 value: counts.total,
                 note: 'All submitted profile change applications',
-              },
-              {
-                label: 'Pending',
-                value: counts.pending,
-                note: 'Waiting for approval or rejection',
               },
               {
                 label: 'Approved',

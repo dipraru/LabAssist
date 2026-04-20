@@ -119,6 +119,14 @@ function batchYearVariants(batchYear: string): string[] {
   return [batchYear];
 }
 
+function buildCountLabel(
+  count: number,
+  singular: string,
+  plural = `${singular}s`,
+): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 function parseCsvLine(line: string): string[] {
   const result: string[] = [];
   let current = '';
@@ -872,15 +880,7 @@ export class OfficeService {
   async getTempJudgeCredentials(
     judgeId: string,
   ): Promise<{ judge: TempJudge; plainPassword: string }> {
-    const judge = await this.judgeRepo.findOne({ where: { id: judgeId } });
-    if (!judge) throw new NotFoundException('Judge not found');
-    if (!judge.latestIssuedPassword) {
-      throw new NotFoundException(
-        'No credential snapshot found. Regenerate credentials first.',
-      );
-    }
-
-    return { judge, plainPassword: judge.latestIssuedPassword };
+    return this.resetTempJudgeCredentials(judgeId);
   }
 
   async getAllJudges(): Promise<TempJudge[]> {
@@ -1031,21 +1031,38 @@ export class OfficeService {
   // ────────────────────────────────────────────────────────
 
   async getDashboardStats() {
-    const [teacherCount, studentCount, judgeCount, courseCount, activeLabTestCount] = await Promise.all([
+    const [
+      teacherCount,
+      studentCount,
+      judgeCount,
+      batchCount,
+      activeSemesterCount,
+      courseCount,
+      activeLabTestCount,
+      pendingApplicationCount,
+    ] = await Promise.all([
       this.teacherRepo.count(),
       this.studentRepo.count(),
       this.judgeRepo.count(),
+      this.batchRepo.count(),
+      this.semesterRepo.count({ where: { isCurrent: true } }),
       this.courseRepo.count(),
       this.labTestRepo.count({
         where: { status: LabTestStatus.RUNNING },
+      }),
+      this.profileChangeApplicationRepo.count({
+        where: { status: ProfileChangeApplicationStatus.PENDING },
       }),
     ]);
     return {
       teacherCount,
       studentCount,
       judgeCount,
+      batchCount,
+      activeSemesterCount,
       courseCount,
       activeLabTestCount,
+      pendingApplicationCount,
     };
   }
 
@@ -1055,9 +1072,31 @@ export class OfficeService {
     });
   }
 
-  async getAllStudents(batchYear?: string): Promise<Student[]> {
-    const where = batchYear ? { batchYear } : {};
-    return this.studentRepo.find({ where, order: { studentId: 'ASC' } });
+  async getAllStudents(batchYear?: string): Promise<
+    Array<
+      Student & {
+        canDelete: boolean;
+        deleteBlockReason: string | null;
+      }
+    >
+  > {
+    const normalizedBatchYear = batchYear?.trim()
+      ? normalizeBatchYear(batchYear)
+      : undefined;
+    const where = normalizedBatchYear ? { batchYear: normalizedBatchYear } : {};
+    const students = await this.studentRepo.find({
+      where,
+      order: { studentId: 'ASC' },
+    });
+
+    return students.map((student) =>
+      Object.assign(student, {
+        canDelete: !student.profileCompleted,
+        deleteBlockReason: student.profileCompleted
+          ? 'Only incomplete student accounts can be deleted'
+          : null,
+      }),
+    );
   }
 
   async createBatch(dto: CreateBatchDto): Promise<Batch> {
@@ -1081,10 +1120,78 @@ export class OfficeService {
     return this.batchRepo.save(batch);
   }
 
-  async getAllBatches(): Promise<Batch[]> {
-    return this.batchRepo.find({
+  async getAllBatches(): Promise<
+    Array<
+      Batch & {
+        semesterCount: number;
+        studentCount: number;
+        canDelete: boolean;
+        deleteBlockReason: string | null;
+      }
+    >
+  > {
+    const batches = await this.batchRepo.find({
       order: { year: 'DESC', createdAt: 'DESC' },
     });
+
+    return Promise.all(
+      batches.map(async (batch) => {
+        const [semesterCount, studentCount] = await Promise.all([
+          this.semesterRepo.count({ where: { batchYear: batch.year } }),
+          this.studentRepo.count({
+            where: { batchYear: In(batchYearVariants(batch.year)) },
+          }),
+        ]);
+
+        const blockers = [
+          ...(semesterCount > 0
+            ? [buildCountLabel(semesterCount, 'semester')]
+            : []),
+          ...(studentCount > 0
+            ? [buildCountLabel(studentCount, 'student')]
+            : []),
+        ];
+
+        return Object.assign(batch, {
+          semesterCount,
+          studentCount,
+          canDelete: blockers.length === 0,
+          deleteBlockReason: blockers.length
+            ? `Delete is available only when a batch has no linked ${blockers.join(' or ')}.`
+            : null,
+        });
+      }),
+    );
+  }
+
+  async deleteBatch(id: string): Promise<void> {
+    const batch = await this.batchRepo.findOne({ where: { id } });
+    if (!batch) {
+      throw new NotFoundException('Batch not found');
+    }
+
+    const [semesterCount, studentCount] = await Promise.all([
+      this.semesterRepo.count({ where: { batchYear: batch.year } }),
+      this.studentRepo.count({
+        where: { batchYear: In(batchYearVariants(batch.year)) },
+      }),
+    ]);
+
+    if (semesterCount > 0 || studentCount > 0) {
+      const blockers = [
+        ...(semesterCount > 0
+          ? [buildCountLabel(semesterCount, 'semester')]
+          : []),
+        ...(studentCount > 0
+          ? [buildCountLabel(studentCount, 'student')]
+          : []),
+      ];
+      throw new BadRequestException(
+        `Cannot delete batch ${batch.year} because it still has ${blockers.join(' and ')}.`,
+      );
+    }
+
+    await this.batchRepo.delete(id);
   }
 
   async createSemester(dto: CreateSemesterDto) {
@@ -1140,10 +1247,35 @@ export class OfficeService {
     return savedSemester;
   }
 
-  async getAllSemesters() {
-    return this.semesterRepo.find({
+  async getAllSemesters(): Promise<
+    Array<
+      Semester & {
+        courseCount: number;
+        canDelete: boolean;
+        deleteBlockReason: string | null;
+      }
+    >
+  > {
+    const semesters = await this.semesterRepo.find({
       order: { batchYear: 'DESC', name: 'ASC' },
     });
+
+    return Promise.all(
+      semesters.map(async (semester) => {
+        const courseCount = await this.courseRepo.count({
+          where: { semesterId: semester.id },
+        });
+
+        return Object.assign(semester, {
+          courseCount,
+          canDelete: courseCount === 0,
+          deleteBlockReason:
+            courseCount > 0
+              ? 'Delete is available only when this semester has no courses.'
+              : null,
+        });
+      }),
+    );
   }
 
   async resetTeacherCredentials(
@@ -1226,6 +1358,11 @@ export class OfficeService {
       where: { id: studentId },
     });
     if (!student) throw new NotFoundException('Student not found');
+    if (student.profileCompleted) {
+      throw new BadRequestException(
+        'Only incomplete student accounts can be deleted',
+      );
+    }
     await this.userRepo.delete(student.userId);
   }
 

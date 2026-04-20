@@ -8,7 +8,7 @@ import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
 import { WheelDateTimeInput } from '../../components/WheelDateInput';
-import { Plus, Download, Clock, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Plus, Download, Clock, ShieldCheck } from 'lucide-react';
 
 const createSchema = z.object({
   notes: z.string().optional(),
@@ -95,20 +95,11 @@ export function CreateTempJudge() {
   });
 
   const downloadCredentialsMutation = useMutation({
-    mutationFn: (judgeId: string) => api.get(`/office/judges/${judgeId}/credentials`),
-    onSuccess: (res) => {
-      if (res.data.credentialsPdf) downloadPdf(res.data.credentialsPdf);
-      toast.success('Credentials downloaded');
-    },
-    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to download credentials'),
-  });
-
-  const resetCredentialsMutation = useMutation({
     mutationFn: (judgeId: string) => api.post(`/office/judges/${judgeId}/credentials/reset`),
     onSuccess: (res) => {
-      toast.success('Credentials regenerated');
       if (res.data.credentialsPdf) downloadPdf(res.data.credentialsPdf);
       qc.invalidateQueries({ queryKey: ['temp-judges'] });
+      toast.success('Credentials regenerated and downloaded');
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to regenerate credentials'),
   });
@@ -273,18 +264,10 @@ export function CreateTempJudge() {
                             <button
                               type="button"
                               onClick={() => downloadCredentialsMutation.mutate(j.id)}
-                              title="Download credentials"
+                              title="Regenerate and download credentials"
                               className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600 transition-all"
                             >
                               <Download size={13} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => resetCredentialsMutation.mutate(j.id)}
-                              title="Regenerate password"
-                              className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-amber-200 text-amber-500 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-700 transition-all"
-                            >
-                              <RefreshCw size={13} />
                             </button>
                           </div>
                         )}
