@@ -16,6 +16,7 @@
     "ace-builds": "^1.43.6",
     "axios": "^1.13.5",
     "date-fns": "^4.1.0",
+    "katex": "^0.16.45",
     "lucide-react": "^0.575.0",
     "react": "^19.2.0",
     "react-ace": "^14.0.1",

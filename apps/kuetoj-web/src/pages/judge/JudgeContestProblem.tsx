@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
+import { ProblemContent, type ProblemContentFormat } from '../../components/ProblemContent';
+import { ProblemContentField } from '../../components/ProblemContentField';
 import {
   ArrowLeft,
   BarChart3,
@@ -25,11 +27,16 @@ type ProblemCase = {
   input: string;
   output: string;
   note?: string;
+  noteFormat?: ProblemContentFormat;
   inputFileName?: string;
   outputFileName?: string;
 };
 
-const emptyCase = (): ProblemCase => ({ input: '', output: '', note: '' });
+const emptyCase = (): ProblemCase => ({ input: '', output: '', note: '', noteFormat: 'text' });
+
+function normalizeContentFormat(format: unknown): ProblemContentFormat {
+  return format === 'latex' ? 'latex' : 'text';
+}
 
 function normalizeProblemLabel(rawLabel: unknown, index: number): string {
   const label = typeof rawLabel === 'string' ? rawLabel.trim().toUpperCase() : '';
@@ -68,8 +75,11 @@ export function JudgeContestProblem() {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState('');
   const [statement, setStatement] = useState('');
+  const [statementFormat, setStatementFormat] = useState<ProblemContentFormat>('text');
   const [inputDescription, setInputDescription] = useState('');
+  const [inputDescriptionFormat, setInputDescriptionFormat] = useState<ProblemContentFormat>('text');
   const [outputDescription, setOutputDescription] = useState('');
+  const [outputDescriptionFormat, setOutputDescriptionFormat] = useState<ProblemContentFormat>('text');
   const [timeLimitMs, setTimeLimitMs] = useState(2000);
   const [memoryLimitKb, setMemoryLimitKb] = useState(262144);
   const [sampleCases, setSampleCases] = useState<ProblemCase[]>([emptyCase()]);
@@ -142,8 +152,11 @@ export function JudgeContestProblem() {
     if (!problem) return;
     setTitle(problem.title ?? '');
     setStatement(problem.statement ?? '');
+    setStatementFormat(normalizeContentFormat(problem.statementFormat));
     setInputDescription(problem.inputDescription ?? '');
+    setInputDescriptionFormat(normalizeContentFormat(problem.inputDescriptionFormat));
     setOutputDescription(problem.outputDescription ?? '');
+    setOutputDescriptionFormat(normalizeContentFormat(problem.outputDescriptionFormat));
     setTimeLimitMs(problem.timeLimitMs ?? 2000);
     setMemoryLimitKb(problem.memoryLimitKb ?? 262144);
     setSampleCases(problem.sampleTestCases?.length ? problem.sampleTestCases : [emptyCase()]);
@@ -195,6 +208,7 @@ export function JudgeContestProblem() {
           input: sampleCase.input.trim(),
           output: sampleCase.output.trim(),
           note: sampleCase.note?.trim() || undefined,
+          noteFormat: normalizeContentFormat(sampleCase.noteFormat),
         }))
         .filter((sampleCase) => sampleCase.input || sampleCase.output || sampleCase.note);
 
@@ -216,8 +230,11 @@ export function JudgeContestProblem() {
       return api.patch(`/contests/problems/${problem?.id}`, {
         title: title.trim(),
         statement: statement.trim(),
+        statementFormat,
         inputDescription: inputDescription.trim() || undefined,
+        inputDescriptionFormat,
         outputDescription: outputDescription.trim() || undefined,
+        outputDescriptionFormat,
         timeLimitMs,
         memoryLimitKb,
         sampleTestCases: sampleRowsToSave,
@@ -352,20 +369,28 @@ export function JudgeContestProblem() {
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-[15px] leading-7 text-slate-700">
-                <pre className="whitespace-pre-wrap font-sans">{problem.statement}</pre>
+                <ProblemContent value={problem.statement} format={problem.statementFormat} />
               </div>
 
               {problem.inputDescription && (
                 <div className="mt-5">
                   <h3 className="mb-2 text-sm font-extrabold uppercase tracking-wide text-slate-700">Input</h3>
-                  <pre className="whitespace-pre-wrap rounded-2xl bg-slate-50 p-4 text-sm text-slate-800 font-sans">{problem.inputDescription}</pre>
+                  <ProblemContent
+                    value={problem.inputDescription}
+                    format={problem.inputDescriptionFormat}
+                    className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-800"
+                  />
                 </div>
               )}
 
               {problem.outputDescription && (
                 <div className="mt-5">
                   <h3 className="mb-2 text-sm font-extrabold uppercase tracking-wide text-slate-700">Output</h3>
-                  <pre className="whitespace-pre-wrap rounded-2xl bg-slate-50 p-4 text-sm text-slate-800 font-sans">{problem.outputDescription}</pre>
+                  <ProblemContent
+                    value={problem.outputDescription}
+                    format={problem.outputDescriptionFormat}
+                    className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-800"
+                  />
                 </div>
               )}
 
@@ -411,7 +436,11 @@ export function JudgeContestProblem() {
                         {(tc.note || tc.explanation) && (
                           <div className="border-t border-slate-100 px-4 py-3">
                             <p className="mb-1 text-xs font-extrabold uppercase tracking-wide text-slate-500">Note</p>
-                            <pre className="whitespace-pre-wrap rounded-xl bg-teal-50 p-3 text-sm text-slate-700 font-sans">{tc.note ?? tc.explanation}</pre>
+                            <ProblemContent
+                              value={tc.note ?? tc.explanation}
+                              format={tc.noteFormat}
+                              className="rounded-xl bg-teal-50 p-3 text-sm text-slate-700"
+                            />
                           </div>
                         )}
                       </div>
@@ -428,32 +457,37 @@ export function JudgeContestProblem() {
                   <input value={title} onChange={(event) => setTitle(event.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
                 </div>
 
-                <div>
-                  <label className="text-xs font-medium text-slate-600">Problem Statement</label>
-                  <textarea value={statement} onChange={(event) => setStatement(event.target.value)} rows={10} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm resize-none" />
-                </div>
+                <ProblemContentField
+                  label="Problem Statement"
+                  value={statement}
+                  onChange={setStatement}
+                  format={statementFormat}
+                  onFormatChange={setStatementFormat}
+                  rows={10}
+                  textareaClassName="resize-none"
+                />
 
-                <div>
-                  <label className="text-xs font-medium text-slate-600">Input</label>
-                  <textarea
-                    value={inputDescription}
-                    onChange={(event) => setInputDescription(event.target.value)}
-                    rows={4}
-                    placeholder="Describe input format and constraints"
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm resize-none"
-                  />
-                </div>
+                <ProblemContentField
+                  label="Input"
+                  value={inputDescription}
+                  onChange={setInputDescription}
+                  format={inputDescriptionFormat}
+                  onFormatChange={setInputDescriptionFormat}
+                  rows={4}
+                  placeholder="Describe input format and constraints"
+                  textareaClassName="resize-none"
+                />
 
-                <div>
-                  <label className="text-xs font-medium text-slate-600">Output</label>
-                  <textarea
-                    value={outputDescription}
-                    onChange={(event) => setOutputDescription(event.target.value)}
-                    rows={4}
-                    placeholder="Describe output format and requirements"
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm resize-none"
-                  />
-                </div>
+                <ProblemContentField
+                  label="Output"
+                  value={outputDescription}
+                  onChange={setOutputDescription}
+                  format={outputDescriptionFormat}
+                  onFormatChange={setOutputDescriptionFormat}
+                  rows={4}
+                  placeholder="Describe output format and requirements"
+                  textareaClassName="resize-none"
+                />
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -513,12 +547,15 @@ export function JudgeContestProblem() {
                         </div>
                       </div>
 
-                      <textarea
-                        rows={2}
+                      <ProblemContentField
+                        label="Note (optional)"
                         value={sample.note ?? ''}
-                        onChange={(event) => setSampleCaseAt(index, { note: event.target.value })}
+                        onChange={(value) => setSampleCaseAt(index, { note: value })}
+                        format={normalizeContentFormat(sample.noteFormat)}
+                        onFormatChange={(format) => setSampleCaseAt(index, { noteFormat: format })}
+                        rows={2}
                         placeholder="Note (optional)"
-                        className="w-full rounded-md border border-slate-300 px-2 py-2 text-xs"
+                        textareaClassName="text-xs"
                       />
                     </div>
                   ))}

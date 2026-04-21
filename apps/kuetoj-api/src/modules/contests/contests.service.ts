@@ -312,13 +312,17 @@ export class ContestsService {
       input: sample.input,
       output: sample.output,
       note: sample.note ?? sample.explanation,
+      noteFormat: sample.noteFormat ?? 'text',
     }));
     const p = this.problemRepo.create({
       problemCode,
       title: dto.title,
       statement: dto.statement,
+      statementFormat: dto.statementFormat ?? 'text',
       inputDescription: dto.inputDescription ?? null,
+      inputDescriptionFormat: dto.inputDescriptionFormat ?? 'text',
       outputDescription: dto.outputDescription ?? null,
+      outputDescriptionFormat: dto.outputDescriptionFormat ?? 'text',
       timeLimitMs: dto.timeLimitMs ?? null,
       memoryLimitKb: dto.memoryLimitKb ?? null,
       sampleTestCases,
@@ -375,8 +379,13 @@ export class ContestsService {
     if (p.authorId !== judgeUserId) throw new ForbiddenException();
     p.title = dto.title ?? p.title;
     p.statement = dto.statement ?? p.statement;
+    p.statementFormat = dto.statementFormat ?? p.statementFormat ?? 'text';
     p.inputDescription = dto.inputDescription ?? p.inputDescription;
+    p.inputDescriptionFormat =
+      dto.inputDescriptionFormat ?? p.inputDescriptionFormat ?? 'text';
     p.outputDescription = dto.outputDescription ?? p.outputDescription;
+    p.outputDescriptionFormat =
+      dto.outputDescriptionFormat ?? p.outputDescriptionFormat ?? 'text';
     p.timeLimitMs = dto.timeLimitMs ?? p.timeLimitMs;
     p.memoryLimitKb = dto.memoryLimitKb ?? p.memoryLimitKb;
     if (dto.sampleTestCases) {
@@ -384,6 +393,7 @@ export class ContestsService {
         input: sample.input,
         output: sample.output,
         note: sample.note ?? sample.explanation,
+        noteFormat: sample.noteFormat ?? 'text',
       }));
     }
     if (dto.hiddenTestCases) {

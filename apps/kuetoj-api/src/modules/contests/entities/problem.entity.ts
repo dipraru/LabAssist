@@ -23,11 +23,20 @@ export class Problem {
   @Column({ type: 'text' })
   statement: string;
 
+  @Column({ type: 'varchar', default: 'text' })
+  statementFormat: 'text' | 'latex';
+
   @Column({ type: 'text', nullable: true })
   inputDescription: string | null;
 
+  @Column({ type: 'varchar', default: 'text' })
+  inputDescriptionFormat: 'text' | 'latex';
+
   @Column({ type: 'text', nullable: true })
   outputDescription: string | null;
+
+  @Column({ type: 'varchar', default: 'text' })
+  outputDescriptionFormat: 'text' | 'latex';
 
   @Column({ type: 'int', nullable: true })
   timeLimitMs: number | null;
@@ -48,6 +57,7 @@ export class Problem {
     output: string;
     note?: string;
     explanation?: string;
+    noteFormat?: 'text' | 'latex';
   }[];
 
   @Column({ type: 'jsonb', default: '[]' })

@@ -5,16 +5,23 @@ import toast from 'react-hot-toast';
 import { Plus, Trash2, Copy } from 'lucide-react';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
+import { ProblemContentField } from '../../components/ProblemContentField';
+import type { ProblemContentFormat } from '../../components/ProblemContent';
 
 type ProblemCase = {
   input: string;
   output: string;
   note?: string;
+  noteFormat?: ProblemContentFormat;
   inputFileName?: string;
   outputFileName?: string;
 };
 
-const emptyCase = (): ProblemCase => ({ input: '', output: '', note: '' });
+const emptyCase = (): ProblemCase => ({ input: '', output: '', note: '', noteFormat: 'text' });
+
+function normalizeContentFormat(format: unknown): ProblemContentFormat {
+  return format === 'latex' ? 'latex' : 'text';
+}
 
 async function readTextFile(file: File, extension: '.in' | '.out') {
   if (!file.name.toLowerCase().endsWith(extension)) {
@@ -31,8 +38,11 @@ export function JudgeProblemEditor() {
 
   const [title, setTitle] = useState('');
   const [statement, setStatement] = useState('');
+  const [statementFormat, setStatementFormat] = useState<ProblemContentFormat>('text');
   const [inputDescription, setInputDescription] = useState('');
+  const [inputDescriptionFormat, setInputDescriptionFormat] = useState<ProblemContentFormat>('text');
   const [outputDescription, setOutputDescription] = useState('');
+  const [outputDescriptionFormat, setOutputDescriptionFormat] = useState<ProblemContentFormat>('text');
   const [timeLimitMs, setTimeLimitMs] = useState(2000);
   const [memoryLimitKb, setMemoryLimitKb] = useState(262144);
   const [sampleCases, setSampleCases] = useState<ProblemCase[]>([emptyCase()]);
@@ -48,8 +58,11 @@ export function JudgeProblemEditor() {
     if (!existingProblem) return;
     setTitle(existingProblem.title ?? '');
     setStatement(existingProblem.statement ?? '');
+    setStatementFormat(normalizeContentFormat(existingProblem.statementFormat));
     setInputDescription(existingProblem.inputDescription ?? '');
+    setInputDescriptionFormat(normalizeContentFormat(existingProblem.inputDescriptionFormat));
     setOutputDescription(existingProblem.outputDescription ?? '');
+    setOutputDescriptionFormat(normalizeContentFormat(existingProblem.outputDescriptionFormat));
     setTimeLimitMs(existingProblem.timeLimitMs ?? 2000);
     setMemoryLimitKb(existingProblem.memoryLimitKb ?? 262144);
     setSampleCases(existingProblem.sampleTestCases?.length ? existingProblem.sampleTestCases : [emptyCase()]);
@@ -61,6 +74,7 @@ export function JudgeProblemEditor() {
       input: sampleCase.input.trim(),
       output: sampleCase.output.trim(),
       note: sampleCase.note?.trim() || undefined,
+      noteFormat: normalizeContentFormat(sampleCase.noteFormat),
     }))
   ), [sampleCases]);
 
@@ -142,8 +156,11 @@ export function JudgeProblemEditor() {
       const payload = {
         title: title.trim(),
         statement: statement.trim(),
+        statementFormat,
         inputDescription: inputDescription.trim() || undefined,
+        inputDescriptionFormat,
         outputDescription: outputDescription.trim() || undefined,
+        outputDescriptionFormat,
         timeLimitMs,
         memoryLimitKb,
         sampleTestCases: sampleRowsToSave,
@@ -207,37 +224,37 @@ export function JudgeProblemEditor() {
                 />
               </div>
 
-              <div>
-                <label className="text-xs font-medium text-slate-600">Problem Statement</label>
-                <textarea
-                  value={statement}
-                  onChange={(event) => setStatement(event.target.value)}
-                  rows={10}
-                  className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm resize-none"
-                />
-              </div>
+              <ProblemContentField
+                label="Problem Statement"
+                value={statement}
+                onChange={setStatement}
+                format={statementFormat}
+                onFormatChange={setStatementFormat}
+                rows={10}
+                textareaClassName="resize-none"
+              />
 
-              <div>
-                <label className="text-xs font-medium text-slate-600">Input</label>
-                <textarea
-                  value={inputDescription}
-                  onChange={(event) => setInputDescription(event.target.value)}
-                  rows={4}
-                  placeholder="Describe input format and constraints"
-                  className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm resize-none"
-                />
-              </div>
+              <ProblemContentField
+                label="Input"
+                value={inputDescription}
+                onChange={setInputDescription}
+                format={inputDescriptionFormat}
+                onFormatChange={setInputDescriptionFormat}
+                rows={4}
+                placeholder="Describe input format and constraints"
+                textareaClassName="resize-none"
+              />
 
-              <div>
-                <label className="text-xs font-medium text-slate-600">Output</label>
-                <textarea
-                  value={outputDescription}
-                  onChange={(event) => setOutputDescription(event.target.value)}
-                  rows={4}
-                  placeholder="Describe output format and requirements"
-                  className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm resize-none"
-                />
-              </div>
+              <ProblemContentField
+                label="Output"
+                value={outputDescription}
+                onChange={setOutputDescription}
+                format={outputDescriptionFormat}
+                onFormatChange={setOutputDescriptionFormat}
+                rows={4}
+                placeholder="Describe output format and requirements"
+                textareaClassName="resize-none"
+              />
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -367,13 +384,15 @@ export function JudgeProblemEditor() {
                       </div>
 
                       <div className="rounded-lg border border-slate-200 bg-white p-3">
-                        <label className="text-xs font-semibold text-slate-600">Note (optional)</label>
-                        <textarea
+                        <ProblemContentField
+                          label="Note (optional)"
                           value={sampleCase.note ?? ''}
-                          onChange={(event) => setSampleCaseAt(index, { note: event.target.value })}
+                          onChange={(value) => setSampleCaseAt(index, { note: value })}
+                          format={normalizeContentFormat(sampleCase.noteFormat)}
+                          onFormatChange={(format) => setSampleCaseAt(index, { noteFormat: format })}
                           rows={3}
                           placeholder="Explain how the sample output is derived"
-                          className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm resize-none"
+                          textareaClassName="resize-none"
                         />
                       </div>
                     </div>

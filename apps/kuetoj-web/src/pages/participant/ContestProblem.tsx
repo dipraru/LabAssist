@@ -25,6 +25,7 @@ import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
 import { CodePreview } from '../../components/CodePreview';
 import { AnnouncementModal } from '../../components/AnnouncementModal';
+import { ProblemContent } from '../../components/ProblemContent';
 import { getSocket, joinContest, leaveContest } from '../../lib/socket';
 import { getEffectiveVerdict, getVerdictBadgeClass } from '../../lib/verdict';
 import 'ace-builds/src-noconflict/mode-c_cpp';
@@ -529,20 +530,20 @@ export function ContestProblem() {
                       onCut={(event) => event.preventDefault()}
                     >
                       <section>
-                        <pre className="whitespace-pre-wrap font-sans">{textOrDash(problem.statement)}</pre>
+                        <ProblemContent value={problem.statement} format={problem.statementFormat} />
                       </section>
 
                       {problem.inputDescription && (
                         <section>
                           <h2 className="mb-2 text-xl font-extrabold text-slate-900">Input Format</h2>
-                          <pre className="whitespace-pre-wrap font-sans">{problem.inputDescription}</pre>
+                          <ProblemContent value={problem.inputDescription} format={problem.inputDescriptionFormat} />
                         </section>
                       )}
 
                       {problem.outputDescription && (
                         <section>
                           <h2 className="mb-2 text-xl font-extrabold text-slate-900">Output Format</h2>
-                          <pre className="whitespace-pre-wrap font-sans">{problem.outputDescription}</pre>
+                          <ProblemContent value={problem.outputDescription} format={problem.outputDescriptionFormat} />
                         </section>
                       )}
 
@@ -585,7 +586,11 @@ export function ContestProblem() {
                                 {(testCase.note || testCase.explanation) && (
                                   <div className="border-t border-slate-200 px-4 py-3">
                                     <p className="mb-1 text-sm font-extrabold text-slate-900">Explanation</p>
-                                    <pre className="whitespace-pre-wrap font-sans text-sm text-slate-700">{testCase.note ?? testCase.explanation}</pre>
+                                    <ProblemContent
+                                      value={testCase.note ?? testCase.explanation}
+                                      format={testCase.noteFormat}
+                                      className="text-sm text-slate-700"
+                                    />
                                   </div>
                                 )}
                               </div>

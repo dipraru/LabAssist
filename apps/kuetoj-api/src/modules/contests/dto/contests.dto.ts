@@ -26,6 +26,7 @@ class SampleTestCaseDto {
   @IsString() output: string;
   @IsOptional() @IsString() note?: string;
   @IsOptional() @IsString() explanation?: string;
+  @IsOptional() @IsIn(['text', 'latex']) noteFormat?: 'text' | 'latex';
 }
 
 class HiddenTestCaseDto {
@@ -38,8 +39,15 @@ class HiddenTestCaseDto {
 export class CreateProblemDto {
   @IsString() title: string;
   @IsString() statement: string;
+  @IsOptional() @IsIn(['text', 'latex']) statementFormat?: 'text' | 'latex';
   @IsOptional() @IsString() inputDescription?: string;
+  @IsOptional()
+  @IsIn(['text', 'latex'])
+  inputDescriptionFormat?: 'text' | 'latex';
   @IsOptional() @IsString() outputDescription?: string;
+  @IsOptional()
+  @IsIn(['text', 'latex'])
+  outputDescriptionFormat?: 'text' | 'latex';
   @IsOptional() @IsInt() timeLimitMs?: number;
   @IsOptional() @IsInt() memoryLimitKb?: number;
   @IsOptional()
@@ -57,8 +65,15 @@ export class CreateProblemDto {
 export class UpdateProblemDto {
   @IsOptional() @IsString() title?: string;
   @IsOptional() @IsString() statement?: string;
+  @IsOptional() @IsIn(['text', 'latex']) statementFormat?: 'text' | 'latex';
   @IsOptional() @IsString() inputDescription?: string;
+  @IsOptional()
+  @IsIn(['text', 'latex'])
+  inputDescriptionFormat?: 'text' | 'latex';
   @IsOptional() @IsString() outputDescription?: string;
+  @IsOptional()
+  @IsIn(['text', 'latex'])
+  outputDescriptionFormat?: 'text' | 'latex';
   @IsOptional() @IsInt() timeLimitMs?: number;
   @IsOptional() @IsInt() memoryLimitKb?: number;
   @IsOptional()
