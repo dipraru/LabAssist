@@ -1,16 +1,290 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 :root {
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  --oj-ink: #101827;
+  --oj-muted: #64748b;
+  --oj-line: rgba(15, 23, 42, 0.1);
+  --oj-panel: rgba(255, 255, 255, 0.86);
+  --oj-panel-strong: #ffffff;
+  --oj-brand: #0f766e;
+  --oj-brand-strong: #0f5f59;
+  --oj-accent: #f97316;
+  --oj-sky: #0ea5e9;
+  --oj-shadow: 0 24px 80px rgba(15, 23, 42, 0.12);
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: #f8fafc;
-  color: #1e293b;
+  background: #f8fafc;
+  color: var(--oj-ink);
 }
 
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+code,
+pre,
+.ace_editor {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+}
+
+.oj-shell-bg {
+  position: relative;
+  isolation: isolate;
+}
+
+.oj-shell-bg::before {
+  content: none;
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(15, 23, 42, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
+  background-size: 38px 38px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.75), transparent 74%);
+}
+
+.oj-shell-bg::after {
+  content: none;
+  position: fixed;
+  inset: auto -8rem -12rem auto;
+  z-index: -1;
+  width: 36rem;
+  height: 36rem;
+  pointer-events: none;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(20, 184, 166, 0.16), transparent 68%);
+}
+
+.oj-page {
+  width: min(100%, 1180px);
+  margin: 0 auto;
+}
+
+.oj-panel {
+  border: 1px solid var(--oj-line);
+  border-radius: 1rem;
+  background: white;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+  backdrop-filter: none;
+}
+
+.oj-panel-strong {
+  border: 1px solid var(--oj-line);
+  border-radius: 1rem;
+  background: var(--oj-panel-strong);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.oj-card-hover {
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.oj-card-hover:hover {
+  transform: translateY(-1px);
+  border-color: rgba(15, 118, 110, 0.22);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.07);
+}
+
+.oj-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+  color: #0f172a;
+}
+
+.oj-hero::after {
+  content: none;
+  position: absolute;
+  inset: -30% -12% auto auto;
+  width: 28rem;
+  height: 28rem;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.18), transparent 68%);
+}
+
+.oj-hero h1,
+.oj-hero h2,
+.oj-hero [class*="text-teal-50"],
+.oj-hero [class*="text-white"] {
+  color: #0f172a !important;
+}
+
+.oj-hero [class*="bg-white"],
+.oj-hero [class*="ring-white"] {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  --tw-ring-color: #e2e8f0 !important;
+}
+
+.oj-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #f8fafc;
+  padding: 0.38rem 0.7rem;
+  color: #0f766e;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.oj-btn-primary,
+.oj-btn-secondary,
+.oj-btn-danger,
+.oj-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.95rem;
+  padding: 0.68rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 800;
+  transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease, border-color 160ms ease;
+}
+
+.oj-btn-primary {
+  border: 1px solid rgba(15, 118, 110, 0.22);
+  background: #0f766e;
+  color: white;
+  box-shadow: none;
+}
+
+.oj-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: none;
+}
+
+.oj-btn-secondary {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: white;
+  color: #334155;
+}
+
+.oj-btn-secondary:hover {
+  transform: translateY(-1px);
+  border-color: rgba(15, 118, 110, 0.28);
+  color: #0f766e;
+}
+
+.oj-btn-danger {
+  border: 1px solid rgba(220, 38, 38, 0.22);
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.oj-btn-danger:hover {
+  background: #ffe4e6;
+}
+
+.oj-btn-ghost {
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.68);
+  color: #475569;
+}
+
+.oj-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.94);
+  color: #0f766e;
+}
+
+.oj-input,
+.oj-select,
+.oj-textarea {
+  width: 100%;
+  border-radius: 0.95rem;
+  border: 1px solid rgba(15, 23, 42, 0.13);
+  background: rgba(255, 255, 255, 0.88);
+  padding: 0.68rem 0.85rem;
+  color: #0f172a;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.oj-input:focus,
+.oj-select:focus,
+.oj-textarea:focus {
+  border-color: rgba(15, 118, 110, 0.55);
+  background: white;
+  box-shadow: 0 0 0 4px rgba(20, 184, 166, 0.14);
+}
+
+.oj-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.875rem;
+}
+
+.oj-table thead {
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.oj-table th {
+  padding: 0.85rem 1rem;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.oj-table td {
+  border-top: 1px solid rgba(15, 23, 42, 0.07);
+  padding: 0.95rem 1rem;
+  vertical-align: middle;
+}
+
+.oj-table tbody tr {
+  transition: background-color 150ms ease;
+}
+
+.oj-table tbody tr:hover {
+  background: rgba(240, 253, 250, 0.7);
+}
+
+.oj-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.28rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.oj-scrollbar {
+  scrollbar-color: rgba(15, 118, 110, 0.45) transparent;
+  scrollbar-width: thin;
+}
+
+.oj-scrollbar::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.oj-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.38);
+}

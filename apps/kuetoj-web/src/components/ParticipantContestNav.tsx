@@ -1,17 +1,18 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { BarChart3, ClipboardList, HelpCircle, ListChecks, Trophy } from 'lucide-react';
 
 type ParticipantContestNavProps = {
   contestId: string;
 };
 
 const tabs = [
-  { label: 'Problems', href: (contestId: string) => `/contest/${contestId}/problems` },
-  { label: 'My Submissions', href: (contestId: string) => `/contest/${contestId}/submissions` },
-  { label: 'Status', href: (contestId: string) => `/contest/${contestId}/status` },
-  { label: 'Standings', href: (contestId: string) => `/contest/${contestId}/standings` },
-  { label: 'Clarifications', href: (contestId: string) => `/contest/${contestId}/clarifications` },
+  { label: 'Problems', icon: <ClipboardList size={16} />, href: (contestId: string) => `/contests/${contestId}/problems` },
+  { label: 'My Submissions', icon: <ListChecks size={16} />, href: (contestId: string) => `/contests/${contestId}/submissions` },
+  { label: 'Status', icon: <BarChart3 size={16} />, href: (contestId: string) => `/contests/${contestId}/status` },
+  { label: 'Standings', icon: <Trophy size={16} />, href: (contestId: string) => `/contests/${contestId}/standings` },
+  { label: 'Clarifications', icon: <HelpCircle size={16} />, href: (contestId: string) => `/contests/${contestId}/clarifications` },
 ];
 
 export function ParticipantContestNav({ contestId }: ParticipantContestNavProps) {
@@ -28,8 +29,8 @@ export function ParticipantContestNav({ contestId }: ParticipantContestNavProps)
     : contestId;
 
   return (
-    <div className="mb-6 overflow-x-auto">
-      <div className="inline-flex min-w-full gap-2 rounded-xl border border-slate-200 bg-white p-2">
+    <div className="mb-6 overflow-x-auto oj-scrollbar">
+      <div className="inline-flex min-w-full gap-2 rounded-3xl border border-white/80 bg-white/80 p-2 shadow-lg shadow-slate-900/5 backdrop-blur">
         {tabs.map((tab) => {
           const href = tab.href(contestPathId);
           const active = tab.label === 'Status'
@@ -40,12 +41,13 @@ export function ParticipantContestNav({ contestId }: ParticipantContestNavProps)
             <Link
               key={tab.label}
               to={href}
-              className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+              className={`inline-flex items-center gap-2 whitespace-nowrap rounded-2xl px-4 py-2.5 text-sm font-extrabold transition-all ${
                 active
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-slate-700 hover:bg-slate-100'
+                  ? 'bg-teal-700 text-white shadow-lg shadow-teal-900/15'
+                  : 'text-slate-600 hover:bg-white hover:text-teal-700'
               }`}
             >
+              {tab.icon}
               {tab.label}
             </Link>
           );

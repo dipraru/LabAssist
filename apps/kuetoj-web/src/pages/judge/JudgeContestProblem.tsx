@@ -228,24 +228,24 @@ export function JudgeContestProblem() {
 
   return (
     <AppShell>
-      <div className="w-full">
-        <div className="mb-6 text-center">
-          <h1 className="text-3xl font-bold text-slate-900">{contest?.title ?? 'Contest'}</h1>
-          <p className="text-sm text-slate-500 mt-1">{contest?.type} · #{contest?.contestNumber ?? '—'}</p>
+      <div className="oj-page">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div>
+            <h1 className="text-lg font-extrabold text-slate-950">{contest?.title ?? 'Contest'}</h1>
+            <p className="text-xs font-semibold text-slate-500">{contest?.type} · #{contest?.contestNumber ?? '—'}</p>
+          </div>
+          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
+            {remainingLabel}
+          </div>
         </div>
 
-        <div className="mb-6 overflow-x-auto">
-          <div className="flex min-w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-2">
-            <div className="flex flex-wrap gap-2">
-              <Link to={`/contests/${id}/problems`} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white">Problems</Link>
-              <Link to={`/contests/${id}/status`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Status</Link>
-              <Link to={`/contests/${id}/standings`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Standings</Link>
-              <Link to={`/contests/${id}/clarifications`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Clarifications</Link>
-              <Link to={`/contests/${id}/announcements`} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">Announcements</Link>
-            </div>
-            <div className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700">
-              {remainingLabel}
-            </div>
+        <div className="mb-4 overflow-x-auto">
+          <div className="flex min-w-full flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2">
+            <Link to={`/contests/${id}/problems`} className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-bold text-white">Problems</Link>
+            <Link to={`/contests/${id}/status`} className="rounded-lg px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100">Status</Link>
+            <Link to={`/contests/${id}/standings`} className="rounded-lg px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100">Standings</Link>
+            <Link to={`/contests/${id}/clarifications`} className="rounded-lg px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100">Clarifications</Link>
+            <Link to={`/contests/${id}/announcements`} className="rounded-lg px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100">Announcements</Link>
           </div>
         </div>
 
@@ -254,7 +254,7 @@ export function JudgeContestProblem() {
             <button
               type="button"
               onClick={() => setIsEditing(true)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              className="oj-btn-secondary px-3 py-2 text-sm"
             >
               Edit Problem
             </button>
@@ -263,7 +263,7 @@ export function JudgeContestProblem() {
               <button
                 type="button"
                 onClick={() => setIsEditing(false)}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                className="oj-btn-secondary px-3 py-2 text-sm"
               >
                 Cancel
               </button>
@@ -271,7 +271,7 @@ export function JudgeContestProblem() {
                 type="button"
                 onClick={() => updateMutation.mutate()}
                 disabled={updateMutation.isPending}
-                className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+                className="oj-btn-primary px-3 py-2 text-sm disabled:opacity-60"
               >
                 {updateMutation.isPending ? 'Saving…' : 'Save Changes'}
               </button>
@@ -279,20 +279,20 @@ export function JudgeContestProblem() {
           )}
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-6">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           {!isEditing ? (
             <>
               <div className="mb-4 flex items-start gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100 font-bold text-indigo-700">
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-950 font-bold text-white">
                   {currentProblemLabel}
                 </span>
                 <div>
-                  <h1 className="text-xl font-bold text-slate-900">{problem.title}</h1>
+                  <h1 className="text-xl font-extrabold text-slate-950">{problem.title}</h1>
                   <p className="text-sm text-slate-500">Time: {problem.timeLimitMs}ms · Memory: {problem.memoryLimitKb}KB</p>
                 </div>
               </div>
 
-              <div className="prose prose-sm max-w-none text-slate-700">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-700">
                 <pre className="whitespace-pre-wrap font-sans">{problem.statement}</pre>
               </div>
 

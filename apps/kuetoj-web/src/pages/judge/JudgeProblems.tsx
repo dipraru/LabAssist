@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { BookOpenCheck, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
@@ -27,11 +27,22 @@ export function JudgeProblems() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingProblemId, setEditingProblemId] = useState<string | null>(null);
   const [isViewOnly, setIsViewOnly] = useState(false);
+  const [searchText, setSearchText] = useState('');
 
   const { data: problems = [] } = useQuery({
     queryKey: ['judge-problems'],
     queryFn: () => api.get('/contests/problems/mine').then((r) => r.data),
   });
+
+  const filteredProblems = useMemo(() => {
+    const query = searchText.trim().toLowerCase();
+    if (!query) return problems as any[];
+    return (problems as any[]).filter((problem) => {
+      const title = String(problem.title ?? '').toLowerCase();
+      const code = String(problem.problemCode ?? problem.id ?? '').toLowerCase();
+      return title.includes(query) || code.includes(query);
+    });
+  }, [problems, searchText]);
 
   const form = useForm<ProblemInput, unknown, ProblemData>({
     resolver: zodResolver(problemSchema),
@@ -99,45 +110,62 @@ export function JudgeProblems() {
 
   return (
     <AppShell>
-      <div className="space-y-6">
-        <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex items-center justify-between">
+      <div className="oj-page space-y-6">
+        <section className="oj-hero p-6 sm:p-7">
+          <div className="relative z-10 flex flex-wrap items-center justify-between gap-5">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">My Problems</h1>
-            <p className="text-sm text-slate-500 mt-1">Maintain your own problem bank for contests.</p>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-1.5 text-xs font-extrabold uppercase tracking-[0.18em] text-teal-50 ring-1 ring-white/20">
+                <BookOpenCheck size={14} />
+                Problem Bank
+              </div>
+              <h1 className="text-3xl font-extrabold tracking-tight">My Problems</h1>
+              <p className="mt-2 text-sm font-semibold text-teal-50/85">Create, maintain, and reuse problems across temporary contests.</p>
           </div>
           <button
             type="button"
             onClick={openCreate}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium"
+              className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-extrabold text-teal-800 shadow-xl shadow-slate-950/10 transition-transform hover:-translate-y-0.5"
           >
             <Plus size={16} /> Create New Problem
           </button>
+          </div>
         </section>
 
-        <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-slate-900">Problem List</h2>
-            <span className="text-sm text-slate-500">{(problems as any[]).length} total</span>
+        <section className="oj-panel p-5">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-extrabold text-slate-950">Problem List</h2>
+              <p className="mt-1 text-sm font-semibold text-slate-500">{(problems as any[]).length} total problems</p>
+            </div>
+            <label className="relative w-full sm:w-80">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                placeholder="Search title or code"
+                className="oj-input pl-9"
+              />
+            </label>
           </div>
-          <div className="space-y-3 max-h-[70vh] overflow-auto pr-1">
-            {(problems as any[]).map((problem: any) => (
-              <article key={problem.id} className="border border-slate-200 rounded-lg p-4">
+          <div className="grid max-h-[70vh] gap-4 overflow-auto pr-1 oj-scrollbar lg:grid-cols-2">
+            {filteredProblems.map((problem: any) => (
+              <article key={problem.id} className="oj-panel-strong oj-card-hover p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h3 className="font-medium text-slate-900">{problem.title}</h3>
-                    <p className="text-xs text-indigo-700 font-medium mt-1">{problem.problemCode ?? problem.id}</p>
-                    <p className="text-xs text-slate-500 mt-1">
+                    <h3 className="text-lg font-extrabold text-slate-950">{problem.title}</h3>
+                    <p className="mt-1 text-xs font-extrabold uppercase tracking-wide text-teal-700">{problem.problemCode ?? problem.id}</p>
+                    <p className="mt-2 text-xs font-semibold text-slate-500">
                       TL: {problem.timeLimitMs ?? '—'} ms · ML: {problem.memoryLimitKb ?? '—'} KB
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-600">
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <span className="oj-chip bg-slate-100 text-slate-600">
                       {problem.sampleTestCases?.length ?? 0} samples
                     </span>
                     <button
                       type="button"
                       onClick={() => openEdit(problem)}
-                      className="inline-flex items-center gap-1 px-2 py-1 border border-slate-300 rounded-md text-xs hover:bg-slate-50"
+                      className="oj-btn-secondary px-3 py-2 text-xs"
                     >
                       <Pencil size={12} /> Edit
                     </button>
@@ -145,7 +173,7 @@ export function JudgeProblems() {
                       type="button"
                       onClick={() => handleDelete(problem)}
                       disabled={deleteMutation.isPending}
-                      className="inline-flex items-center gap-1 px-2 py-1 border border-red-300 text-red-700 rounded-md text-xs hover:bg-red-50 disabled:opacity-60"
+                      className="oj-btn-danger px-3 py-2 text-xs disabled:opacity-60"
                     >
                       <Trash2 size={12} /> Delete
                     </button>
@@ -153,8 +181,10 @@ export function JudgeProblems() {
                 </div>
               </article>
             ))}
-            {!(problems as any[]).length && (
-              <p className="text-sm text-slate-500 text-center py-8">No problems yet. Create your first one.</p>
+            {!filteredProblems.length && (
+              <p className="col-span-full rounded-3xl border border-dashed border-slate-200 bg-white/70 py-10 text-center text-sm font-semibold text-slate-500">
+                {(problems as any[]).length ? 'No problems match your search.' : 'No problems yet. Create your first one.'}
+              </p>
             )}
           </div>
         </section>

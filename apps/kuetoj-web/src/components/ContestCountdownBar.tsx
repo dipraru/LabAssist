@@ -56,22 +56,22 @@ export function ContestCountdownBar({ startTime, endTime, compact = false }: Con
       : 'Contest ended';
 
   const barColor = phase === 'running'
-    ? 'bg-emerald-500'
+    ? 'bg-teal-500'
     : phase === 'upcoming'
-      ? 'bg-blue-500'
+      ? 'bg-sky-500'
       : 'bg-slate-400';
 
   return (
     <div className={compact ? 'space-y-1' : 'space-y-2'}>
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-slate-500">{new Date(startTime).toLocaleString()}</span>
-        <span className={`font-semibold ${phase === 'running' ? 'text-emerald-700' : phase === 'upcoming' ? 'text-blue-700' : 'text-slate-600'}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <span className="font-semibold text-slate-500">{new Date(startTime).toLocaleString()}</span>
+        <span className={`rounded-full px-2.5 py-0.5 font-extrabold ${phase === 'running' ? 'bg-teal-50 text-teal-700' : phase === 'upcoming' ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-600'}`}>
           {label}
         </span>
-        <span className="text-slate-500">{new Date(endTime).toLocaleString()}</span>
+        <span className="font-semibold text-slate-500">{new Date(endTime).toLocaleString()}</span>
       </div>
-      <div className="h-3 rounded-full bg-slate-200 overflow-hidden">
-        <div className={`h-full transition-all duration-1000 ${barColor}`} style={{ width: `${progressPercent}%` }} />
+      <div className={`${compact ? 'h-1.5' : 'h-2.5'} overflow-hidden rounded-full bg-slate-200/80`}>
+        <div className={`h-full rounded-full transition-all duration-1000 ${barColor}`} style={{ width: `${progressPercent}%` }} />
       </div>
     </div>
   );

@@ -4,9 +4,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AppShell } from '../../components/AppShell';
 import { ParticipantContestNav } from '../../components/ParticipantContestNav';
 import { ParticipantContestHeader } from '../../components/ParticipantContestHeader';
+import { CodePreview } from '../../components/CodePreview';
 import { api } from '../../lib/api';
 import { getSocket, joinContest, leaveContest } from '../../lib/socket';
 import { getEffectiveVerdict, getVerdictBadgeClass } from '../../lib/verdict';
+import { ArrowLeft, FileCode2 } from 'lucide-react';
 
 export function ContestSubmissionDetail() {
   const { id, submissionId } = useParams<{ id: string; submissionId: string }>();
@@ -50,18 +52,26 @@ export function ContestSubmissionDetail() {
 
   return (
     <AppShell>
-      <div className="w-full">
+      <div className="oj-page">
         {id && <ParticipantContestHeader contestId={id} />}
-        <h1 className="mb-1 text-2xl font-bold text-slate-900">Submission Detail</h1>
-        <p className="mb-4 text-sm text-slate-500">Full details for your submission</p>
         {id && <ParticipantContestNav contestId={id} />}
 
-        <Link to={`/contest/${contestPathId}/submissions`} className="mb-4 inline-block text-sm text-indigo-600 hover:underline">
-          ← Back to submissions
-        </Link>
+        <section className="oj-panel mb-5 flex flex-wrap items-center justify-between gap-4 p-5">
+          <div>
+            <p className="oj-kicker"><FileCode2 size={14} /> Submission Detail</p>
+            <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-950">
+              {submission?.submissionDisplayId ? `#${submission.submissionDisplayId}` : 'Submission'}
+            </h1>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Full verdict, runtime, judge output, and source preview.</p>
+          </div>
+          <Link to={`/contests/${contestPathId}/submissions`} className="oj-btn-secondary">
+            <ArrowLeft size={16} />
+            Back to submissions
+          </Link>
+        </section>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
-          {isLoading && <p className="text-slate-400">Loading submission…</p>}
+        <div className="oj-panel p-5">
+          {isLoading && <p className="text-slate-400">Loading submission...</p>}
 
           {!isLoading && !submission && <p className="text-slate-400">Submission not found.</p>}
 
@@ -107,7 +117,7 @@ export function ContestSubmissionDetail() {
               {Array.isArray(submission.testcaseResults) && submission.testcaseResults.length > 0 && (
                 <div>
                   <p className="mb-2 font-semibold">Executed Test Cases</p>
-                  <div className="overflow-hidden rounded-lg border border-slate-200">
+                  <div className="overflow-hidden rounded-2xl border border-slate-200">
                     <table className="w-full text-left text-xs">
                       <thead className="bg-slate-50 text-slate-500">
                         <tr>
@@ -141,7 +151,12 @@ export function ContestSubmissionDetail() {
               {submission.code ? (
                 <div>
                   <p className="mb-1 font-semibold">Code</p>
-                  <pre className="max-h-[60vh] overflow-auto rounded-lg bg-slate-50 p-3 text-xs">{submission.code}</pre>
+                  <CodePreview
+                    code={submission.code}
+                    language={submission.language}
+                    height="60vh"
+                    name={`submission-detail-${submission.id}`}
+                  />
                 </div>
               ) : (
                 <p className="text-slate-500">No inline code attached.</p>

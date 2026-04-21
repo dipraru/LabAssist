@@ -286,6 +286,33 @@ export class ContestsController {
   }
 
   @Roles(UserRole.TEMP_PARTICIPANT)
+  @Post(':id/run-samples')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  runSamples(
+    @Param('id') contestId: string,
+    @Body() dto: ContestSubmitDto,
+    @CurrentUser() user: any,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.svc.runSampleCases(
+      contestId,
+      dto,
+      user.id,
+      user.username,
+      file,
+    );
+  }
+
+  @Roles(UserRole.TEMP_PARTICIPANT)
+  @Get(':id/submissions')
+  contestSubmissionsForParticipant(
+    @Param('id') contestId: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.svc.getContestSubmissionsForParticipant(contestId, user.id);
+  }
+
+  @Roles(UserRole.TEMP_PARTICIPANT)
   @Get(':id/my-submissions')
   mySubmissions(@Param('id') contestId: string, @CurrentUser() user: any) {
     return this.svc.getMySubmissions(contestId, user.id);

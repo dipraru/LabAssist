@@ -2,7 +2,7 @@ import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
-import { RefreshCw } from 'lucide-react';
+import { CheckCircle2, RefreshCw, Trophy } from 'lucide-react';
 import { ParticipantContestNav } from '../../components/ParticipantContestNav';
 import { ParticipantContestHeader } from '../../components/ParticipantContestHeader';
 
@@ -39,6 +39,7 @@ export function ParticipantStandings() {
       attempts: Number(fromStatus.attempts ?? fromStatus.tries ?? 0),
       acceptedAtMinute: fromStatus.acceptedAtMinute ?? null,
       isFirstSolve: Boolean(fromStatus.isFirstSolve),
+      score: fromStatus.score ?? null,
     };
   };
 
@@ -50,84 +51,70 @@ export function ParticipantStandings() {
 
   return (
     <AppShell>
-      <div className="w-full">
+      <div className="oj-page">
         {id && <ParticipantContestHeader contestId={id} />}
         {id && <ParticipantContestNav contestId={id} />}
-        <div className="flex items-center justify-between mb-6">
+        <div className="oj-panel mb-5 flex flex-wrap items-center justify-between gap-3 p-5">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Standings</h1>
+            <p className="oj-kicker"><Trophy size={14} /> Leaderboard</p>
+            <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-950">Standings</h1>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Contest ranks update automatically during the round.</p>
           </div>
           <div className="flex items-center gap-2">
             {standings?.isFrozen && (
-              <div className="px-3 py-2 rounded-lg bg-blue-100 text-blue-700 text-sm font-semibold">Frozen</div>
+              <div className="rounded-2xl bg-sky-100 px-3 py-2 text-sm font-extrabold text-sky-700">Frozen</div>
             )}
             <button onClick={() => refetch()} disabled={isFetching}
-              className="cursor-pointer flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg text-sm hover:bg-slate-50 disabled:opacity-50">
+              className="oj-btn-secondary cursor-pointer disabled:opacity-50">
               <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} /> Refresh
             </button>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-x-auto">
-          <table className="w-full min-w-[960px] text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
+        <div className="oj-panel overflow-hidden">
+          <div className="overflow-x-auto oj-scrollbar">
+          <table className="min-w-max border-separate border-spacing-0 text-sm">
+            <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3 text-left font-semibold text-slate-700 w-12">Rank</th>
-                <th className="px-4 py-3 text-left font-semibold text-slate-700 min-w-[220px]">Participant</th>
-                {isIcpc ? (
-                  <>
-                    <th className="px-4 py-3 text-center font-semibold text-slate-700 w-24">Solved</th>
-                    {problems.map((p: any) => (
-                      <th key={p.label} className="px-3 py-3 text-center font-semibold text-slate-700 min-w-[92px]">
-                        <div>{p.label}</div>
-                        <div className="text-[11px] font-medium text-slate-500">{p.solvedCount ?? 0}/{p.attemptsCount ?? 0}</div>
-                      </th>
-                    ))}
-                  </>
-                ) : (
-                  <>
-                    <th className="px-4 py-3 text-center font-semibold text-slate-700">Score</th>
-                    {problems.map((p: any) => (
-                      <th key={p.label} className="px-3 py-3 text-center font-semibold text-slate-700 min-w-[92px]">
-                        <div>{p.label}</div>
-                        <div className="text-[11px] font-medium text-slate-500">{p.solvedCount ?? 0}/{p.attemptsCount ?? 0}</div>
-                      </th>
-                    ))}
-                  </>
+                <th className="sticky left-0 z-20 w-20 border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-xs font-extrabold uppercase tracking-wide text-slate-500">Rank</th>
+                <th className="sticky left-20 z-20 w-72 border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-xs font-extrabold uppercase tracking-wide text-slate-500">Participant</th>
+                <th className="w-28 border-b border-slate-200 px-4 py-3 text-center text-xs font-extrabold uppercase tracking-wide text-slate-500">{isIcpc ? 'Solved' : 'Score'}</th>
+                {isIcpc && (
+                  <th className="w-28 border-b border-slate-200 px-4 py-3 text-center text-xs font-extrabold uppercase tracking-wide text-slate-500">Penalty</th>
                 )}
+                {problems.map((p: any) => (
+                  <th key={p.label} className="w-28 border-b border-slate-200 px-3 py-3 text-center">
+                    <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg bg-slate-950 text-sm font-extrabold text-white">{p.label}</div>
+                    <div className="mt-1 text-[11px] font-bold text-slate-500">{p.solvedCount ?? 0}/{p.attemptsCount ?? 0}</div>
+                  </th>
+                ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {rows.map((row: any, idx: number) => (
-                <tr key={row.participantId ?? idx} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-semibold text-slate-600">{row.rank ?? idx + 1}</td>
-                  <td className="px-4 py-3">{row.participantName ?? row.participantId}</td>
+                <tr key={row.participantId ?? idx} className="group">
+                  <td className="sticky left-0 z-10 border-b border-slate-100 bg-white px-4 py-3 font-extrabold text-slate-700 group-hover:bg-slate-50">{row.rank ?? idx + 1}</td>
+                  <td className="sticky left-20 z-10 border-b border-slate-100 bg-white px-4 py-3 group-hover:bg-slate-50">
+                    <div className="max-w-64 truncate font-extrabold text-slate-900">{row.participantName ?? row.participantId}</div>
+                    <div className="mt-0.5 text-[11px] font-semibold text-slate-400">{row.participantId}</div>
+                  </td>
                   {isIcpc ? (
                     <>
-                      <td
-                        className="px-4 py-3 text-center"
-                        title={(row.solved ?? 0) > 0 ? `Penalty: ${row.totalPenalty ?? row.penalty ?? 0}` : undefined}
-                      >
-                        <div className="font-bold text-green-600">{row.solved ?? 0}</div>
-                        {(row.solved ?? 0) > 0 && (
-                          <div className="text-[11px] font-medium text-slate-500">{row.totalPenalty ?? row.penalty ?? 0}</div>
-                        )}
-                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-center font-extrabold text-teal-700 tabular-nums">{row.solved ?? 0}</td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-center font-bold text-slate-600 tabular-nums">{row.totalPenalty ?? row.penalty ?? 0}</td>
                       {problems.map((problem: any) => {
                         const problemCell = getProblemCell(row, problem.label);
                         return (
-                          <td key={problem.label} className="px-3 py-3 text-center align-middle">
+                          <td key={problem.label} className="border-b border-slate-100 px-3 py-3 text-center align-middle tabular-nums">
                             {problemCell.accepted ? (
-                              <div className="text-xs">
-                                <div className={`text-base leading-none ${problemCell.isFirstSolve ? 'text-amber-500' : 'text-green-600'}`}>
-                                  {problemCell.isFirstSolve ? '★' : '✓'}
-                                </div>
-                                <div className={`mt-1 text-[11px] ${problemCell.isFirstSolve ? 'text-amber-700' : 'text-green-700'}`}>
+                              <div className={`mx-auto inline-flex min-w-16 flex-col items-center rounded-xl px-2 py-1.5 text-xs font-extrabold ${problemCell.isFirstSolve ? 'bg-amber-50 text-amber-700' : 'bg-teal-50 text-teal-700'}`}>
+                                <CheckCircle2 size={14} />
+                                <span className="mt-1">
                                   {formatAcceptedText(problemCell.acceptedAtMinute, problemCell.wrongAttempts ?? 0)}
-                                </div>
+                                </span>
                               </div>
                             ) : (problemCell.wrongAttempts ?? 0) > 0 ? (
-                              <span className="text-sm font-semibold text-red-600">-{problemCell.wrongAttempts}</span>
+                              <span className="inline-flex min-w-10 justify-center rounded-full bg-rose-50 px-2 py-1 text-xs font-extrabold text-rose-700">-{problemCell.wrongAttempts}</span>
                             ) : <span className="text-slate-300">—</span>}
                           </td>
                         );
@@ -135,12 +122,12 @@ export function ParticipantStandings() {
                     </>
                   ) : (
                     <>
-                      <td className="px-4 py-3 text-center font-bold text-indigo-600">{row.totalScore ?? row.scores ?? 0}</td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-center font-extrabold text-teal-700 tabular-nums">{row.totalScore ?? row.scores ?? 0}</td>
                       {problems.map((problem: any) => {
                         const problemCell = getProblemCell(row, problem.label);
                         return (
-                          <td key={problem.label} className="px-3 py-3 text-center text-xs">
-                            {problemCell.score != null ? <span className="text-green-600 font-medium">{problemCell.score}</span> : <span className="text-slate-300">—</span>}
+                          <td key={problem.label} className="border-b border-slate-100 px-3 py-3 text-center text-xs tabular-nums">
+                            {problemCell.score != null ? <span className="inline-flex min-w-12 justify-center rounded-full bg-teal-50 px-2 py-1 font-extrabold text-teal-700">{problemCell.score}</span> : <span className="text-slate-300">—</span>}
                           </td>
                         );
                       })}
@@ -149,10 +136,11 @@ export function ParticipantStandings() {
                 </tr>
               ))}
               {!rows.length && (
-                <tr><td colSpan={4 + problems.length} className="px-4 py-8 text-center text-slate-400">No entries yet</td></tr>
+                <tr><td colSpan={3 + (isIcpc ? 1 : 0) + problems.length} className="px-4 py-10 text-center text-sm font-semibold text-slate-400">No entries yet</td></tr>
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </AppShell>

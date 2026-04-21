@@ -37,6 +37,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { CredentialsPdfService } from './credentials-pdf.service';
+import { JudgeRemoteService } from './judge-remote.service';
 import {
   ContestStatus,
   ContestType,
@@ -72,6 +73,7 @@ export class ContestsService {
     private notifications: NotificationsService,
     private gateway: NotificationsGateway,
     private credentialsPdf: CredentialsPdfService,
+    private judgeRemote: JudgeRemoteService,
   ) {}
 
   private contestPhase(
@@ -657,10 +659,41 @@ export class ContestsService {
         }
       }
 
-      await this.cpRepo.delete({ contestId: contest.id });
+      const existingContestProblems = await this.cpRepo.find({
+        where: { contestId: contest.id },
+      });
+      const existingByProblemId = new Map(
+        existingContestProblems.map((item) => [item.problemId, item]),
+      );
+      const nextProblemIds = new Set(dto.problems.map((item) => item.problemId));
+      const removedEntries = existingContestProblems.filter(
+        (item) => !nextProblemIds.has(item.problemId),
+      );
+
+      if (removedEntries.length) {
+        const removedIds = removedEntries.map((item) => item.id);
+        const submissionsOnRemovedProblems = await this.subRepo.count({
+          where: { contestProblemId: In(removedIds) },
+        });
+        if (submissionsOnRemovedProblems > 0) {
+          throw new BadRequestException(
+            'Cannot remove a contest problem that already has submissions',
+          );
+        }
+        await this.cpRepo.delete({ id: In(removedIds) });
+      }
 
       for (let index = 0; index < dto.problems.length; index += 1) {
         const cp = dto.problems[index];
+        const existingEntry = existingByProblemId.get(cp.problemId);
+        if (existingEntry) {
+          existingEntry.label = String.fromCharCode(65 + index);
+          existingEntry.orderIndex = index;
+          existingEntry.score = cp.score ?? null;
+          await this.cpRepo.save(existingEntry);
+          continue;
+        }
+
         const entry = this.cpRepo.create({
           contestId: contest.id,
           problemId: cp.problemId,
@@ -1216,6 +1249,98 @@ export class ContestsService {
     return this.serializeSubmission(saved);
   }
 
+  async runSampleCases(
+    contestId: string,
+    dto: ContestSubmitDto,
+    participantUserId: string,
+    participantName: string,
+    file?: Express.Multer.File,
+  ) {
+    const contest = await this.resolveContestOrThrow(contestId);
+    const participantNameMap = await this.getContestParticipantNameMap(
+      contest.id,
+    );
+    const resolvedParticipantName =
+      participantNameMap.get(participantUserId) ?? participantName;
+    const now = new Date();
+    const phase = this.contestPhase(contest.startTime, contest.endTime);
+    if (phase !== 'running')
+      throw new ForbiddenException('Contest is not running');
+    if (now < contest.startTime || now > contest.endTime)
+      throw new ForbiddenException('Contest window closed');
+
+    const cp = await this.cpRepo.findOneBy({
+      id: dto.contestProblemId,
+      contestId: contest.id,
+    });
+    if (!cp) throw new NotFoundException('Problem not in this contest');
+
+    let sourceCode = dto.code ?? null;
+    let sourceFileName: string | null = null;
+    if (file) {
+      if (file.size > 256 * 1024)
+        throw new BadRequestException('File too large (max 256KB)');
+      sourceCode = file.buffer.toString('utf8');
+      sourceFileName = file.originalname;
+    }
+    if (!sourceCode)
+      throw new BadRequestException('Code or file required');
+
+    const resolvedLanguage =
+      dto.language ?? this.inferLanguageFromFileName(file?.originalname);
+    if (!resolvedLanguage) {
+      throw new BadRequestException(
+        'Submission language is required for sample run',
+      );
+    }
+
+    const problem = cp.problem;
+    const testCases = (problem.sampleTestCases ?? []).map((testCase, index) => ({
+      index: index + 1,
+      isSample: true,
+      input: testCase.input ?? '',
+      output: testCase.output ?? '',
+    }));
+    if (!testCases.length) {
+      throw new BadRequestException('Problem has no sample test cases');
+    }
+
+    const result = await this.judgeRemote.executeJob({
+      submissionId: `sample-${uuidv4()}`,
+      contestId: contest.id,
+      contestType: contest.type,
+      contestProblemId: cp.id,
+      language: resolvedLanguage,
+      sourceCode,
+      sourceFileName,
+      maxScore: cp.score ?? null,
+      problem: {
+        id: problem.id,
+        code: problem.problemCode ?? null,
+        title: problem.title,
+        timeLimitMs: problem.timeLimitMs ?? 1_000,
+        memoryLimitKb: problem.memoryLimitKb ?? 262_144,
+      },
+      testCases,
+    });
+
+    const toSampleVerdict = (verdict: string) =>
+      verdict === SubmissionStatus.ACCEPTED ? 'passed' : verdict;
+
+    return {
+      participantName: resolvedParticipantName,
+      verdict: toSampleVerdict(result.verdict),
+      executionTimeMs: result.executionTimeMs,
+      memoryUsedKb: result.memoryUsedKb,
+      judgeMessage: result.judgeMessage,
+      compileOutput: result.compileOutput,
+      testcaseResults: (result.testcaseResults ?? []).map((testCase) => ({
+        ...testCase,
+        verdict: toSampleVerdict(testCase.verdict),
+      })),
+    };
+  }
+
   async getMySubmissions(contestId: string, participantUserId: string) {
     const contest = await this.resolveContestOrThrow(contestId);
     const participantNameMap = await this.getContestParticipantNameMap(
@@ -1234,6 +1359,58 @@ export class ContestsService {
         ...submission,
         participantName: fullName,
       });
+    });
+  }
+
+  async getContestSubmissionsForParticipant(
+    contestId: string,
+    participantUserId: string,
+  ) {
+    const contest = await this.resolveContestOrThrow(contestId);
+    const assigned = await this.tpRepo.findOne({
+      where: { contestId: contest.id, userId: participantUserId },
+    });
+    if (!assigned) {
+      throw new ForbiddenException();
+    }
+
+    const participantNameMap = await this.getContestParticipantNameMap(
+      contest.id,
+    );
+    const submissions = await this.subRepo.find({
+      where: { contestId: contest.id },
+      order: { submittedAt: 'DESC' },
+    });
+
+    return submissions.map((submission) => {
+      const isOwn = submission.participantId === participantUserId;
+      const fullName =
+        participantNameMap.get(submission.participantId) ??
+        submission.participantName ??
+        submission.participantId;
+      const serialized = this.serializeSubmission({
+        ...submission,
+        participantName: fullName,
+      });
+
+      if (isOwn) {
+        return {
+          ...serialized,
+          isOwnSubmission: true,
+        };
+      }
+
+      return {
+        ...serialized,
+        isOwnSubmission: false,
+        code: null,
+        fileUrl: null,
+        judgeToken: null,
+        compileOutput: null,
+        judgeMessage: null,
+        judgeError: null,
+        testcaseResults: [],
+      };
     });
   }
 

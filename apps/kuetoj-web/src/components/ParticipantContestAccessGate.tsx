@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate, Outlet, useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -13,7 +14,7 @@ function formatDuration(totalSeconds: number) {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
-export function ParticipantContestAccessGate() {
+export function ParticipantContestAccessGate({ children }: { children?: ReactNode }) {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
   const [now, setNow] = useState(Date.now());
@@ -36,7 +37,7 @@ export function ParticipantContestAccessGate() {
   }, [contest?.startTime, now]);
 
   if (!id) {
-    return <Navigate to="/contest" replace />;
+    return <Navigate to="/contests" replace />;
   }
 
   if (isLoading) {
@@ -65,13 +66,13 @@ export function ParticipantContestAccessGate() {
     : id;
 
   if (id !== canonicalContestPathId) {
-    const contestPrefix = `/contest/${id}`;
+    const contestPrefix = `/contests/${id}`;
     const suffix = location.pathname.startsWith(contestPrefix)
       ? location.pathname.slice(contestPrefix.length)
       : '';
     const search = location.search ?? '';
     const hash = location.hash ?? '';
-    return <Navigate to={`/contest/${canonicalContestPathId}${suffix}${search}${hash}`} replace />;
+    return <Navigate to={`/contests/${canonicalContestPathId}${suffix}${search}${hash}`} replace />;
   }
 
   const phase = contest.startTime && contest.endTime
@@ -91,5 +92,5 @@ export function ParticipantContestAccessGate() {
     );
   }
 
-  return <Outlet />;
+  return children ?? <Outlet />;
 }

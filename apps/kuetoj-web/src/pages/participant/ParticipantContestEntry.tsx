@@ -44,7 +44,7 @@ export function ParticipantContestEntry() {
     ?? null;
 
   if (!isLoading && targetContestId) {
-    return <Navigate to={`/contest/${targetContestId}/problems`} replace />;
+    return <Navigate to={`/contests/${targetContestId}/problems`} replace />;
   }
 
   return (
