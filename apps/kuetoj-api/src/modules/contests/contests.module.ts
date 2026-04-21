@@ -17,6 +17,7 @@ import {
 import { CredentialsPdfService } from './credentials-pdf.service';
 import { JudgeRemoteService } from './judge-remote.service';
 import { JudgeDispatchService } from './judge-dispatch.service';
+import { ContestSchemaService } from './contest-schema.service';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { JudgeDispatchService } from './judge-dispatch.service';
     CredentialsPdfService,
     JudgeRemoteService,
     JudgeDispatchService,
+    ContestSchemaService,
   ],
   controllers: [ContestsController, ContestsPublicController],
   exports: [ContestsService],

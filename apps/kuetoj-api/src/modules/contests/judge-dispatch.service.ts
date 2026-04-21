@@ -1,13 +1,23 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LessThan, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ContestSubmission } from './entities/contest-submission.entity';
-import { SubmissionStatus, ContestType, ProgrammingLanguage } from '../../common/enums';
+import {
+  SubmissionStatus,
+  ContestType,
+  ProgrammingLanguage,
+} from '../../common/enums';
 import { JudgeRemoteService } from './judge-remote.service';
 import { JudgeJobPayload, JudgeResultPayload } from './judge.types';
 import { StorageService } from '../storage/storage.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
+import { ContestSchemaService } from './contest-schema.service';
 
 @Injectable()
 export class JudgeDispatchService implements OnModuleInit, OnModuleDestroy {
@@ -23,9 +33,11 @@ export class JudgeDispatchService implements OnModuleInit, OnModuleDestroy {
     private readonly judgeRemote: JudgeRemoteService,
     private readonly storage: StorageService,
     private readonly gateway: NotificationsGateway,
+    private readonly contestSchema: ContestSchemaService,
   ) {}
 
   async onModuleInit() {
+    await this.contestSchema.ensureProblemBankSchema();
     await this.ensureJudgeSubmissionSchema();
 
     if (!this.judgeRemote.isEnabled()) {
@@ -209,11 +221,14 @@ export class JudgeDispatchService implements OnModuleInit, OnModuleDestroy {
     const problem = contestProblem?.problem;
 
     if (!contestProblem || !problem) {
-      throw new Error('Contest problem metadata is missing for this submission');
+      throw new Error(
+        'Contest problem metadata is missing for this submission',
+      );
     }
 
     const language =
-      submission.language ?? this.inferLanguageFromFileName(submission.fileName);
+      submission.language ??
+      this.inferLanguageFromFileName(submission.fileName);
     if (!language) {
       throw new Error('Submission language is missing or unsupported');
     }
@@ -228,19 +243,23 @@ export class JudgeDispatchService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Submission source code could not be resolved');
     }
 
-    const sampleCases = (problem.sampleTestCases ?? []).map((testCase, index) => ({
-      index: index + 1,
-      isSample: true,
-      input: testCase.input ?? '',
-      output: testCase.output ?? '',
-    }));
+    const sampleCases = (problem.sampleTestCases ?? []).map(
+      (testCase, index) => ({
+        index: index + 1,
+        isSample: true,
+        input: testCase.input ?? '',
+        output: testCase.output ?? '',
+      }),
+    );
 
-    const hiddenCases = (problem.hiddenTestCases ?? []).map((testCase, index) => ({
-      index: sampleCases.length + index + 1,
-      isSample: false,
-      input: testCase.input ?? '',
-      output: testCase.output ?? '',
-    }));
+    const hiddenCases = (problem.hiddenTestCases ?? []).map(
+      (testCase, index) => ({
+        index: sampleCases.length + index + 1,
+        isSample: false,
+        input: testCase.input ?? '',
+        output: testCase.output ?? '',
+      }),
+    );
 
     const testCases = [...sampleCases, ...hiddenCases];
     if (!testCases.length) {
