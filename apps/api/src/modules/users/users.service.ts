@@ -16,12 +16,16 @@ import {
   ProfileChangeApplicationStatus,
 } from '../office/entities/profile-change-application.entity';
 
-function normalizeOptionalText(value: string | null | undefined): string | null {
+function normalizeOptionalText(
+  value: string | null | undefined,
+): string | null {
   const normalized = String(value ?? '').trim();
   return normalized ? normalized : null;
 }
 
-function formatDateValue(value: Date | string | null | undefined): string | null {
+function formatDateValue(
+  value: Date | string | null | undefined,
+): string | null {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -46,10 +50,14 @@ export class UsersService {
   private isStudentProfileComplete(student: Partial<Student>): boolean {
     return Boolean(
       normalizeOptionalText(student.phone) &&
-        normalizeOptionalText(student.email) &&
-        normalizeOptionalText(student.fathersName) &&
-        normalizeOptionalText(student.mothersName) &&
-        student.dateOfBirth,
+      normalizeOptionalText(student.email) &&
+      normalizeOptionalText(student.guardianPhone) &&
+      normalizeOptionalText(student.fathersName) &&
+      normalizeOptionalText(student.gender) &&
+      normalizeOptionalText(student.mothersName) &&
+      normalizeOptionalText(student.permanentAddress) &&
+      normalizeOptionalText(student.profilePhoto) &&
+      student.dateOfBirth,
     );
   }
 
@@ -148,20 +156,71 @@ export class UsersService {
     });
     if (!user) throw new NotFoundException('User not found');
 
-    const allowSensitiveFields = Boolean(user.isFirstLogin || !student.profileCompleted);
-    const attemptedSensitiveUpdate = [
-      updates.fullName,
-      updates.email,
-      updates.dateOfBirth,
-      updates.guardianPhone,
-      updates.fathersName,
-      updates.gender,
-      updates.mothersName,
-      updates.permanentAddress,
-      updates.profilePhoto,
-    ].some((value) => value !== undefined);
+    const allowSensitiveFields = Boolean(
+      user.isFirstLogin || !student.profileCompleted,
+    );
 
-    if (!allowSensitiveFields && attemptedSensitiveUpdate) {
+    const changedSensitiveFields = [
+      [
+        'fullName',
+        updates.fullName !== undefined,
+        normalizeOptionalText(updates.fullName),
+        normalizeOptionalText(student.fullName),
+      ],
+      [
+        'email',
+        updates.email !== undefined,
+        normalizeOptionalText(updates.email),
+        normalizeOptionalText(student.email),
+      ],
+      [
+        'dateOfBirth',
+        updates.dateOfBirth !== undefined,
+        formatDateValue(updates.dateOfBirth),
+        formatDateValue(student.dateOfBirth),
+      ],
+      [
+        'guardianPhone',
+        updates.guardianPhone !== undefined,
+        normalizeOptionalText(updates.guardianPhone),
+        normalizeOptionalText(student.guardianPhone),
+      ],
+      [
+        'fathersName',
+        updates.fathersName !== undefined,
+        normalizeOptionalText(updates.fathersName),
+        normalizeOptionalText(student.fathersName),
+      ],
+      [
+        'gender',
+        updates.gender !== undefined,
+        normalizeOptionalText(updates.gender),
+        normalizeOptionalText(student.gender),
+      ],
+      [
+        'mothersName',
+        updates.mothersName !== undefined,
+        normalizeOptionalText(updates.mothersName),
+        normalizeOptionalText(student.mothersName),
+      ],
+      [
+        'permanentAddress',
+        updates.permanentAddress !== undefined,
+        normalizeOptionalText(updates.permanentAddress),
+        normalizeOptionalText(student.permanentAddress),
+      ],
+      [
+        'profilePhoto',
+        updates.profilePhoto !== undefined,
+        normalizeOptionalText(updates.profilePhoto),
+        normalizeOptionalText(student.profilePhoto),
+      ],
+    ].filter(
+      ([, wasProvided, nextValue, currentValue]) =>
+        wasProvided && nextValue !== currentValue,
+    );
+
+    if (!allowSensitiveFields && changedSensitiveFields.length) {
       throw new BadRequestException(
         'Submit an office application to change verified profile fields',
       );
@@ -178,16 +237,33 @@ export class UsersService {
       if (updates.email !== undefined) {
         student.email = normalizeOptionalText(updates.email);
       }
+      if (updates.guardianPhone !== undefined) {
+        student.guardianPhone = normalizeOptionalText(updates.guardianPhone);
+      }
       if (updates.dateOfBirth !== undefined) {
         student.dateOfBirth = updates.dateOfBirth ?? null;
       }
       if (updates.fathersName !== undefined) {
         student.fathersName = normalizeOptionalText(updates.fathersName);
       }
+      if (updates.gender !== undefined) {
+        student.gender = normalizeOptionalText(updates.gender);
+      }
       if (updates.mothersName !== undefined) {
         student.mothersName = normalizeOptionalText(updates.mothersName);
       }
-      if (updates.fullName !== undefined && !normalizeOptionalText(student.fullName)) {
+      if (updates.permanentAddress !== undefined) {
+        student.permanentAddress = normalizeOptionalText(
+          updates.permanentAddress,
+        );
+      }
+      if (updates.profilePhoto !== undefined) {
+        student.profilePhoto = normalizeOptionalText(updates.profilePhoto);
+      }
+      if (
+        updates.fullName !== undefined &&
+        !normalizeOptionalText(student.fullName)
+      ) {
         student.fullName = normalizeOptionalText(updates.fullName);
       }
     }
@@ -195,7 +271,7 @@ export class UsersService {
     const nextProfileCompleted = this.isStudentProfileComplete(student);
     if (user.isFirstLogin && !nextProfileCompleted) {
       throw new BadRequestException(
-        "Phone, email, father's name, mother's name, and date of birth are required to complete your profile",
+        "Phone, email, father's name, mother's name, guardian phone, gender, permanent address, photo, and date of birth are required to complete your profile",
       );
     }
 
@@ -254,14 +330,46 @@ export class UsersService {
       const currentData: Record<string, string | null> = {};
       const requestedData: Record<string, string | null> = {};
       const fieldEntries = [
-        ['fullName', normalizeOptionalText(student.fullName), normalizeOptionalText(requestedUpdates.fullName)],
-        ['email', normalizeOptionalText(student.email), normalizeOptionalText(requestedUpdates.email)],
-        ['dateOfBirth', formatDateValue(student.dateOfBirth), formatDateValue(requestedUpdates.dateOfBirth)],
-        ['guardianPhone', normalizeOptionalText(student.guardianPhone), normalizeOptionalText(requestedUpdates.guardianPhone)],
-        ['fathersName', normalizeOptionalText(student.fathersName), normalizeOptionalText(requestedUpdates.fathersName)],
-        ['gender', normalizeOptionalText(student.gender), normalizeOptionalText(requestedUpdates.gender)],
-        ['mothersName', normalizeOptionalText(student.mothersName), normalizeOptionalText(requestedUpdates.mothersName)],
-        ['permanentAddress', normalizeOptionalText(student.permanentAddress), normalizeOptionalText(requestedUpdates.permanentAddress)],
+        [
+          'fullName',
+          normalizeOptionalText(student.fullName),
+          normalizeOptionalText(requestedUpdates.fullName),
+        ],
+        [
+          'email',
+          normalizeOptionalText(student.email),
+          normalizeOptionalText(requestedUpdates.email),
+        ],
+        [
+          'dateOfBirth',
+          formatDateValue(student.dateOfBirth),
+          formatDateValue(requestedUpdates.dateOfBirth),
+        ],
+        [
+          'guardianPhone',
+          normalizeOptionalText(student.guardianPhone),
+          normalizeOptionalText(requestedUpdates.guardianPhone),
+        ],
+        [
+          'fathersName',
+          normalizeOptionalText(student.fathersName),
+          normalizeOptionalText(requestedUpdates.fathersName),
+        ],
+        [
+          'gender',
+          normalizeOptionalText(student.gender),
+          normalizeOptionalText(requestedUpdates.gender),
+        ],
+        [
+          'mothersName',
+          normalizeOptionalText(student.mothersName),
+          normalizeOptionalText(requestedUpdates.mothersName),
+        ],
+        [
+          'permanentAddress',
+          normalizeOptionalText(student.permanentAddress),
+          normalizeOptionalText(requestedUpdates.permanentAddress),
+        ],
       ] as const;
 
       fieldEntries.forEach(([field, currentValue, nextValue]) => {
@@ -273,7 +381,10 @@ export class UsersService {
 
       const normalizedRequestedPhoto = normalizeOptionalText(requestedPhoto);
       const currentPhoto = normalizeOptionalText(student.profilePhoto);
-      if (normalizedRequestedPhoto && normalizedRequestedPhoto !== currentPhoto) {
+      if (
+        normalizedRequestedPhoto &&
+        normalizedRequestedPhoto !== currentPhoto
+      ) {
         currentData.profilePhoto = currentPhoto;
         requestedData.profilePhoto = normalizedRequestedPhoto;
       }
@@ -307,9 +418,21 @@ export class UsersService {
       const currentData: Record<string, string | null> = {};
       const requestedData: Record<string, string | null> = {};
       const fieldEntries = [
-        ['fullName', normalizeOptionalText(teacher.fullName), normalizeOptionalText(requestedUpdates.fullName)],
-        ['email', normalizeOptionalText(teacher.email), normalizeOptionalText(requestedUpdates.email)],
-        ['gender', normalizeOptionalText(teacher.gender), normalizeOptionalText(requestedUpdates.gender)],
+        [
+          'fullName',
+          normalizeOptionalText(teacher.fullName),
+          normalizeOptionalText(requestedUpdates.fullName),
+        ],
+        [
+          'email',
+          normalizeOptionalText(teacher.email),
+          normalizeOptionalText(requestedUpdates.email),
+        ],
+        [
+          'gender',
+          normalizeOptionalText(teacher.gender),
+          normalizeOptionalText(requestedUpdates.gender),
+        ],
       ] as const;
 
       fieldEntries.forEach(([field, currentValue, nextValue]) => {
@@ -321,7 +444,10 @@ export class UsersService {
 
       const normalizedRequestedPhoto = normalizeOptionalText(requestedPhoto);
       const currentPhoto = normalizeOptionalText(teacher.profilePhoto);
-      if (normalizedRequestedPhoto && normalizedRequestedPhoto !== currentPhoto) {
+      if (
+        normalizedRequestedPhoto &&
+        normalizedRequestedPhoto !== currentPhoto
+      ) {
         currentData.profilePhoto = currentPhoto;
         requestedData.profilePhoto = normalizedRequestedPhoto;
       }

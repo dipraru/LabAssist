@@ -8,10 +8,11 @@ import {
   Post,
   Query,
   UploadedFile,
+  UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -80,6 +81,17 @@ export class LabTestsController {
     return this.svc.endLabTest(id, user.id);
   }
 
+  @Roles(UserRole.TEACHER)
+  @Post(':id/help-materials/upload')
+  @UseInterceptors(FilesInterceptor('files', 8, { storage: memoryStorage() }))
+  uploadHelpMaterials(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.svc.uploadHelpMaterials(id, user.id, files ?? []);
+  }
+
   @Roles(UserRole.TEACHER, UserRole.STUDENT)
   @Get('course/:courseId')
   getByCourse(
@@ -107,7 +119,10 @@ export class LabTestsController {
 
   @Roles(UserRole.TEACHER)
   @Post('problem-bank')
-  createProblemBankEntry(@Body() dto: CreateProblemDto, @CurrentUser() user: any) {
+  createProblemBankEntry(
+    @Body() dto: CreateProblemDto,
+    @CurrentUser() user: any,
+  ) {
     return this.svc.createReusableProblem(dto, user.id);
   }
 
@@ -227,7 +242,11 @@ export class LabTestsController {
 
   @Roles(UserRole.STUDENT)
   @Post('problems/:problemId/run')
-  run(@Param('problemId') pId: string, @Body() dto: RunLabCodeDto, @CurrentUser() user: any) {
+  run(
+    @Param('problemId') pId: string,
+    @Body() dto: RunLabCodeDto,
+    @CurrentUser() user: any,
+  ) {
     return this.svc.runCode(pId, user.id, dto);
   }
 
