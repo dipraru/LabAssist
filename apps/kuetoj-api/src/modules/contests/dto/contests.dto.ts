@@ -138,6 +138,10 @@ export class ContestSubmitDto {
   @IsOptional() @IsEnum(ProgrammingLanguage) language?: ProgrammingLanguage;
 }
 
+export class ContestRunInputDto extends ContestSubmitDto {
+  @IsString() input: string;
+}
+
 // ─── Grade ────────────────────────────────────────────────────────────────────
 
 export class GradeContestSubmissionDto {

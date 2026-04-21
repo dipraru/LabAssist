@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, IsNull, Repository } from 'typeorm';
@@ -23,6 +24,7 @@ import {
   AskClarificationDto,
   AnswerClarificationDto,
   ContestJudgeResultDto,
+  ContestRunInputDto,
   ContestSubmitDto,
   CreateAnnouncementDto,
   CreateContestDto,
@@ -38,6 +40,7 @@ import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { CredentialsPdfService } from './credentials-pdf.service';
 import { JudgeRemoteService } from './judge-remote.service';
+import { JudgeJobPayload, JudgeResultPayload } from './judge.types';
 import {
   ContestStatus,
   ContestType,
@@ -131,6 +134,18 @@ export class ContestsService {
         },
       ]),
     );
+  }
+
+  private async executeJudgeJob(
+    job: JudgeJobPayload,
+  ): Promise<JudgeResultPayload> {
+    try {
+      return await this.judgeRemote.executeJob(job);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Judge execution failed';
+      throw new ServiceUnavailableException(message);
+    }
   }
 
   private async getJudgeProfileId(judgeUserId: string): Promise<string> {
@@ -1305,7 +1320,7 @@ export class ContestsService {
       throw new BadRequestException('Problem has no sample test cases');
     }
 
-    const result = await this.judgeRemote.executeJob({
+    const result = await this.executeJudgeJob({
       submissionId: `sample-${uuidv4()}`,
       contestId: contest.id,
       contestType: contest.type,
@@ -1338,6 +1353,96 @@ export class ContestsService {
         ...testCase,
         verdict: toSampleVerdict(testCase.verdict),
       })),
+    };
+  }
+
+  async runCustomInput(
+    contestId: string,
+    dto: ContestRunInputDto,
+    participantUserId: string,
+    participantName: string,
+    file?: Express.Multer.File,
+  ) {
+    const contest = await this.resolveContestOrThrow(contestId);
+    const participantNameMap = await this.getContestParticipantNameMap(
+      contest.id,
+    );
+    const resolvedParticipantName =
+      participantNameMap.get(participantUserId) ?? participantName;
+    const now = new Date();
+    const phase = this.contestPhase(contest.startTime, contest.endTime);
+    if (phase !== 'running')
+      throw new ForbiddenException('Contest is not running');
+    if (now < contest.startTime || now > contest.endTime)
+      throw new ForbiddenException('Contest window closed');
+
+    const cp = await this.cpRepo.findOneBy({
+      id: dto.contestProblemId,
+      contestId: contest.id,
+    });
+    if (!cp) throw new NotFoundException('Problem not in this contest');
+
+    let sourceCode = dto.code ?? null;
+    let sourceFileName: string | null = null;
+    if (file) {
+      if (file.size > 256 * 1024)
+        throw new BadRequestException('File too large (max 256KB)');
+      sourceCode = file.buffer.toString('utf8');
+      sourceFileName = file.originalname;
+    }
+    if (!sourceCode)
+      throw new BadRequestException('Code or file required');
+
+    const resolvedLanguage =
+      dto.language ?? this.inferLanguageFromFileName(file?.originalname);
+    if (!resolvedLanguage) {
+      throw new BadRequestException(
+        'Submission language is required for custom run',
+      );
+    }
+
+    const problem = cp.problem;
+    const result = await this.executeJudgeJob({
+      submissionId: `run-${uuidv4()}`,
+      contestId: contest.id,
+      contestType: contest.type,
+      contestProblemId: cp.id,
+      language: resolvedLanguage,
+      sourceCode,
+      sourceFileName,
+      maxScore: cp.score ?? null,
+      problem: {
+        id: problem.id,
+        code: problem.problemCode ?? null,
+        title: problem.title,
+        timeLimitMs: problem.timeLimitMs ?? 1_000,
+        memoryLimitKb: problem.memoryLimitKb ?? 262_144,
+      },
+      testCases: [
+        {
+          index: 1,
+          isSample: false,
+          isCustomInput: true,
+          input: dto.input ?? '',
+          output: '',
+        },
+      ],
+    });
+
+    const firstCase = result.testcaseResults?.[0] ?? null;
+    return {
+      participantName: resolvedParticipantName,
+      verdict:
+        result.verdict === SubmissionStatus.ACCEPTED
+          ? 'successfully_executed'
+          : result.verdict,
+      executionTimeMs: result.executionTimeMs,
+      memoryUsedKb: result.memoryUsedKb,
+      judgeMessage: result.judgeMessage,
+      compileOutput: result.compileOutput,
+      input: dto.input ?? '',
+      output: firstCase?.actualOutput ?? '',
+      testcaseResults: result.testcaseResults ?? [],
     };
   }
 
@@ -1885,9 +1990,19 @@ export class ContestsService {
       ).toUpperCase();
 
       for (let i = 0; i < normalizedNames.length; i++) {
-        counter++;
-        const participantId = `TP-${contestCode}-${String(counter).padStart(3, '0')}`;
-        const username = `tp_${String(contest.contestNumber ?? contest.id).slice(0, 8)}_${String(counter).padStart(3, '0')}`;
+        let participantId = '';
+        let username = '';
+        do {
+          counter++;
+          participantId = `TP-${contestCode}-${String(counter).padStart(3, '0')}`;
+          username = `tp_${String(contest.contestNumber ?? contest.id).slice(0, 8)}_${String(counter).padStart(3, '0')}`;
+          const [existingParticipantId, existingUsername] = await Promise.all([
+            qr.manager.findOne(TempParticipant, { where: { participantId } }),
+            qr.manager.findOne(User, { where: { username } }),
+          ]);
+          if (!existingParticipantId && !existingUsername) break;
+        } while (true);
+
         const plainPassword = Math.random()
           .toString(36)
           .slice(-8)

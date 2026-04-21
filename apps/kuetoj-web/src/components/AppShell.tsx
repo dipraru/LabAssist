@@ -6,7 +6,13 @@ import { useAuthStore } from '../store/auth.store';
 
 const LABASSIST_WEB_URL = import.meta.env.VITE_LABASSIST_WEB_URL ?? 'http://localhost:5173';
 
-export function AppShell({ children }: { children: ReactNode }) {
+type AppShellProps = {
+  children: ReactNode;
+  fullWidth?: boolean;
+  mainClassName?: string;
+};
+
+export function AppShell({ children, fullWidth = false, mainClassName = '' }: AppShellProps) {
   const { user, logout } = useAuthStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -126,7 +132,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-6">
+      <main className={`mx-auto w-full ${fullWidth ? 'max-w-none' : 'max-w-7xl'} px-4 py-5 sm:px-6 ${mainClassName}`}>
         {children}
       </main>
     </div>

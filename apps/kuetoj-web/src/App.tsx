@@ -104,6 +104,18 @@ function RoleContestProblemPage() {
   return <ParticipantContestAccessGate><ContestProblem /></ParticipantContestAccessGate>;
 }
 
+function ContestStandingsEntry() {
+  const { id } = useParams<{ id: string }>();
+  const { token, user } = useAuthStore();
+
+  if (token && user?.role === 'temp_judge') return <ContestManage />;
+  if (token && user?.role === 'temp_participant') {
+    return <ParticipantContestAccessGate><ParticipantStandings /></ParticipantContestAccessGate>;
+  }
+
+  return <Navigate to={`/contests/${id}/standings/public`} replace />;
+}
+
 export default function App() {
   return (
     <Routes>
@@ -116,6 +128,7 @@ export default function App() {
       } />
 
       <Route path="/contests/:id/standings/public" element={<PublicContestStandings />} />
+      <Route path="/contests/:id/standings" element={<ContestStandingsEntry />} />
 
       <Route element={<ProtectedRoute allowedRoles={['temp_judge', 'temp_participant']} />}>
         <Route path="/contests" element={<RoleContestIndex />} />
@@ -123,7 +136,6 @@ export default function App() {
         <Route path="/contests/:id" element={<ContestDefaultRedirect />} />
         <Route path="/contests/:id/problems" element={<RoleContestManagePage tab="problems" />} />
         <Route path="/contests/:id/status" element={<RoleContestManagePage tab="status" />} />
-        <Route path="/contests/:id/standings" element={<RoleContestManagePage tab="standings" />} />
         <Route path="/contests/:id/clarifications" element={<RoleContestManagePage tab="clarifications" />} />
         <Route path="/contests/:id/announcements" element={<RoleContestManagePage tab="announcements" />} />
         <Route path="/contests/:id/problems/:problemId" element={<RoleContestProblemPage />} />

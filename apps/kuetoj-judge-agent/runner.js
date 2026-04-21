@@ -382,6 +382,9 @@ async function runSingleTestCase(boxId, boxPath, languageSpec, problem, testCase
       timeMs,
       memoryKb,
       message: `Time limit exceeded on ${testCase.isSample ? 'sample' : 'hidden'} test ${testCase.index}`,
+      actualOutput: testCase.isCustomInput
+        ? truncateMessage(actualStdout, 12000)
+        : null,
     };
   }
 
@@ -396,6 +399,9 @@ async function runSingleTestCase(boxId, boxPath, languageSpec, problem, testCase
       timeMs,
       memoryKb,
       message: `Memory limit exceeded on ${testCase.isSample ? 'sample' : 'hidden'} test ${testCase.index}`,
+      actualOutput: testCase.isCustomInput
+        ? truncateMessage(actualStdout, 12000)
+        : null,
     };
   }
 
@@ -413,6 +419,21 @@ async function runSingleTestCase(boxId, boxPath, languageSpec, problem, testCase
       message:
         truncateMessage(actualStderr || meta.message || 'Runtime error') ||
         'Runtime error',
+      actualOutput: testCase.isCustomInput
+        ? truncateMessage(actualStdout, 12000)
+        : null,
+    };
+  }
+
+  if (testCase.isCustomInput) {
+    return {
+      index: testCase.index,
+      isSample: testCase.isSample,
+      verdict: VERDICTS.ACCEPTED,
+      timeMs,
+      memoryKb,
+      message: null,
+      actualOutput: truncateMessage(actualStdout, 12000),
     };
   }
 

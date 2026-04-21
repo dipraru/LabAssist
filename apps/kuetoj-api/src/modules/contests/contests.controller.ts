@@ -27,6 +27,7 @@ import {
   AnswerClarificationDto,
   AskClarificationDto,
   ContestJudgeResultDto,
+  ContestRunInputDto,
   ContestSubmitDto,
   CreateAnnouncementDto,
   CreateContestDto,
@@ -312,6 +313,24 @@ export class ContestsController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     return this.svc.runSampleCases(
+      contestId,
+      dto,
+      user.id,
+      user.username,
+      file,
+    );
+  }
+
+  @Roles(UserRole.TEMP_PARTICIPANT)
+  @Post(':id/run-input')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  runInput(
+    @Param('id') contestId: string,
+    @Body() dto: ContestRunInputDto,
+    @CurrentUser() user: any,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.svc.runCustomInput(
       contestId,
       dto,
       user.id,
