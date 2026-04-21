@@ -143,7 +143,7 @@ export function JudgeProblems() {
                 value={searchText}
                 onChange={(event) => setSearchText(event.target.value)}
                 placeholder="Search title or code"
-                className="oj-input pl-9"
+                className="oj-input !pl-10"
               />
             </label>
           </div>

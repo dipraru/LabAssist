@@ -748,10 +748,7 @@ export function JudgeContests() {
         {rows.map((contest) => {
           const phase = getContestPhase(contest.startTime ?? '', contest.endTime ?? '');
           const contestRouteId = String(contest.contestNumber ?? contest.id);
-          const contestOpenHref =
-            phase === 'old'
-              ? `/contests/${contestRouteId}/status`
-              : `/contests/${contestRouteId}`;
+          const contestOpenHref = `/contests/${contestRouteId}/problems`;
           return (
             <article key={contest.id} className="oj-panel-strong oj-card-hover overflow-hidden p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">

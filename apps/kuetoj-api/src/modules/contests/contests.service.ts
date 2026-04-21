@@ -53,6 +53,9 @@ import { v4 as uuidv4 } from 'uuid';
 
 // ICPC penalty: 20 min per wrong answer
 const ICPC_WRONG_PENALTY = 20;
+const PROBLEM_CODE_PREFIX = 'KOJ';
+const PROBLEM_CODE_NUMBER_START = PROBLEM_CODE_PREFIX.length + 2;
+const PROBLEM_CODE_LOCK_KEY = 'kuetoj_problem_code_sequence';
 
 @Injectable()
 export class ContestsService {
@@ -250,18 +253,38 @@ export class ContestsService {
     return contest;
   }
 
-  private async getNextProblemCode(): Promise<string> {
-    const last = await this.problemRepo
-      .createQueryBuilder('p')
-      .where('p.problemCode IS NOT NULL')
-      .orderBy('p.problemCode', 'DESC')
-      .getOne();
+  private formatProblemCode(problemNumber: number): string {
+    return `${PROBLEM_CODE_PREFIX}-${String(problemNumber).padStart(5, '0')}`;
+  }
 
-    const lastNumber = last?.problemCode
-      ? Number.parseInt(last.problemCode.replace('KOJ-', ''), 10)
-      : 0;
-    const nextNumber = Number.isNaN(lastNumber) ? 1 : lastNumber + 1;
-    return `KOJ-${String(nextNumber).padStart(5, '0')}`;
+  private async getNextProblemCode(
+    problemRepo: Repository<Problem> = this.problemRepo,
+  ): Promise<string> {
+    const row = await problemRepo
+      .createQueryBuilder('p')
+      .select(
+        `MAX(CAST(SUBSTRING(p."problemCode" FROM ${PROBLEM_CODE_NUMBER_START}) AS INTEGER))`,
+        'max',
+      )
+      .where('p."problemCode" ~ :pattern', {
+        pattern: `^${PROBLEM_CODE_PREFIX}-[0-9]+$`,
+      })
+      .getRawOne<{ max: string | number | null }>();
+
+    const lastNumber = Number(row?.max ?? 0);
+    const nextNumber = Number.isFinite(lastNumber) ? lastNumber + 1 : 1;
+    return this.formatProblemCode(nextNumber);
+  }
+
+  private async withProblemCodeLock<T>(
+    work: (problemRepo: Repository<Problem>) => Promise<T>,
+  ): Promise<T> {
+    return this.dataSource.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        PROBLEM_CODE_LOCK_KEY,
+      ]);
+      return work(manager.getRepository(Problem));
+    });
   }
 
   private generatePublicStandingsKey(): string {
@@ -289,16 +312,18 @@ export class ContestsService {
   }
 
   private async ensureProblemCodes(): Promise<void> {
-    const missing = await this.problemRepo.find({
-      where: { problemCode: IsNull() },
-      order: { createdAt: 'ASC' },
-    });
-    if (!missing.length) return;
+    await this.withProblemCodeLock(async (problemRepo) => {
+      const missing = await problemRepo.find({
+        where: { problemCode: IsNull() },
+        order: { createdAt: 'ASC' },
+      });
+      if (!missing.length) return;
 
-    for (const problem of missing) {
-      problem.problemCode = await this.getNextProblemCode();
-      await this.problemRepo.save(problem);
-    }
+      for (const problem of missing) {
+        problem.problemCode = await this.getNextProblemCode(problemRepo);
+        await problemRepo.save(problem);
+      }
+    });
   }
 
   // ─── PROBLEM BANK ────────────────────────────────────────────────────────────
@@ -307,29 +332,31 @@ export class ContestsService {
     dto: CreateProblemDto,
     judgeUserId: string,
   ): Promise<Problem> {
-    const problemCode = await this.getNextProblemCode();
-    const sampleTestCases = (dto.sampleTestCases ?? []).map((sample) => ({
-      input: sample.input,
-      output: sample.output,
-      note: sample.note ?? sample.explanation,
-      noteFormat: sample.noteFormat ?? 'text',
-    }));
-    const p = this.problemRepo.create({
-      problemCode,
-      title: dto.title,
-      statement: dto.statement,
-      statementFormat: dto.statementFormat ?? 'text',
-      inputDescription: dto.inputDescription ?? null,
-      inputDescriptionFormat: dto.inputDescriptionFormat ?? 'text',
-      outputDescription: dto.outputDescription ?? null,
-      outputDescriptionFormat: dto.outputDescriptionFormat ?? 'text',
-      timeLimitMs: dto.timeLimitMs ?? null,
-      memoryLimitKb: dto.memoryLimitKb ?? null,
-      sampleTestCases,
-      hiddenTestCases: dto.hiddenTestCases ?? [],
-      authorId: judgeUserId,
+    return this.withProblemCodeLock(async (problemRepo) => {
+      const problemCode = await this.getNextProblemCode(problemRepo);
+      const sampleTestCases = (dto.sampleTestCases ?? []).map((sample) => ({
+        input: sample.input,
+        output: sample.output,
+        note: sample.note ?? sample.explanation,
+        noteFormat: sample.noteFormat ?? 'text',
+      }));
+      const p = problemRepo.create({
+        problemCode,
+        title: dto.title,
+        statement: dto.statement,
+        statementFormat: dto.statementFormat ?? 'text',
+        inputDescription: dto.inputDescription ?? null,
+        inputDescriptionFormat: dto.inputDescriptionFormat ?? 'text',
+        outputDescription: dto.outputDescription ?? null,
+        outputDescriptionFormat: dto.outputDescriptionFormat ?? 'text',
+        timeLimitMs: dto.timeLimitMs ?? null,
+        memoryLimitKb: dto.memoryLimitKb ?? null,
+        sampleTestCases,
+        hiddenTestCases: dto.hiddenTestCases ?? [],
+        authorId: judgeUserId,
+      });
+      return problemRepo.save(p);
     });
-    return this.problemRepo.save(p);
   }
 
   async listMyProblems(judgeUserId: string): Promise<Problem[]> {

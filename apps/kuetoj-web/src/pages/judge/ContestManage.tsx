@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import {
   Archive,
+  ArrowLeft,
   BarChart3,
   Bell,
   CheckCircle2,
@@ -332,6 +333,13 @@ export function ContestManage() {
     <AppShell>
       <div className="oj-page">
         <section className="oj-hero mb-6 p-6 sm:p-7">
+          <Link
+            to="/contests"
+            className="relative z-10 mb-5 inline-flex items-center gap-2 rounded-md border border-white/20 bg-white/12 px-3 py-2 text-sm font-extrabold text-white hover:bg-white/20"
+          >
+            <ArrowLeft size={16} />
+            Back to Contests
+          </Link>
           <div className="relative z-10 flex flex-wrap items-end justify-between gap-6">
             <div>
               <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-1.5 text-xs font-extrabold uppercase tracking-[0.18em] text-teal-50 ring-1 ring-white/20">

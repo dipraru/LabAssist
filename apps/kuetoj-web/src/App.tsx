@@ -7,6 +7,7 @@ import { BridgeLoginPage } from './pages/BridgeLoginPage';
 import { JudgeContests } from './pages/judge/JudgeContests';
 import { JudgeProblems } from './pages/judge/JudgeProblems';
 import { JudgeProblemEditor } from './pages/judge/JudgeProblemEditor';
+import { JudgeLatexGuide } from './pages/judge/JudgeLatexGuide';
 import { JudgeContestCreate } from './pages/judge/JudgeContestCreate';
 import { ContestManage } from './pages/judge/ContestManage';
 import { JudgeContestProblem } from './pages/judge/JudgeContestProblem';
@@ -53,9 +54,7 @@ function RoleRedirect() {
 
 function ContestDefaultRedirect() {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuthStore();
-  const target = user?.role === 'temp_judge' ? 'status' : 'problems';
-  return <Navigate to={`/contests/${id}/${target}`} replace />;
+  return <Navigate to={`/contests/${id}/problems`} replace />;
 }
 
 function LegacyJudgeRedirect() {
@@ -149,6 +148,7 @@ export default function App() {
         <Route path="/judge" element={<Navigate to="/contests" replace />} />
         <Route path="/problems" element={<JudgeProblems />} />
         <Route path="/problems/new" element={<JudgeProblemEditor />} />
+        <Route path="/problems/latex-guide" element={<JudgeLatexGuide />} />
         <Route path="/problems/:problemId/edit" element={<JudgeProblemEditor />} />
       </Route>
 
