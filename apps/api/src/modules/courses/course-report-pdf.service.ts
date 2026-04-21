@@ -34,9 +34,17 @@ type CourseReportPayload = {
   labTaskColumns: ScoreColumn[];
 };
 
+type TableColumn = {
+  label: string;
+  width: number;
+  align?: 'left' | 'center' | 'right';
+};
+
 @Injectable()
 export class CourseReportPdfService {
-  async generateCourseProgressPdf(payload: CourseReportPayload): Promise<string> {
+  async generateCourseProgressPdf(
+    payload: CourseReportPayload,
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({
         size: 'A4',
@@ -68,26 +76,64 @@ export class CourseReportPdfService {
     });
   }
 
-  private writeHeader(doc: InstanceType<typeof PDFDocument>, payload: CourseReportPayload) {
+  private getContentWidth(doc: InstanceType<typeof PDFDocument>): number {
+    return doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  }
+
+  private ensureSpace(
+    doc: InstanceType<typeof PDFDocument>,
+    neededHeight: number,
+  ) {
+    const pageBottom = doc.page.height - doc.page.margins.bottom;
+    if (doc.y + neededHeight > pageBottom) {
+      doc.addPage();
+    }
+  }
+
+  private writeHeader(
+    doc: InstanceType<typeof PDFDocument>,
+    payload: CourseReportPayload,
+  ) {
+    const startX = doc.page.margins.left;
+    const startY = doc.y;
+    const width = this.getContentWidth(doc);
+    const headerHeight = 86;
+
+    doc
+      .save()
+      .roundedRect(startX, startY, width, headerHeight, 18)
+      .fill('#0f172a')
+      .restore();
+
     doc
       .font('Helvetica-Bold')
-      .fontSize(18)
-      .text('LabAssist Course Progress Report', { align: 'center' });
-    doc.moveDown(0.35);
+      .fontSize(19)
+      .fillColor('#ffffff')
+      .text('LabAssist Course Progress Report', startX + 20, startY + 18, {
+        width: width - 40,
+      });
+
     doc
       .font('Helvetica')
       .fontSize(10)
+      .fillColor('#cbd5e1')
       .text(
-        `${payload.courseCode} · ${payload.courseTitle} · ${payload.semesterLabel}`,
-        { align: 'center' },
-      );
-    doc.moveDown(0.2);
-    doc
-      .fontSize(9)
-      .fillColor('#5b6472')
-      .text(`Generated: ${payload.generatedAt}`, { align: 'center' })
+        `${payload.courseCode} · ${payload.courseTitle}`,
+        startX + 20,
+        startY + 44,
+        {
+          width: width - 40,
+        },
+      )
+      .text(
+        `${payload.semesterLabel} · Generated ${payload.generatedAt}`,
+        startX + 20,
+        startY + 59,
+        { width: width - 40 },
+      )
       .fillColor('#000000');
-    doc.moveDown(1);
+
+    doc.y = startY + headerHeight + 18;
   }
 
   private writeSectionTitle(
@@ -95,71 +141,129 @@ export class CourseReportPdfService {
     title: string,
     subtitle: string,
   ) {
-    if (doc.y > doc.page.height - 120) {
-      doc.addPage();
-    }
+    this.ensureSpace(doc, 56);
 
-    doc
-      .font('Helvetica-Bold')
-      .fontSize(13)
-      .text(title);
-    doc
-      .font('Helvetica')
-      .fontSize(9)
-      .fillColor('#5b6472')
-      .text(subtitle)
-      .fillColor('#000000');
-    doc.moveDown(0.5);
+    doc.font('Helvetica-Bold').fontSize(13).fillColor('#0f172a').text(title);
+    doc.font('Helvetica').fontSize(9).fillColor('#475569').text(subtitle);
+    doc.fillColor('#000000');
+    doc.moveDown(0.45);
   }
 
   private drawTable(
     doc: InstanceType<typeof PDFDocument>,
-    headers: string[],
+    columns: TableColumn[],
     rows: string[][],
-    columnWidths: number[],
   ) {
     const startX = doc.page.margins.left;
     const pageBottom = doc.page.height - doc.page.margins.bottom;
-    const rowHeight = 20;
+    const paddingX = 5;
+    const paddingY = 6;
+    const minHeaderHeight = 28;
+    const minRowHeight = 24;
 
-    const drawRow = (values: string[], y: number, isHeader = false) => {
-      let x = startX;
-      for (let index = 0; index < values.length; index += 1) {
-        const width = columnWidths[index] ?? 80;
-        doc
-          .save()
-          .lineWidth(0.6)
-          .rect(x, y, width, rowHeight)
-          .fillAndStroke(isHeader ? '#eef2ff' : '#ffffff', '#d7dce5')
-          .restore();
-        doc
-          .font(isHeader ? 'Helvetica-Bold' : 'Helvetica')
-          .fontSize(7.8)
-          .fillColor('#111827')
-          .text(values[index] ?? '', x + 4, y + 6, {
-            width: width - 8,
-            ellipsis: true,
+    const measureRowHeight = (values: string[], isHeader = false) => {
+      return values.reduce(
+        (height, value, index) => {
+          const column = columns[index];
+          const textWidth = Math.max(10, (column?.width ?? 80) - paddingX * 2);
+          doc
+            .font(isHeader ? 'Helvetica-Bold' : 'Helvetica')
+            .fontSize(isHeader ? 8 : 7.8);
+          const textHeight = doc.heightOfString(value ?? '', {
+            width: textWidth,
+            align: column?.align ?? 'left',
           });
-        x += width;
-      }
+          const minHeight = isHeader ? minHeaderHeight : minRowHeight;
+          return Math.max(
+            height,
+            Math.max(minHeight, textHeight + paddingY * 2),
+          );
+        },
+        isHeader ? minHeaderHeight : minRowHeight,
+      );
     };
 
-    let y = doc.y;
-    drawRow(headers, y, true);
-    y += rowHeight;
+    const drawRow = (
+      values: string[],
+      y: number,
+      rowIndex: number,
+      isHeader = false,
+    ) => {
+      const rowHeight = measureRowHeight(values, isHeader);
+      let x = startX;
 
-    for (const row of rows) {
+      for (let index = 0; index < columns.length; index += 1) {
+        const column = columns[index];
+        const cellValue = values[index] ?? '';
+        const fillColor = isHeader
+          ? '#e2e8f0'
+          : rowIndex % 2 === 0
+            ? '#ffffff'
+            : '#f8fafc';
+
+        doc
+          .save()
+          .lineWidth(0.65)
+          .rect(x, y, column.width, rowHeight)
+          .fillAndStroke(fillColor, '#cbd5e1')
+          .restore();
+
+        doc
+          .font(isHeader ? 'Helvetica-Bold' : 'Helvetica')
+          .fontSize(isHeader ? 8 : 7.8)
+          .fillColor('#0f172a')
+          .text(cellValue, x + paddingX, y + paddingY, {
+            width: column.width - paddingX * 2,
+            align: column.align ?? 'left',
+          });
+
+        x += column.width;
+      }
+
+      return rowHeight;
+    };
+
+    const headers = columns.map((column) => column.label);
+    let y = doc.y;
+
+    const drawHeader = () => {
+      y = doc.y;
+      y += drawRow(headers, y, 0, true);
+    };
+
+    drawHeader();
+
+    rows.forEach((row, index) => {
+      const rowHeight = measureRowHeight(row);
       if (y + rowHeight > pageBottom) {
         doc.addPage();
-        y = doc.page.margins.top;
-        drawRow(headers, y, true);
-        y += rowHeight;
+        drawHeader();
       }
-      drawRow(row, y);
-      y += rowHeight;
-    }
+      y += drawRow(row, y, index, false);
+    });
 
-    doc.y = y + 10;
+    doc.y = y + 12;
+  }
+
+  private getDynamicChunkSize(
+    doc: InstanceType<typeof PDFDocument>,
+    baseColumns: TableColumn[],
+    dynamicWidth: number,
+  ): number {
+    const baseWidth = baseColumns.reduce(
+      (sum, column) => sum + column.width,
+      0,
+    );
+    const available = Math.max(0, this.getContentWidth(doc) - baseWidth);
+    return Math.max(1, Math.floor(available / dynamicWidth));
+  }
+
+  private chunkColumns<T>(columns: T[], chunkSize: number): T[][] {
+    const chunks: T[][] = [];
+    for (let index = 0; index < columns.length; index += chunkSize) {
+      chunks.push(columns.slice(index, index + chunkSize));
+    }
+    return chunks;
   }
 
   private writeSummaryTable(
@@ -169,20 +273,22 @@ export class CourseReportPdfService {
     this.writeSectionTitle(
       doc,
       'Summary',
-      'Attendance and total marks collected up to the report date.',
+      'Attendance and cumulative marks captured up to the report generation time.',
     );
+
+    const columns: TableColumn[] = [
+      { label: 'Student ID', width: 92 },
+      { label: 'Student Name', width: 188 },
+      { label: 'Section', width: 78 },
+      { label: 'Attendance', width: 82, align: 'center' },
+      { label: 'Attendance %', width: 78, align: 'center' },
+      { label: 'Assignment Total', width: 94, align: 'center' },
+      { label: 'Lab Task Total', width: 94, align: 'center' },
+    ];
 
     this.drawTable(
       doc,
-      [
-        'Student ID',
-        'Name',
-        'Section',
-        'Attendance',
-        'Attendance %',
-        'Assignment Total',
-        'Lab Task Total',
-      ],
+      columns,
       rows.map((row) => {
         const attendancePercent =
           row.attendanceTotal > 0
@@ -199,7 +305,6 @@ export class CourseReportPdfService {
           String(row.labTaskTotal),
         ];
       }),
-      [90, 180, 80, 80, 80, 95, 90],
     );
   }
 
@@ -212,7 +317,7 @@ export class CourseReportPdfService {
       doc,
       'Attendance Breakdown',
       columns.length
-        ? 'Each lab shows Present (P), Absent (A), or no entry (—).'
+        ? 'Each lab shows Present (P), Absent (A), or no entry (—). Wide reports are split into clean column groups.'
         : 'No lab attendance has been recorded yet.',
     );
 
@@ -222,16 +327,42 @@ export class CourseReportPdfService {
       return;
     }
 
-    const headers = ['Student ID', 'Name', 'Section', ...columns.map((column) => column.label)];
-    const columnWidths = [85, 170, 70, ...columns.map(() => 54)];
-    const tableRows = rows.map((row) => [
-      row.studentId,
-      row.name,
-      row.sectionName,
-      ...columns.map((column) => column.values[row.studentId] ?? '—'),
-    ]);
+    const baseColumns: TableColumn[] = [
+      { label: 'Student ID', width: 84 },
+      { label: 'Student Name', width: 170 },
+      { label: 'Section', width: 70 },
+    ];
+    const dynamicWidth = 56;
+    const chunkSize = this.getDynamicChunkSize(doc, baseColumns, dynamicWidth);
+    const columnChunks = this.chunkColumns(columns, chunkSize);
 
-    this.drawTable(doc, headers, tableRows, columnWidths);
+    columnChunks.forEach((chunk, index) => {
+      if (index > 0) {
+        this.writeSectionTitle(
+          doc,
+          'Attendance Breakdown (Continued)',
+          `Activities ${index * chunkSize + 1}-${index * chunkSize + chunk.length} of ${columns.length}.`,
+        );
+      }
+
+      this.drawTable(
+        doc,
+        [
+          ...baseColumns,
+          ...chunk.map((column) => ({
+            label: column.label,
+            width: dynamicWidth,
+            align: 'center' as const,
+          })),
+        ],
+        rows.map((row) => [
+          row.studentId,
+          row.name,
+          row.sectionName,
+          ...chunk.map((column) => column.values[row.studentId] ?? '—'),
+        ]),
+      );
+    });
   }
 
   private writeScoreTable(
@@ -244,7 +375,7 @@ export class CourseReportPdfService {
       doc,
       title,
       columns.length
-        ? 'Scores are shown per activity with the maximum marks in the header.'
+        ? 'Scores are grouped into compact, repeatable tables to keep every page aligned and readable.'
         : `No ${title.toLowerCase()} data available yet.`,
     );
 
@@ -254,23 +385,44 @@ export class CourseReportPdfService {
       return;
     }
 
-    const headers = [
-      'Student ID',
-      'Name',
-      'Section',
-      ...columns.map((column) => `${column.label} (${column.maxMarks})`),
+    const baseColumns: TableColumn[] = [
+      { label: 'Student ID', width: 84 },
+      { label: 'Student Name', width: 170 },
+      { label: 'Section', width: 70 },
     ];
-    const columnWidths = [85, 170, 70, ...columns.map(() => 66)];
-    const tableRows = rows.map((row) => [
-      row.studentId,
-      row.name,
-      row.sectionName,
-      ...columns.map((column) => {
-        const value = column.values[row.studentId];
-        return value == null ? '—' : String(value);
-      }),
-    ]);
+    const dynamicWidth = 68;
+    const chunkSize = this.getDynamicChunkSize(doc, baseColumns, dynamicWidth);
+    const columnChunks = this.chunkColumns(columns, chunkSize);
 
-    this.drawTable(doc, headers, tableRows, columnWidths);
+    columnChunks.forEach((chunk, index) => {
+      if (index > 0) {
+        this.writeSectionTitle(
+          doc,
+          `${title} (Continued)`,
+          `Activities ${index * chunkSize + 1}-${index * chunkSize + chunk.length} of ${columns.length}.`,
+        );
+      }
+
+      this.drawTable(
+        doc,
+        [
+          ...baseColumns,
+          ...chunk.map((column) => ({
+            label: `${column.label}\nMax ${column.maxMarks}`,
+            width: dynamicWidth,
+            align: 'center' as const,
+          })),
+        ],
+        rows.map((row) => [
+          row.studentId,
+          row.name,
+          row.sectionName,
+          ...chunk.map((column) => {
+            const value = column.values[row.studentId];
+            return value == null ? '—' : String(value);
+          }),
+        ]),
+      );
+    });
   }
 }

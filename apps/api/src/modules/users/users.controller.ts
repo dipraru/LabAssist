@@ -28,6 +28,9 @@ class UpdateStudentProfileDto {
   @IsOptional() @IsDateString() dateOfBirth?: string;
   @IsOptional() @IsString() fathersName?: string;
   @IsOptional() @IsString() mothersName?: string;
+  @IsOptional() @IsString() guardianPhone?: string;
+  @IsOptional() @IsString() permanentAddress?: string;
+  @IsOptional() @IsString() gender?: string;
   @IsOptional() @IsString() presentAddress?: string;
 }
 
@@ -56,26 +59,64 @@ export class UsersController {
   }
 
   @Patch('profile')
+  @UseInterceptors(FileInterceptor('photo', { storage: memoryStorage() }))
   async updateProfile(
     @CurrentUser() user: any,
     @Body() dto: UpdateStudentProfileDto,
+    @UploadedFile() file?: Express.Multer.File,
   ) {
     const student = await this.users.findStudentByUserId(user.id);
     if (student) {
-      const updated = await this.users.updateStudentSelfService(user.id, {
-        fullName: dto.fullName,
-        phone: dto.phone,
-        email: dto.email,
-        dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
-        fathersName: dto.fathersName,
-        mothersName: dto.mothersName,
-        presentAddress: dto.presentAddress,
-      });
-      return updated;
+      let savedPhoto:
+        | {
+            url: string;
+            filePath: string;
+          }
+        | undefined;
+
+      if (file) {
+        if (!file.mimetype?.startsWith('image/')) {
+          throw new BadRequestException('Profile photo must be an image');
+        }
+
+        savedPhoto = await this.storage.saveBuffer(
+          file.buffer,
+          `${uuidv4()}_${file.originalname}`,
+          'profiles',
+          5 * 1024 * 1024,
+        );
+      }
+
+      try {
+        const updated = await this.users.updateStudentSelfService(user.id, {
+          fullName: dto.fullName,
+          phone: dto.phone,
+          email: dto.email,
+          dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
+          fathersName: dto.fathersName,
+          mothersName: dto.mothersName,
+          guardianPhone: dto.guardianPhone,
+          permanentAddress: dto.permanentAddress,
+          gender: dto.gender,
+          presentAddress: dto.presentAddress,
+          profilePhoto: savedPhoto?.url,
+        });
+        return updated;
+      } catch (error) {
+        if (savedPhoto) {
+          this.storage.deleteFile(savedPhoto.filePath);
+        }
+        throw error;
+      }
     }
     // For teachers, delegate to teacher fields
     const teacher = await this.users.findTeacherByUserId(user.id);
     if (teacher) {
+      if (file) {
+        throw new ForbiddenException(
+          'Submit an office application to change your profile photo',
+        );
+      }
       return this.users.updateTeacherSelfService(user.id, {
         fullName: dto.fullName,
         email: dto.email,

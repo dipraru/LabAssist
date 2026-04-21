@@ -7,7 +7,12 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
-import { LabTest, LabActivityKind, LabTestStatus } from './entities/lab-test.entity';
+import {
+  LabTest,
+  LabActivityKind,
+  LabTestStatus,
+  type LabTestHelpMaterial,
+} from './entities/lab-test.entity';
 import { LabTestProblem } from './entities/lab-test-problem.entity';
 import { LabSubmission } from './entities/lab-submission.entity';
 import {
@@ -100,7 +105,10 @@ export class LabTestsService {
     private notifications: NotificationsService,
   ) {}
 
-  private async getTeacherCourseAccess(courseId: string, teacherUserId: string) {
+  private async getTeacherCourseAccess(
+    courseId: string,
+    teacherUserId: string,
+  ) {
     const teacher = await this.teacherRepo.findOne({
       where: { userId: teacherUserId },
     });
@@ -112,7 +120,9 @@ export class LabTestsService {
     });
     if (!course) throw new NotFoundException('Course not found');
 
-    const assigned = (course.teachers ?? []).some((item) => item.id === teacher.id);
+    const assigned = (course.teachers ?? []).some(
+      (item) => item.id === teacher.id,
+    );
     if (!assigned) {
       throw new ForbiddenException('You are not assigned to this course');
     }
@@ -120,13 +130,17 @@ export class LabTestsService {
     return { teacher, course };
   }
 
-  private async getCourseBatchSections(course: Course): Promise<BatchSection[]> {
+  private async getCourseBatchSections(
+    course: Course,
+  ): Promise<BatchSection[]> {
     if (!(course as Course & { semester?: any })?.semester?.batchYear) {
       return [];
     }
 
     const batch = await this.batchRepo.findOne({
-      where: { year: (course as Course & { semester?: any }).semester.batchYear },
+      where: {
+        year: (course as Course & { semester?: any }).semester.batchYear,
+      },
     });
 
     return batch?.sections ?? [];
@@ -134,10 +148,14 @@ export class LabTestsService {
 
   private async getCourseSectionNames(course: Course): Promise<string[]> {
     const batchSections = await this.getCourseBatchSections(course);
-    const batchNames = batchSections.map((section) => normalizeSectionName(section.name));
-    const scheduleNames = Array.isArray((course as Course & { schedules?: any[] }).schedules)
-      ? ((course as Course & { schedules?: any[] }).schedules ?? []).map((schedule: any) =>
-          normalizeSectionName(schedule?.sectionName),
+    const batchNames = batchSections.map((section) =>
+      normalizeSectionName(section.name),
+    );
+    const scheduleNames = Array.isArray(
+      (course as Course & { schedules?: any[] }).schedules,
+    )
+      ? ((course as Course & { schedules?: any[] }).schedules ?? []).map(
+          (schedule: any) => normalizeSectionName(schedule?.sectionName),
         )
       : [];
 
@@ -187,21 +205,27 @@ export class LabTestsService {
         relations: ['sections'],
       });
       if (!labClass || labClass.courseId !== course.id) {
-        throw new BadRequestException('Selected lab class does not belong to this course');
+        throw new BadRequestException(
+          'Selected lab class does not belong to this course',
+        );
       }
       if (
         !(labClass.sections ?? []).some(
-          (section) => normalizeSectionName(section.sectionName) === normalizedSectionName,
+          (section) =>
+            normalizeSectionName(section.sectionName) === normalizedSectionName,
         )
       ) {
-        throw new BadRequestException('Selected lab class does not include this section');
+        throw new BadRequestException(
+          'Selected lab class does not include this section',
+        );
       }
 
       if (
         activityKind === LabActivityKind.LAB_TASK &&
         !(labClass.sections ?? []).some(
           (section) =>
-            normalizeSectionName(section.sectionName) === normalizedSectionName &&
+            normalizeSectionName(section.sectionName) ===
+              normalizedSectionName &&
             section.status === LabClassSectionStatus.CONDUCTED,
         )
       ) {
@@ -282,7 +306,9 @@ export class LabTestsService {
         if (!presentSectionsByLabClassId.has(labClass.id)) {
           presentSectionsByLabClassId.set(labClass.id, new Set());
         }
-        presentSectionsByLabClassId.get(labClass.id)?.add(normalizedSectionName);
+        presentSectionsByLabClassId
+          .get(labClass.id)
+          ?.add(normalizedSectionName);
       }
     }
 
@@ -349,14 +375,21 @@ export class LabTestsService {
     course: Course & { batchSections: BatchSection[] };
     sectionName: string;
   }> {
-    const access = await this.getStudentCourseAccess(labTest.courseId, studentUserId);
+    const access = await this.getStudentCourseAccess(
+      labTest.courseId,
+      studentUserId,
+    );
     const participation = await this.getStudentActivityParticipation(
       labTest.courseId,
       access.student.id,
     );
 
-    if (!this.canStudentAccessActivity(labTest, access.sectionName, participation)) {
-      throw new ForbiddenException('This lab activity is not assigned to your section');
+    if (
+      !this.canStudentAccessActivity(labTest, access.sectionName, participation)
+    ) {
+      throw new ForbiddenException(
+        'This lab activity is not assigned to your section',
+      );
     }
 
     return access;
@@ -417,7 +450,10 @@ export class LabTestsService {
       return;
     }
 
-    await this.labTestRepo.update({ id: In(expiredIds) }, { status: LabTestStatus.ENDED });
+    await this.labTestRepo.update(
+      { id: In(expiredIds) },
+      { status: LabTestStatus.ENDED },
+    );
     labTests.forEach((labTest) => {
       if (expiredIds.includes(labTest.id)) {
         labTest.status = LabTestStatus.ENDED;
@@ -440,9 +476,13 @@ export class LabTestsService {
 
     if (
       values.sourceProblemId &&
-      existingProblems.some((problem) => problem.sourceProblemId === values.sourceProblemId)
+      existingProblems.some(
+        (problem) => problem.sourceProblemId === values.sourceProblemId,
+      )
     ) {
-      throw new BadRequestException('This problem is already added to the activity');
+      throw new BadRequestException(
+        'This problem is already added to the activity',
+      );
     }
 
     const normalizedTitle = normalizeTextValue(values.title);
@@ -458,7 +498,9 @@ export class LabTestsService {
     );
 
     if (hasSameContent) {
-      throw new BadRequestException('This problem is already added to the activity');
+      throw new BadRequestException(
+        'This problem is already added to the activity',
+      );
     }
   }
 
@@ -555,17 +597,39 @@ export class LabTestsService {
     return null;
   }
 
-  private buildProblemCopy(problem: Problem | CreateProblemDto, sourceProblemId?: string | null) {
-    const marks = 'marks' in problem ? problem.marks ?? null : null;
+  private isZipArchiveName(fileName: string | null | undefined): boolean {
+    return `${fileName ?? ''}`.trim().toLowerCase().endsWith('.zip');
+  }
+
+  private resolveBooleanFlag(value: unknown, defaultValue: boolean): boolean {
+    if (value === undefined || value === null) return defaultValue;
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['false', '0', 'off', 'no'].includes(normalized)) return false;
+      if (['true', '1', 'on', 'yes'].includes(normalized)) return true;
+    }
+    return Boolean(value);
+  }
+
+  private buildProblemCopy(
+    problem: Problem | CreateProblemDto,
+    sourceProblemId?: string | null,
+  ) {
+    const marks = 'marks' in problem ? (problem.marks ?? null) : null;
     const normalizedTitle = problem.title?.trim() || 'Untitled Problem';
     const normalizedStatement = problem.statement?.trim() || '';
     return {
       title: normalizedTitle,
       statement: normalizedStatement,
       inputDescription:
-        'inputDescription' in problem ? problem.inputDescription ?? null : null,
+        'inputDescription' in problem
+          ? (problem.inputDescription ?? null)
+          : null,
       outputDescription:
-        'outputDescription' in problem ? problem.outputDescription ?? null : null,
+        'outputDescription' in problem
+          ? (problem.outputDescription ?? null)
+          : null,
       marks,
       timeLimitMs: problem.timeLimitMs ?? 1000,
       memoryLimitKb: problem.memoryLimitKb ?? 262144,
@@ -585,7 +649,10 @@ export class LabTestsService {
     };
   }
 
-  private async saveProblemIntoBank(dto: CreateProblemDto, teacherUserId: string) {
+  private async saveProblemIntoBank(
+    dto: CreateProblemDto,
+    teacherUserId: string,
+  ) {
     const problemCode = await this.generateProblemCode();
     const normalizedTitle = dto.title?.trim() || 'Untitled Problem';
     const normalizedStatement = dto.statement?.trim() || '';
@@ -628,12 +695,14 @@ export class LabTestsService {
     submissionId: string,
     includeHiddenCases: boolean,
   ): Promise<JudgeJobPayload> {
-    const sampleCases = (problem.sampleTestCases ?? []).map((testCase, index) => ({
-      index: index + 1,
-      isSample: true,
-      input: testCase.input ?? '',
-      output: testCase.output ?? '',
-    }));
+    const sampleCases = (problem.sampleTestCases ?? []).map(
+      (testCase, index) => ({
+        index: index + 1,
+        isSample: true,
+        input: testCase.input ?? '',
+        output: testCase.output ?? '',
+      }),
+    );
     const hiddenCases = includeHiddenCases
       ? (problem.hiddenTestCases ?? []).map((testCase, index) => ({
           index: sampleCases.length + index + 1,
@@ -699,7 +768,10 @@ export class LabTestsService {
     dto: CreateLabTestDto,
     teacherUserId: string,
   ): Promise<LabTest> {
-    const { course } = await this.getTeacherCourseAccess(dto.courseId, teacherUserId);
+    const { course } = await this.getTeacherCourseAccess(
+      dto.courseId,
+      teacherUserId,
+    );
     const { sectionName, labClass } = await this.validateActivityPlacement(
       course,
       dto.activityKind,
@@ -731,6 +803,8 @@ export class LabTestsService {
         durationMinutes,
         totalMarks: dto.totalMarks ?? null,
         sectionName,
+        proctoringEnabled: this.resolveBooleanFlag(dto.proctoringEnabled, true),
+        helpMaterials: [],
         labClassId: labClass?.id ?? null,
         status: LabTestStatus.DRAFT,
       });
@@ -770,7 +844,10 @@ export class LabTestsService {
     const labTest = await this.labTestRepo.findOneBy({ id: labTestId });
     if (!labTest) throw new NotFoundException('Lab test not found');
 
-    const { course } = await this.getTeacherCourseAccess(labTest.courseId, teacherUserId);
+    const { course } = await this.getTeacherCourseAccess(
+      labTest.courseId,
+      teacherUserId,
+    );
     await this.syncExpiredActivities([labTest]);
 
     if (labTest.status !== LabTestStatus.DRAFT) {
@@ -788,7 +865,9 @@ export class LabTestsService {
 
     if (labTest.activityKind === LabActivityKind.LAB_TEST) {
       const nextTitle =
-        dto.title !== undefined ? dto.title.trim() : (labTest.title ?? '').trim();
+        dto.title !== undefined
+          ? dto.title.trim()
+          : (labTest.title ?? '').trim();
       if (!nextTitle) {
         throw new BadRequestException('Title is required');
       }
@@ -809,9 +888,64 @@ export class LabTestsService {
     if (dto.totalMarks !== undefined) {
       labTest.totalMarks = dto.totalMarks ?? null;
     }
+    if (dto.proctoringEnabled !== undefined) {
+      labTest.proctoringEnabled = this.resolveBooleanFlag(
+        dto.proctoringEnabled,
+        true,
+      );
+    }
 
     labTest.sectionName = sectionName;
     labTest.labClassId = labClass?.id ?? null;
+    return this.labTestRepo.save(labTest);
+  }
+
+  async uploadHelpMaterials(
+    labTestId: string,
+    teacherUserId: string,
+    files: Express.Multer.File[],
+  ): Promise<LabTest> {
+    const labTest = await this.labTestRepo.findOneBy({ id: labTestId });
+    if (!labTest) {
+      throw new NotFoundException('Lab test not found');
+    }
+    await this.getTeacherCourseAccess(labTest.courseId, teacherUserId);
+    await this.syncExpiredActivities([labTest]);
+
+    if (labTest.status !== LabTestStatus.DRAFT) {
+      throw new BadRequestException(
+        'Help PDFs can be edited only for draft activities',
+      );
+    }
+    if (!files.length) {
+      throw new BadRequestException('Provide at least one PDF file');
+    }
+
+    const nextHelpMaterials = [...(labTest.helpMaterials ?? [])];
+    for (const file of files) {
+      const isPdf =
+        file.mimetype === 'application/pdf' ||
+        `${file.originalname ?? ''}`.trim().toLowerCase().endsWith('.pdf');
+      if (!isPdf) {
+        throw new BadRequestException('Only PDF files are allowed');
+      }
+
+      const saved = await this.storage.saveBuffer(
+        file.buffer,
+        `${uuidv4()}_${file.originalname}`,
+        'materials',
+        10 * 1024 * 1024,
+      );
+
+      nextHelpMaterials.push({
+        id: uuidv4(),
+        fileName: file.originalname,
+        url: saved.url,
+        uploadedAt: new Date().toISOString(),
+      } satisfies LabTestHelpMaterial);
+    }
+
+    labTest.helpMaterials = nextHelpMaterials;
     return this.labTestRepo.save(labTest);
   }
 
@@ -832,7 +966,10 @@ export class LabTestsService {
     return this.saveProblemIntoBank(dto, teacherUserId);
   }
 
-  async getReusableProblemById(id: string, teacherUserId: string): Promise<Problem> {
+  async getReusableProblemById(
+    id: string,
+    teacherUserId: string,
+  ): Promise<Problem> {
     const problem = await this.problemBankRepo.findOneBy({ id });
     if (!problem) {
       throw new NotFoundException('Problem not found');
@@ -906,7 +1043,9 @@ export class LabTestsService {
     if (!labTest) throw new NotFoundException('Lab test not found');
     await this.getTeacherCourseAccess(labTest.courseId, teacherUserId);
 
-    const existingCount = await this.problemRepo.count({ where: { labTestId } });
+    const existingCount = await this.problemRepo.count({
+      where: { labTestId },
+    });
     await this.ensureProblemIsUnique(labTestId, dto);
 
     const bankProblem =
@@ -932,10 +1071,15 @@ export class LabTestsService {
     if (!labTest) throw new NotFoundException('Lab test not found');
     await this.getTeacherCourseAccess(labTest.courseId, teacherUserId);
 
-    const sourceProblem = await this.problemBankRepo.findOneBy({ id: dto.problemId });
-    if (!sourceProblem) throw new NotFoundException('Problem bank entry not found');
+    const sourceProblem = await this.problemBankRepo.findOneBy({
+      id: dto.problemId,
+    });
+    if (!sourceProblem)
+      throw new NotFoundException('Problem bank entry not found');
 
-    const existingCount = await this.problemRepo.count({ where: { labTestId } });
+    const existingCount = await this.problemRepo.count({
+      where: { labTestId },
+    });
     await this.ensureProblemIsUnique(labTestId, {
       title: sourceProblem.title,
       statement: sourceProblem.statement,
@@ -961,10 +1105,15 @@ export class LabTestsService {
     await this.getTeacherCourseAccess(labTest.courseId, teacherUserId);
 
     if (labTest.status !== LabTestStatus.DRAFT) {
-      throw new BadRequestException('Problems can be removed only from draft activities');
+      throw new BadRequestException(
+        'Problems can be removed only from draft activities',
+      );
     }
 
-    const problem = await this.problemRepo.findOneBy({ id: problemId, labTestId });
+    const problem = await this.problemRepo.findOneBy({
+      id: problemId,
+      labTestId,
+    });
     if (!problem) {
       throw new NotFoundException('Problem not found');
     }
@@ -1000,10 +1149,15 @@ export class LabTestsService {
     await this.getTeacherCourseAccess(labTest.courseId, teacherUserId);
 
     if (labTest.status !== LabTestStatus.DRAFT) {
-      throw new BadRequestException('Problems can be updated only for draft activities');
+      throw new BadRequestException(
+        'Problems can be updated only for draft activities',
+      );
     }
 
-    const problem = await this.problemRepo.findOneBy({ id: problemId, labTestId });
+    const problem = await this.problemRepo.findOneBy({
+      id: problemId,
+      labTestId,
+    });
     if (!problem) {
       throw new NotFoundException('Problem not found');
     }
@@ -1081,16 +1235,17 @@ export class LabTestsService {
     labClassId?: string,
   ): Promise<LabTest[]> {
     let viewerSectionName: string | null = null;
-    let participation:
-      | {
-          presentSectionsByLabClassId: Map<string, Set<string>>;
-          submittedActivityIds: Set<string>;
-        }
-      | null = null;
+    let participation: {
+      presentSectionsByLabClassId: Map<string, Set<string>>;
+      submittedActivityIds: Set<string>;
+    } | null = null;
     if (role === UserRole.TEACHER) {
       await this.getTeacherCourseAccess(courseId, requesterUserId);
     } else {
-      const studentAccess = await this.getStudentCourseAccess(courseId, requesterUserId);
+      const studentAccess = await this.getStudentCourseAccess(
+        courseId,
+        requesterUserId,
+      );
       viewerSectionName = studentAccess.sectionName;
       participation = await this.getStudentActivityParticipation(
         courseId,
@@ -1197,10 +1352,17 @@ export class LabTestsService {
     });
   }
 
-  async getProctoringEventsForLabTest(labTestId: string, teacherUserId: string) {
+  async getProctoringEventsForLabTest(
+    labTestId: string,
+    teacherUserId: string,
+  ) {
     const labTest = await this.labTestRepo.findOneBy({ id: labTestId });
     if (!labTest) throw new NotFoundException('Lab test not found');
     await this.getTeacherCourseAccess(labTest.courseId, teacherUserId);
+
+    if (labTest.proctoringEnabled === false) {
+      return [];
+    }
 
     return this.proctoringEventRepo.find({
       where: { labTestId },
@@ -1237,7 +1399,9 @@ export class LabTestsService {
 
   // Student
 
-  async getRunningLabTestsForStudent(studentUserId: string): Promise<LabTest[]> {
+  async getRunningLabTestsForStudent(
+    studentUserId: string,
+  ): Promise<LabTest[]> {
     const student = await this.studentRepo.findOne({
       where: { userId: studentUserId },
     });
@@ -1263,7 +1427,10 @@ export class LabTestsService {
     >();
     for (const course of courses) {
       const batchSections = await this.getCourseBatchSections(course);
-      sectionByCourseId.set(course.id, this.resolveStudentSection(student, batchSections));
+      sectionByCourseId.set(
+        course.id,
+        this.resolveStudentSection(student, batchSections),
+      );
       participationByCourseId.set(
         course.id,
         await this.getStudentActivityParticipation(course.id, student.id),
@@ -1293,7 +1460,10 @@ export class LabTestsService {
     });
   }
 
-  async getProblemsForStudent(labTestId: string, studentUserId: string): Promise<any[]> {
+  async getProblemsForStudent(
+    labTestId: string,
+    studentUserId: string,
+  ): Promise<any[]> {
     const labTest = await this.getLabTestById(labTestId);
     await this.ensureStudentCanAccessLabTest(labTest, studentUserId);
     if (labTest.status === LabTestStatus.DRAFT) {
@@ -1310,13 +1480,19 @@ export class LabTestsService {
 
   async getMySubmissionsForLabTest(labTestId: string, studentUserId: string) {
     const labTest = await this.getLabTestById(labTestId);
-    const { student } = await this.ensureStudentCanAccessLabTest(labTest, studentUserId);
+    const { student } = await this.ensureStudentCanAccessLabTest(
+      labTest,
+      studentUserId,
+    );
     const problems = await this.problemRepo.findBy({ labTestId });
     const problemIds = problems.map((problem) => problem.id);
     if (!problemIds.length) return [];
 
     return this.submissionRepo.find({
-      where: problemIds.map((problemId) => ({ problemId, studentId: student.id })),
+      where: problemIds.map((problemId) => ({
+        problemId,
+        studentId: student.id,
+      })),
       relations: ['problem'],
       order: { submittedAt: 'DESC' },
     });
@@ -1339,6 +1515,10 @@ export class LabTestsService {
     );
     await this.syncExpiredActivities([labTest]);
 
+    if (labTest.proctoringEnabled === false) {
+      return { ignored: true };
+    }
+
     const now = new Date();
     if (
       labTest.status !== LabTestStatus.RUNNING ||
@@ -1356,7 +1536,9 @@ export class LabTestsService {
         labTestId,
       });
       if (!problem) {
-        throw new BadRequestException('Problem does not belong to this lab activity');
+        throw new BadRequestException(
+          'Problem does not belong to this lab activity',
+        );
       }
     }
 
@@ -1438,7 +1620,12 @@ export class LabTestsService {
       throw new ForbiddenException('Lab activity is not currently running');
     }
 
-    return this.judgeProblemSubmission(problem, sourceCode, dto.language, false);
+    return this.judgeProblemSubmission(
+      problem,
+      sourceCode,
+      dto.language,
+      false,
+    );
   }
 
   async submitCode(
@@ -1473,15 +1660,21 @@ export class LabTestsService {
 
     let fileUrl: string | null = null;
     let fileName: string | null = null;
+    const zipUpload = this.isZipArchiveName(file?.originalname);
     if (file) {
-      if (file.size > 256 * 1024) {
-        throw new BadRequestException('File too large (max 256KB)');
+      const maxBytes = zipUpload ? 10 * 1024 * 1024 : 1024 * 1024;
+      if (file.size > maxBytes) {
+        throw new BadRequestException(
+          zipUpload
+            ? 'ZIP file too large (max 10MB)'
+            : 'File too large (max 1MB)',
+        );
       }
       const saved = await this.storage.saveBuffer(
         file.buffer,
         `${uuidv4()}_${file.originalname}`,
         'submissions',
-        256 * 1024,
+        maxBytes,
       );
       fileUrl = saved.url;
       fileName = file.originalname;
@@ -1489,38 +1682,48 @@ export class LabTestsService {
 
     const sourceCode = dto.code?.trim()
       ? dto.code.trim()
-      : fileUrl
+      : fileUrl && !zipUpload
         ? await this.storage.readTextFileByUrl(fileUrl)
         : null;
-    if (!sourceCode) {
+    if (!sourceCode && !zipUpload) {
       throw new BadRequestException('Code or file is required');
     }
 
-    const language = dto.language ?? this.inferLanguageFromFileName(fileName);
-    if (!language) {
+    const language = zipUpload
+      ? null
+      : (dto.language ?? this.inferLanguageFromFileName(fileName));
+    if (!zipUpload && !language) {
       throw new BadRequestException('Language is required');
     }
 
     const submission = this.submissionRepo.create({
       problemId,
       studentId: student.id,
-      code: dto.code ?? null,
+      code: zipUpload ? null : sourceCode,
       fileUrl,
       fileName,
       language,
-      submissionStatus: SubmissionStatus.PENDING,
+      submissionStatus: zipUpload
+        ? SubmissionStatus.MANUAL_REVIEW
+        : SubmissionStatus.PENDING,
       judgeToken: uuidv4(),
-      judgeMessage: null,
+      judgeMessage: zipUpload
+        ? 'ZIP archive uploaded for manual review. Your teacher can download it and grade it from the website after local checking.'
+        : null,
       compileOutput: null,
       testcaseResults: [],
     });
     const saved = await this.submissionRepo.save(submission);
 
+    if (zipUpload) {
+      return saved;
+    }
+
     try {
       const judgeResult = await this.judgeProblemSubmission(
         problem,
-        sourceCode,
-        language,
+        sourceCode!,
+        language!,
         true,
         saved.id,
       );
@@ -1575,7 +1778,9 @@ export class LabTestsService {
     executionTimeMs?: number,
     memoryUsedKb?: number,
   ) {
-    const submission = await this.submissionRepo.findOneBy({ id: submissionId });
+    const submission = await this.submissionRepo.findOneBy({
+      id: submissionId,
+    });
     if (!submission) throw new NotFoundException('Submission not found');
     submission.submissionStatus = verdict;
     submission.executionTimeMs = executionTimeMs ?? null;

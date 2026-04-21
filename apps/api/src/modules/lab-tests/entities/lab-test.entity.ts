@@ -24,6 +24,13 @@ export enum LabTestStatus {
   ENDED = 'ended',
 }
 
+export type LabTestHelpMaterial = {
+  id: string;
+  fileName: string;
+  url: string;
+  uploadedAt: string;
+};
+
 @Entity('lab_tests')
 export class LabTest {
   @PrimaryGeneratedColumn('uuid')
@@ -63,6 +70,12 @@ export class LabTest {
   @Column({ type: 'varchar', nullable: true })
   sectionName: string | null;
 
+  @Column({ type: 'boolean', default: true })
+  proctoringEnabled: boolean;
+
+  @Column({ type: 'jsonb', default: '[]' })
+  helpMaterials: LabTestHelpMaterial[];
+
   @ManyToOne(() => Course, { eager: true, onDelete: 'CASCADE' })
   @JoinColumn()
   course: Course;
@@ -70,7 +83,11 @@ export class LabTest {
   @Column()
   courseId: string;
 
-  @ManyToOne(() => LabClass, { eager: true, nullable: true, onDelete: 'SET NULL' })
+  @ManyToOne(() => LabClass, {
+    eager: true,
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
   @JoinColumn()
   labClass: LabClass | null;
 

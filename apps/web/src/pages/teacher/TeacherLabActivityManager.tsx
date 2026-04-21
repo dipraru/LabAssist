@@ -1,14 +1,21 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useFieldArray, useForm } from 'react-hook-form';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
-import toast from 'react-hot-toast';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
+import { useFieldArray, useForm } from "react-hook-form";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import toast from "react-hot-toast";
 import {
   BookOpen,
   ChevronDown,
   ChevronRight,
   Clock3,
+  Eye,
   Files,
   PencilLine,
   PlayCircle,
@@ -17,27 +24,29 @@ import {
   ShieldAlert,
   StopCircle,
   Trash2,
-} from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
-import { api } from '../../lib/api';
-import { Modal } from '../../components/Modal';
-import { courseCode, courseTitle, studentDisplayName } from '../../lib/display';
-import { useAuthStore } from '../../store/auth.store';
+  Upload,
+} from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { api } from "../../lib/api";
+import { LabSubmissionViewer } from "../../components/LabSubmissionViewer";
+import { Modal } from "../../components/Modal";
+import { courseCode, courseTitle, studentDisplayName } from "../../lib/display";
+import { useAuthStore } from "../../store/auth.store";
 import {
   formatDateTime,
   getCourseSectionNames,
   isCourseArchived,
-} from './teacher.shared';
+} from "./teacher.shared";
 
 const verdictEnum = z.enum([
-  'accepted',
-  'wrong_answer',
-  'time_limit_exceeded',
-  'memory_limit_exceeded',
-  'runtime_error',
-  'compilation_error',
-  'partial',
-  'pending',
+  "accepted",
+  "wrong_answer",
+  "time_limit_exceeded",
+  "memory_limit_exceeded",
+  "runtime_error",
+  "compilation_error",
+  "partial",
+  "pending",
 ]);
 
 const sampleCaseSchema = z.object({
@@ -53,30 +62,31 @@ const hiddenCaseSchema = z.object({
 
 const activitySchema = z
   .object({
-    courseId: z.string().uuid('Select a course'),
+    courseId: z.string().uuid("Select a course"),
     title: z.string().trim().optional(),
     description: z.string().optional(),
-    activityKind: z.enum(['lab_test', 'lab_task']),
-    type: z.enum(['verdict_based', 'non_verdict']),
-    durationMinutes: z.number().int().positive('Duration is required'),
+    activityKind: z.enum(["lab_test", "lab_task"]),
+    type: z.enum(["verdict_based", "non_verdict"]),
+    durationMinutes: z.number().int().positive("Duration is required"),
     totalMarks: z.number().positive().optional(),
-    sectionName: z.string().trim().min(1, 'Section is required'),
+    sectionName: z.string().trim().min(1, "Section is required"),
     labClassId: z.string().optional(),
+    proctoringEnabled: z.boolean(),
   })
   .superRefine((value, context) => {
-    if (value.activityKind === 'lab_test' && !value.title?.trim()) {
+    if (value.activityKind === "lab_test" && !value.title?.trim()) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Title is required',
-        path: ['title'],
+        message: "Title is required",
+        path: ["title"],
       });
     }
 
-    if (value.activityKind === 'lab_task' && !value.labClassId) {
+    if (value.activityKind === "lab_task" && !value.labClassId) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Select a lab class',
-        path: ['labClassId'],
+        message: "Select a lab class",
+        path: ["labClassId"],
       });
     }
   });
@@ -98,9 +108,9 @@ const gradeSchema = z.object({
   instructorNote: z.string().optional(),
 });
 
-type LabActivityKindValue = 'lab_test' | 'lab_task';
-type ActivityTab = 'manage' | 'problems' | 'submissions' | 'alerts';
-type ProblemCatalogTab = 'mine' | 'bank';
+type LabActivityKindValue = "lab_test" | "lab_task";
+type ActivityTab = "manage" | "problems" | "submissions" | "alerts";
+type ProblemCatalogTab = "mine" | "bank";
 
 type ActivityFormData = z.infer<typeof activitySchema>;
 type ProblemFormData = z.infer<typeof problemSchema>;
@@ -128,34 +138,34 @@ export type TeacherLabActivityManagerProps = {
 };
 
 function humanize(value: string | null | undefined) {
-  return `${value ?? ''}`
-    .replace(/_/g, ' ')
+  return `${value ?? ""}`
+    .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function statusBadge(status: string) {
-  if (status === 'running') return 'bg-emerald-100 text-emerald-700';
-  if (status === 'ended') return 'bg-slate-100 text-slate-600';
-  return 'bg-amber-100 text-amber-700';
+  if (status === "running") return "bg-emerald-100 text-emerald-700";
+  if (status === "ended") return "bg-slate-100 text-slate-600";
+  return "bg-amber-100 text-amber-700";
 }
 
 function verdictBadge(verdict: string | null | undefined) {
   switch (verdict) {
-    case 'accepted':
-      return 'bg-emerald-100 text-emerald-700';
-    case 'wrong_answer':
-      return 'bg-rose-100 text-rose-700';
-    case 'partial':
-      return 'bg-sky-100 text-sky-700';
-    case 'time_limit_exceeded':
-    case 'memory_limit_exceeded':
-    case 'runtime_error':
-    case 'compilation_error':
-      return 'bg-amber-100 text-amber-700';
-    case 'manual_review':
-      return 'bg-violet-100 text-violet-700';
+    case "accepted":
+      return "bg-emerald-100 text-emerald-700";
+    case "wrong_answer":
+      return "bg-rose-100 text-rose-700";
+    case "partial":
+      return "bg-sky-100 text-sky-700";
+    case "time_limit_exceeded":
+    case "memory_limit_exceeded":
+    case "runtime_error":
+    case "compilation_error":
+      return "bg-amber-100 text-amber-700";
+    case "manual_review":
+      return "bg-violet-100 text-violet-700";
     default:
-      return 'bg-slate-100 text-slate-600';
+      return "bg-slate-100 text-slate-600";
   }
 }
 
@@ -176,7 +186,9 @@ function getActivityDurationMinutes(activity: any): number {
   }
 
   if (activity?.startTime && activity?.endTime) {
-    const diff = new Date(activity.endTime).getTime() - new Date(activity.startTime).getTime();
+    const diff =
+      new Date(activity.endTime).getTime() -
+      new Date(activity.startTime).getTime();
     if (Number.isFinite(diff) && diff > 0) {
       return Math.max(1, Math.ceil(diff / 60_000));
     }
@@ -187,7 +199,7 @@ function getActivityDurationMinutes(activity: any): number {
 
 function formatDurationLabel(minutes: number | null | undefined) {
   const safeMinutes = minutes && minutes > 0 ? minutes : 0;
-  if (!safeMinutes) return '—';
+  if (!safeMinutes) return "—";
   if (safeMinutes < 60) return `${safeMinutes} min`;
 
   const hours = Math.floor(safeMinutes / 60);
@@ -200,14 +212,14 @@ function getActivityDisplayTitle(activity: any): string {
     return activity.title.trim();
   }
 
-  if (activity?.activityKind === 'lab_task') {
+  if (activity?.activityKind === "lab_task") {
     if (activity?.labClass?.labNumber) {
       return `Lab ${activity.labClass.labNumber} Task`;
     }
-    return 'Lab Task';
+    return "Lab Task";
   }
 
-  return 'Lab Test';
+  return "Lab Test";
 }
 
 function getDefaultHeading(
@@ -217,19 +229,19 @@ function getDefaultHeading(
 ): HeadingCopy {
   if (fixedCourseId && currentCourse) {
     return {
-      eyebrow: 'Course Workspace',
-      title: kind === 'lab_task' ? 'Lab Tasks' : 'Lab Tests',
+      eyebrow: "Course Workspace",
+      title: kind === "lab_task" ? "Lab Tasks" : "Lab Tests",
       description:
-        kind === 'lab_task'
-          ? 'Manage course lab tasks.'
-          : 'Manage course lab tests.',
+        kind === "lab_task"
+          ? "Manage course lab tasks."
+          : "Manage course lab tests.",
     };
   }
 
   return {
-    eyebrow: 'Teacher Workspace',
-    title: kind === 'lab_task' ? 'Lab Tasks' : 'Lab Tests',
-    description: 'Create, manage, and review lab activities.',
+    eyebrow: "Teacher Workspace",
+    title: kind === "lab_task" ? "Lab Tasks" : "Lab Tests",
+    description: "Create, manage, and review lab activities.",
   };
 }
 
@@ -250,28 +262,28 @@ function getProblemCode(problem: any, sourceProblemMap?: Map<string, any>) {
     return `ID-${String(problem.id).slice(0, 8).toUpperCase()}`;
   }
 
-  return 'ID-UNKNOWN';
+  return "ID-UNKNOWN";
 }
 
 function buildProblemPayload(values: ProblemFormData) {
   const sampleTestCases = values.sampleTestCases
     .map((sample) => ({
-      input: sample.input?.trim() ?? '',
-      output: sample.output?.trim() ?? '',
+      input: sample.input?.trim() ?? "",
+      output: sample.output?.trim() ?? "",
       explanation: sample.explanation?.trim() || undefined,
     }))
     .filter((sample) => sample.input || sample.output);
 
   const hiddenTestCases = values.hiddenTestCases
     .map((testCase) => ({
-      input: testCase.input?.trim() ?? '',
-      output: testCase.output?.trim() ?? '',
+      input: testCase.input?.trim() ?? "",
+      output: testCase.output?.trim() ?? "",
     }))
     .filter((testCase) => testCase.input || testCase.output);
 
   return {
-    title: values.title?.trim() ?? '',
-    statement: values.statement?.trim() ?? '',
+    title: values.title?.trim() ?? "",
+    statement: values.statement?.trim() ?? "",
     inputDescription: values.inputDescription?.trim() || undefined,
     outputDescription: values.outputDescription?.trim() || undefined,
     timeLimitMs: values.timeLimitMs,
@@ -281,12 +293,22 @@ function buildProblemPayload(values: ProblemFormData) {
   };
 }
 
-function formatRemainingTime(endTime: string | null | undefined, nowMs: number) {
+function isHelpPdfFile(file: File) {
+  return (
+    file.type === "application/pdf" ||
+    file.name.trim().toLowerCase().endsWith(".pdf")
+  );
+}
+
+function formatRemainingTime(
+  endTime: string | null | undefined,
+  nowMs: number,
+) {
   if (!endTime) return null;
 
   const diff = new Date(endTime).getTime() - nowMs;
   if (!Number.isFinite(diff) || diff <= 0) {
-    return 'Ended';
+    return "Ended";
   }
 
   const totalSeconds = Math.floor(diff / 1000);
@@ -319,12 +341,19 @@ export function TeacherLabActivityManager({
   const user = useAuthStore((state) => state.user);
   const [searchParams, setSearchParams] = useSearchParams();
   const [showActivityForm, setShowActivityForm] = useState(false);
-  const [activityTab, setActivityTab] = useState<ActivityTab>('manage');
-  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
+  const [activityTab, setActivityTab] = useState<ActivityTab>("manage");
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(
+    null,
+  );
   const [showProblemModal, setShowProblemModal] = useState(false);
-  const [editingProblemBankId, setEditingProblemBankId] = useState<string | null>(null);
-  const [problemCatalogTab, setProblemCatalogTab] = useState<ProblemCatalogTab>('mine');
-  const [selectedCatalogProblemId, setSelectedCatalogProblemId] = useState<string | null>(null);
+  const [editingProblemBankId, setEditingProblemBankId] = useState<
+    string | null
+  >(null);
+  const [problemCatalogTab, setProblemCatalogTab] =
+    useState<ProblemCatalogTab>("mine");
+  const [selectedCatalogProblemId, setSelectedCatalogProblemId] = useState<
+    string | null
+  >(null);
   const [showMyProblemsPanel, setShowMyProblemsPanel] = useState(true);
   const [showProblemBankPanel, setShowProblemBankPanel] = useState(true);
   const [scoreDrafts, setScoreDrafts] = useState<Record<string, string>>({});
@@ -332,44 +361,55 @@ export function TeacherLabActivityManager({
     initialSelectedActivityId ?? null,
   );
   const [gradingSubId, setGradingSubId] = useState<string | null>(null);
-  const [localCourseId, setLocalCourseId] = useState(fixedCourseId ?? '');
+  const [selectedSubmission, setSelectedSubmission] = useState<any | null>(
+    null,
+  );
+  const [localCourseId, setLocalCourseId] = useState(fixedCourseId ?? "");
   const [localKind, setLocalKind] = useState<LabActivityKindValue>(
-    fixedActivityKind ?? 'lab_test',
+    fixedActivityKind ?? "lab_test",
   );
   const [clockNow, setClockNow] = useState(() => Date.now());
+  const [helpPdfFiles, setHelpPdfFiles] = useState<File[]>([]);
 
   const controlledSelection = initialSelectedActivityId !== undefined;
-  const urlCourseId = searchParams.get('courseId') ?? '';
+  const urlCourseId = searchParams.get("courseId") ?? "";
   const urlKind: LabActivityKindValue =
-    searchParams.get('kind') === 'lab_task' ? 'lab_task' : 'lab_test';
-  const requestedActivityId = syncSearchParams ? searchParams.get('activityId') : null;
+    searchParams.get("kind") === "lab_task" ? "lab_task" : "lab_test";
+  const requestedActivityId = syncSearchParams
+    ? searchParams.get("activityId")
+    : null;
 
-  const filterCourse = fixedCourseId ?? (syncSearchParams ? urlCourseId : localCourseId);
-  const filterKind = fixedActivityKind ?? (syncSearchParams ? urlKind : localKind);
-  const sectionFilter = fixedSectionName?.trim() ?? '';
-  const labClassFilter = fixedLabClassId?.trim() ?? '';
+  const filterCourse =
+    fixedCourseId ?? (syncSearchParams ? urlCourseId : localCourseId);
+  const filterKind =
+    fixedActivityKind ?? (syncSearchParams ? urlKind : localKind);
+  const sectionFilter = fixedSectionName?.trim() ?? "";
+  const labClassFilter = fixedLabClassId?.trim() ?? "";
 
   const { data: courses = [] } = useQuery({
-    queryKey: ['my-courses'],
-    queryFn: () => api.get('/courses/my').then((response) => response.data),
+    queryKey: ["my-courses"],
+    queryFn: () => api.get("/courses/my").then((response) => response.data),
   });
 
   const { data: currentCourse } = useQuery({
-    queryKey: ['teacher-course', filterCourse],
-    queryFn: () => api.get(`/courses/${filterCourse}`).then((response) => response.data),
+    queryKey: ["teacher-course", filterCourse],
+    queryFn: () =>
+      api.get(`/courses/${filterCourse}`).then((response) => response.data),
     enabled: Boolean(filterCourse),
   });
 
   const { data: labClasses = [] } = useQuery({
-    queryKey: ['teacher-course-lab-classes', filterCourse],
+    queryKey: ["teacher-course-lab-classes", filterCourse],
     queryFn: () =>
-      api.get(`/courses/${filterCourse}/lab-classes`).then((response) => response.data),
+      api
+        .get(`/courses/${filterCourse}/lab-classes`)
+        .then((response) => response.data),
     enabled: Boolean(filterCourse),
   });
 
   const { data: labTests = [], isLoading: labTestsLoading } = useQuery({
     queryKey: [
-      'lab-tests-teacher',
+      "lab-tests-teacher",
       filterCourse,
       filterKind,
       sectionFilter,
@@ -388,18 +428,23 @@ export function TeacherLabActivityManager({
     enabled: Boolean(filterCourse),
     refetchInterval: (query) =>
       (query.state.data as any[])?.some(
-        (item: any) => item.id === selectedTestId && item.status === 'running',
+        (item: any) => item.id === selectedTestId && item.status === "running",
       )
         ? 5000
         : false,
   });
 
   const selectedTest = useMemo(
-    () => (labTests as any[]).find((item: any) => item.id === selectedTestId) ?? null,
+    () =>
+      (labTests as any[]).find((item: any) => item.id === selectedTestId) ??
+      null,
     [labTests, selectedTestId],
   );
 
-  const sectionNames = useMemo(() => getCourseSectionNames(currentCourse), [currentCourse]);
+  const sectionNames = useMemo(
+    () => getCourseSectionNames(currentCourse),
+    [currentCourse],
+  );
   const selectedCourseArchived = useMemo(
     () => (currentCourse ? isCourseArchived(currentCourse) : false),
     [currentCourse],
@@ -410,21 +455,27 @@ export function TeacherLabActivityManager({
     resolver: zodResolver(activitySchema),
     defaultValues: {
       courseId: filterCourse,
-      title: '',
-      description: '',
+      title: "",
+      description: "",
       activityKind: filterKind,
-      type: 'verdict_based',
+      type: "verdict_based",
       durationMinutes: 60,
       totalMarks: 100,
-      sectionName: fixedSectionName ?? '',
-      labClassId: fixedLabClassId ?? '',
+      sectionName: fixedSectionName ?? "",
+      labClassId: fixedLabClassId ?? "",
+      proctoringEnabled: true,
     },
   });
 
-  const watchedSectionName = fixedSectionName ?? activityForm.watch('sectionName');
-  const watchedLabClassId = fixedLabClassId ?? activityForm.watch('labClassId');
+  const watchedSectionName =
+    fixedSectionName ?? activityForm.watch("sectionName");
+  const watchedLabClassId = fixedLabClassId ?? activityForm.watch("labClassId");
+  const watchedProctoringEnabled = activityForm.watch("proctoringEnabled");
   const selectedLabClass = useMemo(
-    () => (labClasses as any[]).find((item: any) => item.id === watchedLabClassId) ?? null,
+    () =>
+      (labClasses as any[]).find(
+        (item: any) => item.id === watchedLabClassId,
+      ) ?? null,
     [labClasses, watchedLabClassId],
   );
   const availableTaskLabClasses = useMemo(
@@ -432,41 +483,46 @@ export function TeacherLabActivityManager({
       (labClasses as any[]).filter((labClass: any) =>
         (labClass.sections ?? []).some(
           (section: any) =>
-            `${section?.sectionName ?? ''}`.trim() === `${watchedSectionName ?? ''}`.trim() &&
-            section?.status === 'conducted',
+            `${section?.sectionName ?? ""}`.trim() ===
+              `${watchedSectionName ?? ""}`.trim() &&
+            section?.status === "conducted",
         ),
       ),
     [labClasses, watchedSectionName],
   );
 
   const { data: problems = [] } = useQuery({
-    queryKey: ['lab-test-problems', selectedTestId],
+    queryKey: ["lab-test-problems", selectedTestId],
     queryFn: () =>
-      api.get(`/lab-tests/${selectedTestId}/problems`).then((response) => response.data),
+      api
+        .get(`/lab-tests/${selectedTestId}/problems`)
+        .then((response) => response.data),
     enabled: Boolean(selectedTestId),
   });
 
   const { data: submissions = [] } = useQuery({
-    queryKey: ['lab-test-submissions', selectedTestId],
+    queryKey: ["lab-test-submissions", selectedTestId],
     queryFn: () =>
-      api.get(`/lab-tests/${selectedTestId}/submissions`).then((response) => response.data),
+      api
+        .get(`/lab-tests/${selectedTestId}/submissions`)
+        .then((response) => response.data),
     enabled: Boolean(selectedTestId),
   });
 
   const { data: proctoringEvents = [] } = useQuery({
-    queryKey: ['lab-test-proctoring-events', selectedTestId],
+    queryKey: ["lab-test-proctoring-events", selectedTestId],
     queryFn: () =>
       api
         .get(`/lab-tests/${selectedTestId}/proctoring-events`)
         .then((response) => response.data),
     enabled: Boolean(selectedTestId),
-    refetchInterval: selectedTest?.status === 'running' ? 5000 : false,
+    refetchInterval: selectedTest?.status === "running" ? 5000 : false,
   });
 
   const { data: problemBank = [] } = useQuery({
-    queryKey: ['teacher-problem-bank'],
+    queryKey: ["teacher-problem-bank"],
     queryFn: () =>
-      api.get('/lab-tests/problem-bank').then((response) => {
+      api.get("/lab-tests/problem-bank").then((response) => {
         const payload = response.data;
         if (Array.isArray(payload)) return payload;
         if (Array.isArray(payload?.items)) return payload.items;
@@ -476,21 +532,33 @@ export function TeacherLabActivityManager({
   });
 
   const myProblems = useMemo(
-    () => (problemBank as any[]).filter((problem: any) => problem.authorId === user?.id),
+    () =>
+      (problemBank as any[]).filter(
+        (problem: any) => problem.authorId === user?.id,
+      ),
     [problemBank, user?.id],
   );
   const bankProblems = useMemo(
-    () => (problemBank as any[]).filter((problem: any) => problem.authorId !== user?.id),
+    () =>
+      (problemBank as any[]).filter(
+        (problem: any) => problem.authorId !== user?.id,
+      ),
     [problemBank, user?.id],
   );
-  const activeCatalogProblems = problemCatalogTab === 'mine' ? myProblems : bankProblems;
+  const activeCatalogProblems =
+    problemCatalogTab === "mine" ? myProblems : bankProblems;
   const sourceProblemMap = useMemo(
-    () => new Map((problemBank as any[]).map((problem: any) => [problem.id, problem])),
+    () =>
+      new Map(
+        (problemBank as any[]).map((problem: any) => [problem.id, problem]),
+      ),
     [problemBank],
   );
   const selectedCatalogProblem = useMemo(
     () =>
-      activeCatalogProblems.find((problem: any) => problem.id === selectedCatalogProblemId) ??
+      activeCatalogProblems.find(
+        (problem: any) => problem.id === selectedCatalogProblemId,
+      ) ??
       activeCatalogProblems[0] ??
       null,
     [activeCatalogProblems, selectedCatalogProblemId],
@@ -499,10 +567,10 @@ export function TeacherLabActivityManager({
   const problemForm = useForm<ProblemFormData>({
     resolver: zodResolver(problemSchema),
     defaultValues: {
-      title: '',
-      statement: '',
-      inputDescription: '',
-      outputDescription: '',
+      title: "",
+      statement: "",
+      inputDescription: "",
+      outputDescription: "",
       timeLimitMs: 1000,
       memoryLimitKb: 262144,
       sampleTestCases: [],
@@ -512,32 +580,37 @@ export function TeacherLabActivityManager({
 
   const sampleFields = useFieldArray({
     control: problemForm.control,
-    name: 'sampleTestCases',
+    name: "sampleTestCases",
   });
   const hiddenFields = useFieldArray({
     control: problemForm.control,
-    name: 'hiddenTestCases',
+    name: "hiddenTestCases",
   });
 
   const gradeForm = useForm<GradeFormData>({
     resolver: zodResolver(gradeSchema),
     defaultValues: {
-      verdict: 'pending',
+      verdict: "pending",
       score: undefined,
-      instructorNote: '',
+      instructorNote: "",
     },
   });
 
-  const selectedDurationMinutes = selectedTest ? getActivityDurationMinutes(selectedTest) : 0;
-  const canEditSelectedTest = selectedTest?.status === 'draft';
+  const selectedDurationMinutes = selectedTest
+    ? getActivityDurationMinutes(selectedTest)
+    : 0;
+  const canEditSelectedTest = selectedTest?.status === "draft";
   const selectedSourceProblemIds = new Set(
     (problems as any[])
       .map((problem: any) => problem.sourceProblemId)
-      .filter((value: string | null | undefined): value is string => Boolean(value)),
+      .filter((value: string | null | undefined): value is string =>
+        Boolean(value),
+      ),
   );
-  const manageLocked = selectedTest?.status !== 'draft';
-  const kindLabel = filterKind === 'lab_task' ? 'Lab Tasks' : 'Lab Tests';
-  const headerCopy = heading ?? getDefaultHeading(filterKind, currentCourse, fixedCourseId);
+  const manageLocked = selectedTest?.status !== "draft";
+  const kindLabel = filterKind === "lab_task" ? "Lab Tasks" : "Lab Tests";
+  const headerCopy =
+    heading ?? getDefaultHeading(filterKind, currentCourse, fixedCourseId);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -571,9 +644,9 @@ export function TeacherLabActivityManager({
     const nextCourseId = (courses as any[])[0].id;
     if (syncSearchParams) {
       const next = new URLSearchParams(searchParams);
-      next.set('courseId', nextCourseId);
-      next.set('kind', filterKind);
-      next.delete('activityId');
+      next.set("courseId", nextCourseId);
+      next.set("kind", filterKind);
+      next.delete("activityId");
       setSearchParams(next, { replace: true });
       return;
     }
@@ -590,45 +663,45 @@ export function TeacherLabActivityManager({
   ]);
 
   useEffect(() => {
-    activityForm.setValue('courseId', filterCourse);
-    activityForm.setValue('activityKind', filterKind);
+    activityForm.setValue("courseId", filterCourse);
+    activityForm.setValue("activityKind", filterKind);
   }, [activityForm, filterCourse, filterKind]);
 
   useEffect(() => {
     if (fixedSectionName?.trim()) {
-      activityForm.setValue('sectionName', fixedSectionName.trim());
+      activityForm.setValue("sectionName", fixedSectionName.trim());
       return;
     }
 
-    const currentValue = activityForm.getValues('sectionName');
+    const currentValue = activityForm.getValues("sectionName");
     if (!sectionNames.length) {
-      activityForm.setValue('sectionName', '');
+      activityForm.setValue("sectionName", "");
       return;
     }
 
     if (!sectionNames.includes(currentValue)) {
-      activityForm.setValue('sectionName', sectionNames[0]);
+      activityForm.setValue("sectionName", sectionNames[0]);
     }
   }, [activityForm, fixedSectionName, sectionNames]);
 
   useEffect(() => {
     if (fixedLabClassId?.trim()) {
-      activityForm.setValue('labClassId', fixedLabClassId.trim());
+      activityForm.setValue("labClassId", fixedLabClassId.trim());
       return;
     }
 
-    if (filterKind !== 'lab_task') {
-      activityForm.setValue('labClassId', '');
+    if (filterKind !== "lab_task") {
+      activityForm.setValue("labClassId", "");
       return;
     }
 
-    const currentValue = activityForm.getValues('labClassId');
+    const currentValue = activityForm.getValues("labClassId");
     const availableIds = availableTaskLabClasses.map((item: any) => item.id);
     if (currentValue && availableIds.includes(currentValue)) {
       return;
     }
 
-    activityForm.setValue('labClassId', availableIds[0] ?? '');
+    activityForm.setValue("labClassId", availableIds[0] ?? "");
   }, [activityForm, availableTaskLabClasses, filterKind, fixedLabClassId]);
 
   useEffect(() => {
@@ -671,16 +744,21 @@ export function TeacherLabActivityManager({
   ]);
 
   useEffect(() => {
-    if (!syncSearchParams || fixedCourseId || fixedActivityKind || !selectedTestId) {
+    if (
+      !syncSearchParams ||
+      fixedCourseId ||
+      fixedActivityKind ||
+      !selectedTestId
+    ) {
       return;
     }
 
     const next = new URLSearchParams(searchParams);
     if (filterCourse) {
-      next.set('courseId', filterCourse);
+      next.set("courseId", filterCourse);
     }
-    next.set('kind', filterKind);
-    next.set('activityId', selectedTestId);
+    next.set("kind", filterKind);
+    next.set("activityId", selectedTestId);
     setSearchParams(next, { replace: true });
   }, [
     filterCourse,
@@ -694,8 +772,9 @@ export function TeacherLabActivityManager({
   ]);
 
   useEffect(() => {
-    setActivityTab('manage');
+    setActivityTab("manage");
     setGradingSubId(null);
+    setSelectedSubmission(null);
   }, [selectedTestId]);
 
   useEffect(() => {
@@ -703,7 +782,10 @@ export function TeacherLabActivityManager({
       const next: Record<string, string> = {};
       for (const problem of problems as any[]) {
         next[problem.id] =
-          current[problem.id] ?? (problem.marks === null || problem.marks === undefined ? '' : String(problem.marks));
+          current[problem.id] ??
+          (problem.marks === null || problem.marks === undefined
+            ? ""
+            : String(problem.marks));
       }
       return next;
     });
@@ -717,7 +799,9 @@ export function TeacherLabActivityManager({
 
     if (
       !selectedCatalogProblemId ||
-      !activeCatalogProblems.some((problem: any) => problem.id === selectedCatalogProblemId)
+      !activeCatalogProblems.some(
+        (problem: any) => problem.id === selectedCatalogProblemId,
+      )
     ) {
       setSelectedCatalogProblemId(activeCatalogProblems[0].id);
     }
@@ -733,38 +817,43 @@ export function TeacherLabActivityManager({
   const resetActivityForm = () => {
     activityForm.reset({
       courseId: filterCourse,
-      title: '',
-      description: '',
+      title: "",
+      description: "",
       activityKind: filterKind,
-      type: 'verdict_based',
+      type: "verdict_based",
       durationMinutes: 60,
       totalMarks: 100,
-      sectionName: fixedSectionName ?? sectionNames[0] ?? '',
+      sectionName: fixedSectionName ?? sectionNames[0] ?? "",
       labClassId:
-        fixedLabClassId ?? (filterKind === 'lab_task' ? availableTaskLabClasses[0]?.id ?? '' : ''),
+        fixedLabClassId ??
+        (filterKind === "lab_task"
+          ? (availableTaskLabClasses[0]?.id ?? "")
+          : ""),
+      proctoringEnabled: true,
     });
   };
 
   const populateActivityForm = (activity: any) => {
     activityForm.reset({
       courseId: activity.courseId,
-      title: activity.title ?? '',
-      description: activity.description ?? '',
+      title: activity.title ?? "",
+      description: activity.description ?? "",
       activityKind: activity.activityKind,
       type: activity.type,
       durationMinutes: getActivityDurationMinutes(activity),
       totalMarks: activity.totalMarks ?? 100,
-      sectionName: activity.sectionName ?? '',
-      labClassId: activity.labClassId ?? '',
+      sectionName: activity.sectionName ?? "",
+      labClassId: activity.labClassId ?? "",
+      proctoringEnabled: activity.proctoringEnabled ?? true,
     });
   };
 
   const resetProblemForm = () => {
     problemForm.reset({
-      title: '',
-      statement: '',
-      inputDescription: '',
-      outputDescription: '',
+      title: "",
+      statement: "",
+      inputDescription: "",
+      outputDescription: "",
       timeLimitMs: 1000,
       memoryLimitKb: 262144,
       sampleTestCases: [],
@@ -774,122 +863,234 @@ export function TeacherLabActivityManager({
 
   const populateProblemForm = (problem: any) => {
     problemForm.reset({
-      title: problem.title ?? '',
-      statement: problem.statement ?? '',
-      inputDescription: problem.inputDescription ?? '',
-      outputDescription: problem.outputDescription ?? '',
+      title: problem.title ?? "",
+      statement: problem.statement ?? "",
+      inputDescription: problem.inputDescription ?? "",
+      outputDescription: problem.outputDescription ?? "",
       timeLimitMs: problem.timeLimitMs ?? 1000,
       memoryLimitKb: problem.memoryLimitKb ?? 262144,
       sampleTestCases:
         Array.isArray(problem.sampleTestCases) && problem.sampleTestCases.length
           ? problem.sampleTestCases.map((sample: any) => ({
-              input: sample.input ?? '',
-              output: sample.output ?? '',
-              explanation: sample.explanation ?? sample.note ?? '',
+              input: sample.input ?? "",
+              output: sample.output ?? "",
+              explanation: sample.explanation ?? sample.note ?? "",
             }))
           : [],
       hiddenTestCases:
         Array.isArray(problem.hiddenTestCases) && problem.hiddenTestCases.length
           ? problem.hiddenTestCases.map((sample: any) => ({
-              input: sample.input ?? '',
-              output: sample.output ?? '',
+              input: sample.input ?? "",
+              output: sample.output ?? "",
             }))
           : [],
     });
   };
 
-  const invalidateActivityQueries = () => {
-    queryClient.invalidateQueries({ queryKey: ['lab-tests-teacher'] });
-    queryClient.invalidateQueries({ queryKey: ['teacher', 'course-lab-activities'] });
-    queryClient.invalidateQueries({ queryKey: ['student-lab-tests'] });
-    queryClient.invalidateQueries({ queryKey: ['teacher-lab-class-tasks'] });
+  const updateCachedActivity = (activity: any) => {
+    if (!activity?.id) return;
+
+    queryClient.setQueryData(
+      [
+        "lab-tests-teacher",
+        filterCourse,
+        filterKind,
+        sectionFilter,
+        labClassFilter,
+      ],
+      (current: any) => {
+        if (!Array.isArray(current)) return current;
+        return current.map((item: any) =>
+          item.id === activity.id ? { ...item, ...activity } : item,
+        );
+      },
+    );
+  };
+
+  const invalidateActivityQueries = (activityId?: string) => {
+    queryClient.invalidateQueries({ queryKey: ["lab-tests-teacher"] });
+    queryClient.invalidateQueries({
+      queryKey: ["teacher", "course-lab-activities"],
+    });
+    queryClient.invalidateQueries({ queryKey: ["student-lab-tests"] });
+    queryClient.invalidateQueries({ queryKey: ["student-lab-test-detail"] });
+    queryClient.invalidateQueries({ queryKey: ["teacher-lab-class-tasks"] });
+    if (activityId) {
+      queryClient.invalidateQueries({
+        queryKey: ["lab-test-proctoring-events", activityId],
+      });
+    }
+  };
+
+  const uploadHelpMaterials = async (activityId: string, files: File[]) => {
+    if (!files.length) {
+      return {
+        uploadedHelpCount: 0,
+        helpUploadError: null as string | null,
+      };
+    }
+
+    const formData = new FormData();
+    files.forEach((file) => formData.append("files", file));
+
+    try {
+      await api.post(
+        `/lab-tests/${activityId}/help-materials/upload`,
+        formData,
+      );
+      return {
+        uploadedHelpCount: files.length,
+        helpUploadError: null as string | null,
+      };
+    } catch (error: any) {
+      return {
+        uploadedHelpCount: 0,
+        helpUploadError:
+          error.response?.data?.message ?? "Help PDFs could not be uploaded",
+      };
+    }
   };
 
   const createActivityMutation = useMutation({
-    mutationFn: (values: ActivityFormData) =>
-      api.post('/lab-tests', {
+    mutationFn: async ({
+      values,
+      helpFiles,
+    }: {
+      values: ActivityFormData;
+      helpFiles: File[];
+    }) => {
+      const response = await api.post("/lab-tests", {
         ...values,
-        title: values.activityKind === 'lab_task' ? '' : values.title?.trim() ?? '',
+        title:
+          values.activityKind === "lab_task"
+            ? ""
+            : (values.title?.trim() ?? ""),
         description: values.description?.trim() || undefined,
         sectionName: fixedSectionName ?? values.sectionName,
         labClassId:
-          values.activityKind === 'lab_task'
-            ? fixedLabClassId ?? values.labClassId
+          values.activityKind === "lab_task"
+            ? (fixedLabClassId ?? values.labClassId)
             : undefined,
-      }),
-    onSuccess: (response) => {
+        proctoringEnabled: values.proctoringEnabled,
+      });
+      const helpUpload = await uploadHelpMaterials(response.data.id, helpFiles);
+      const freshResponse = await api.get(`/lab-tests/${response.data.id}`);
+      return { activity: freshResponse.data, ...helpUpload };
+    },
+    onSuccess: ({ activity, uploadedHelpCount, helpUploadError }) => {
       toast.success(
-        response.data.activityKind === 'lab_task' ? 'Lab task created' : 'Lab test created',
+        uploadedHelpCount
+          ? `${
+              activity.activityKind === "lab_task" ? "Lab task" : "Lab test"
+            } created and ${uploadedHelpCount} help PDF${
+              uploadedHelpCount === 1 ? "" : "s"
+            } uploaded`
+          : activity.activityKind === "lab_task"
+            ? "Lab task created"
+            : "Lab test created",
       );
-      invalidateActivityQueries();
-      setSelectedTestId(response.data.id);
+      if (helpUploadError) {
+        toast.error(helpUploadError);
+      }
+      updateCachedActivity(activity);
+      invalidateActivityQueries(activity.id);
+      setSelectedTestId(activity.id);
       setShowActivityForm(false);
       setEditingActivityId(null);
+      setHelpPdfFiles([]);
       resetActivityForm();
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message ?? 'Failed to create activity');
+      toast.error(error.response?.data?.message ?? "Failed to create activity");
     },
   });
 
   const updateActivityMutation = useMutation({
-    mutationFn: (values: ActivityFormData) =>
-      api.patch(`/lab-tests/${editingActivityId}`, {
-        title: values.activityKind === 'lab_task' ? '' : values.title?.trim() ?? '',
+    mutationFn: async ({
+      values,
+      helpFiles,
+    }: {
+      values: ActivityFormData;
+      helpFiles: File[];
+    }) => {
+      const response = await api.patch(`/lab-tests/${editingActivityId}`, {
+        title:
+          values.activityKind === "lab_task"
+            ? ""
+            : (values.title?.trim() ?? ""),
         description: values.description?.trim() || undefined,
         type: values.type,
         durationMinutes: values.durationMinutes,
         totalMarks: values.totalMarks,
         sectionName: fixedSectionName ?? values.sectionName,
         labClassId:
-          values.activityKind === 'lab_task'
-            ? fixedLabClassId ?? values.labClassId
+          values.activityKind === "lab_task"
+            ? (fixedLabClassId ?? values.labClassId)
             : undefined,
-      }),
-    onSuccess: () => {
-      toast.success('Activity updated');
-      invalidateActivityQueries();
+        proctoringEnabled: values.proctoringEnabled,
+      });
+      const helpUpload = await uploadHelpMaterials(response.data.id, helpFiles);
+      const freshResponse = await api.get(`/lab-tests/${response.data.id}`);
+      return { activity: freshResponse.data, ...helpUpload };
+    },
+    onSuccess: ({ activity, uploadedHelpCount, helpUploadError }) => {
+      toast.success(
+        uploadedHelpCount
+          ? `Activity updated and ${uploadedHelpCount} help PDF${
+              uploadedHelpCount === 1 ? "" : "s"
+            } uploaded`
+          : "Activity updated",
+      );
+      if (helpUploadError) {
+        toast.error(helpUploadError);
+      }
+      updateCachedActivity(activity);
+      invalidateActivityQueries(activity.id);
       setShowActivityForm(false);
       setEditingActivityId(null);
+      setHelpPdfFiles([]);
       resetActivityForm();
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message ?? 'Failed to update activity');
+      toast.error(error.response?.data?.message ?? "Failed to update activity");
     },
   });
 
   const createReusableProblemMutation = useMutation({
     mutationFn: (values: ProblemFormData) =>
-      api.post('/lab-tests/problem-bank', {
+      api.post("/lab-tests/problem-bank", {
         ...buildProblemPayload(values),
         saveToBank: true,
       }),
     onSuccess: (response) => {
-      toast.success('Problem created');
-      queryClient.invalidateQueries({ queryKey: ['teacher-problem-bank'] });
-      setProblemCatalogTab('mine');
+      toast.success("Problem created");
+      queryClient.invalidateQueries({ queryKey: ["teacher-problem-bank"] });
+      setProblemCatalogTab("mine");
       setSelectedCatalogProblemId(response.data.id);
       setShowProblemModal(false);
       setEditingProblemBankId(null);
       resetProblemForm();
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message ?? 'Failed to create problem');
+      toast.error(error.response?.data?.message ?? "Failed to create problem");
     },
   });
 
   const updateReusableProblemMutation = useMutation({
     mutationFn: (values: ProblemFormData) =>
-      api.patch(`/lab-tests/problem-bank/${editingProblemBankId}`, buildProblemPayload(values)),
+      api.patch(
+        `/lab-tests/problem-bank/${editingProblemBankId}`,
+        buildProblemPayload(values),
+      ),
     onSuccess: () => {
-      toast.success('Problem updated');
-      queryClient.invalidateQueries({ queryKey: ['teacher-problem-bank'] });
+      toast.success("Problem updated");
+      queryClient.invalidateQueries({ queryKey: ["teacher-problem-bank"] });
       setShowProblemModal(false);
       setEditingProblemBankId(null);
       resetProblemForm();
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message ?? 'Failed to update problem');
+      toast.error(error.response?.data?.message ?? "Failed to update problem");
     },
   });
 
@@ -897,58 +1098,71 @@ export function TeacherLabActivityManager({
     mutationFn: (problemId: string) =>
       api.post(`/lab-tests/${selectedTestId}/problems/import`, { problemId }),
     onSuccess: () => {
-      toast.success('Problem added');
-      queryClient.invalidateQueries({ queryKey: ['lab-test-problems', selectedTestId] });
-      queryClient.invalidateQueries({ queryKey: ['lab-test-submissions', selectedTestId] });
+      toast.success("Problem added");
+      queryClient.invalidateQueries({
+        queryKey: ["lab-test-problems", selectedTestId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["lab-test-submissions", selectedTestId],
+      });
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message ?? 'Failed to add problem');
+      toast.error(error.response?.data?.message ?? "Failed to add problem");
     },
   });
 
   const removeProblemMutation = useMutation({
-    mutationFn: (problemId: string) => api.delete(`/lab-tests/${selectedTestId}/problems/${problemId}`),
+    mutationFn: (problemId: string) =>
+      api.delete(`/lab-tests/${selectedTestId}/problems/${problemId}`),
     onSuccess: () => {
-      toast.success('Problem removed');
-      queryClient.invalidateQueries({ queryKey: ['lab-test-problems', selectedTestId] });
-      queryClient.invalidateQueries({ queryKey: ['lab-test-submissions', selectedTestId] });
+      toast.success("Problem removed");
+      queryClient.invalidateQueries({
+        queryKey: ["lab-test-problems", selectedTestId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["lab-test-submissions", selectedTestId],
+      });
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message ?? 'Failed to remove problem');
+      toast.error(error.response?.data?.message ?? "Failed to remove problem");
     },
   });
 
   const updateActivityProblemMutation = useMutation({
     mutationFn: ({ problemId, marks }: { problemId: string; marks?: number }) =>
-      api.patch(`/lab-tests/${selectedTestId}/problems/${problemId}`, { marks }),
+      api.patch(`/lab-tests/${selectedTestId}/problems/${problemId}`, {
+        marks,
+      }),
     onSuccess: () => {
-      toast.success('Score updated');
-      queryClient.invalidateQueries({ queryKey: ['lab-test-problems', selectedTestId] });
+      toast.success("Score updated");
+      queryClient.invalidateQueries({
+        queryKey: ["lab-test-problems", selectedTestId],
+      });
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message ?? 'Failed to update score');
+      toast.error(error.response?.data?.message ?? "Failed to update score");
     },
   });
 
   const startMutation = useMutation({
     mutationFn: (id: string) => api.patch(`/lab-tests/${id}/start`),
     onSuccess: () => {
-      toast.success('Activity started');
+      toast.success("Activity started");
       invalidateActivityQueries();
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message ?? 'Failed to start activity');
+      toast.error(error.response?.data?.message ?? "Failed to start activity");
     },
   });
 
   const endMutation = useMutation({
     mutationFn: (id: string) => api.patch(`/lab-tests/${id}/end`),
     onSuccess: () => {
-      toast.success('Activity ended');
+      toast.success("Activity ended");
       invalidateActivityQueries();
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message ?? 'Failed to end activity');
+      toast.error(error.response?.data?.message ?? "Failed to end activity");
     },
   });
 
@@ -956,22 +1170,27 @@ export function TeacherLabActivityManager({
     mutationFn: ({ id, values }: { id: string; values: GradeFormData }) =>
       api.patch(`/lab-tests/submissions/${id}/grade`, values),
     onSuccess: () => {
-      toast.success('Submission graded');
-      queryClient.invalidateQueries({ queryKey: ['lab-test-submissions', selectedTestId] });
+      toast.success("Submission graded");
+      queryClient.invalidateQueries({
+        queryKey: ["lab-test-submissions", selectedTestId],
+      });
       setGradingSubId(null);
       gradeForm.reset({
-        verdict: 'pending',
+        verdict: "pending",
         score: undefined,
-        instructorNote: '',
+        instructorNote: "",
       });
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message ?? 'Failed to grade submission');
+      toast.error(
+        error.response?.data?.message ?? "Failed to grade submission",
+      );
     },
   });
 
   const openCreateForm = () => {
     setEditingActivityId(null);
+    setHelpPdfFiles([]);
     resetActivityForm();
     setShowActivityForm(true);
   };
@@ -979,6 +1198,7 @@ export function TeacherLabActivityManager({
   const openEditForm = () => {
     if (!selectedTest) return;
     setEditingActivityId(selectedTest.id);
+    setHelpPdfFiles([]);
     populateActivityForm(selectedTest);
     setShowActivityForm(true);
   };
@@ -986,7 +1206,44 @@ export function TeacherLabActivityManager({
   const closeActivityForm = () => {
     setShowActivityForm(false);
     setEditingActivityId(null);
+    setHelpPdfFiles([]);
     resetActivityForm();
+  };
+
+  const handleHelpPdfSelection = (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files ?? []);
+    if (!selectedFiles.length) {
+      return;
+    }
+
+    const validFiles = selectedFiles.filter(isHelpPdfFile);
+    if (validFiles.length !== selectedFiles.length) {
+      toast.error("Only PDF files can be attached as help materials");
+    }
+
+    setHelpPdfFiles((current) => {
+      const next = new Map(
+        current.map((file) => [
+          `${file.name}-${file.size}-${file.lastModified}`,
+          file,
+        ]),
+      );
+      validFiles.forEach((file) => {
+        next.set(`${file.name}-${file.size}-${file.lastModified}`, file);
+      });
+      return Array.from(next.values());
+    });
+
+    event.target.value = "";
+  };
+
+  const removeQueuedHelpPdf = (targetKey: string) => {
+    setHelpPdfFiles((current) =>
+      current.filter(
+        (file) =>
+          `${file.name}-${file.size}-${file.lastModified}` !== targetKey,
+      ),
+    );
   };
 
   const openNewProblemModal = () => {
@@ -1013,9 +1270,9 @@ export function TeacherLabActivityManager({
     setSelectedTestId(null);
     if (syncSearchParams) {
       const next = new URLSearchParams(searchParams);
-      next.set('courseId', courseId);
-      next.set('kind', filterKind);
-      next.delete('activityId');
+      next.set("courseId", courseId);
+      next.set("kind", filterKind);
+      next.delete("activityId");
       setSearchParams(next, { replace: true });
       return;
     }
@@ -1029,11 +1286,11 @@ export function TeacherLabActivityManager({
     setSelectedTestId(null);
     if (syncSearchParams) {
       const next = new URLSearchParams(searchParams);
-      next.set('kind', kind);
+      next.set("kind", kind);
       if (filterCourse) {
-        next.set('courseId', filterCourse);
+        next.set("courseId", filterCourse);
       }
-      next.delete('activityId');
+      next.delete("activityId");
       setSearchParams(next, { replace: true });
       return;
     }
@@ -1043,9 +1300,12 @@ export function TeacherLabActivityManager({
 
   const handleSaveScore = (problem: any) => {
     const rawValue = scoreDrafts[problem.id];
-    const parsedMarks = rawValue === '' ? null : Number(rawValue);
-    if (parsedMarks !== null && (!Number.isFinite(parsedMarks) || parsedMarks < 0)) {
-      toast.error('Enter a valid score');
+    const parsedMarks = rawValue === "" ? null : Number(rawValue);
+    if (
+      parsedMarks !== null &&
+      (!Number.isFinite(parsedMarks) || parsedMarks < 0)
+    ) {
+      toast.error("Enter a valid score");
       return;
     }
 
@@ -1058,7 +1318,8 @@ export function TeacherLabActivityManager({
   const activityFormSubmitting =
     createActivityMutation.isPending || updateActivityMutation.isPending;
   const problemFormSubmitting =
-    createReusableProblemMutation.isPending || updateReusableProblemMutation.isPending;
+    createReusableProblemMutation.isPending ||
+    updateReusableProblemMutation.isPending;
   const isEditingActivity = Boolean(editingActivityId);
   const isEditingProblem = Boolean(editingProblemBankId);
 
@@ -1066,103 +1327,111 @@ export function TeacherLabActivityManager({
     <div className="space-y-6">
       {!hideWorkspaceHeader ? (
         <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">
-              {headerCopy.eyebrow ?? 'Teacher Workspace'}
-            </p>
-            <h2 className="mt-2 text-3xl font-semibold text-slate-900">
-              {headerCopy.title ?? kindLabel}
-            </h2>
-            {headerCopy.description ? (
-              <p className="mt-2 max-w-3xl text-sm text-slate-500">{headerCopy.description}</p>
-            ) : null}
-          </div>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">
+                {headerCopy.eyebrow ?? "Teacher Workspace"}
+              </p>
+              <h2 className="mt-2 text-3xl font-semibold text-slate-900">
+                {headerCopy.title ?? kindLabel}
+              </h2>
+              {headerCopy.description ? (
+                <p className="mt-2 max-w-3xl text-sm text-slate-500">
+                  {headerCopy.description}
+                </p>
+              ) : null}
+            </div>
 
-          <div className="flex flex-wrap gap-3">
-            {!fixedCourseId ? (
-              <select
-                value={filterCourse}
-                onChange={(event) => handleCourseChange(event.target.value)}
-                className={inputClass}
+            <div className="flex flex-wrap gap-3">
+              {!fixedCourseId ? (
+                <select
+                  value={filterCourse}
+                  onChange={(event) => handleCourseChange(event.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Select course</option>
+                  {(courses as any[]).map((course: any) => (
+                    <option key={course.id} value={course.id}>
+                      {courseCode(course)} - {courseTitle(course)}
+                    </option>
+                  ))}
+                </select>
+              ) : currentCourse ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  <p className="font-semibold text-slate-900">
+                    {courseCode(currentCourse)} - {courseTitle(currentCourse)}
+                  </p>
+                  <p className="mt-1">
+                    {fixedLabClassId
+                      ? "Lab-class scoped tasks"
+                      : filterKind === "lab_task"
+                        ? "Course-scoped tasks"
+                        : "Course-scoped tests"}
+                  </p>
+                </div>
+              ) : null}
+
+              {!fixedActivityKind ? (
+                <div className="flex rounded-full border border-slate-200 bg-slate-50 p-1">
+                  {[
+                    { value: "lab_test" as const, label: "Lab Tests" },
+                    { value: "lab_task" as const, label: "Lab Tasks" },
+                  ].map((item) => (
+                    <button
+                      key={item.value}
+                      type="button"
+                      onClick={() => handleKindChange(item.value)}
+                      className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                        filterKind === item.value
+                          ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200"
+                          : "text-slate-500 hover:text-slate-900"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={openCreateForm}
+                disabled={!filterCourse || creationDisabled}
+                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <option value="">Select course</option>
-                {(courses as any[]).map((course: any) => (
-                  <option key={course.id} value={course.id}>
-                    {courseCode(course)} - {courseTitle(course)}
-                  </option>
-                ))}
-              </select>
-            ) : currentCourse ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                <p className="font-semibold text-slate-900">
-                  {courseCode(currentCourse)} - {courseTitle(currentCourse)}
-                </p>
-                <p className="mt-1">
-                  {fixedLabClassId
-                    ? 'Lab-class scoped tasks'
-                    : filterKind === 'lab_task'
-                      ? 'Course-scoped tasks'
-                      : 'Course-scoped tests'}
-                </p>
-              </div>
-            ) : null}
-
-            {!fixedActivityKind ? (
-              <div className="flex rounded-full border border-slate-200 bg-slate-50 p-1">
-                {[
-                  { value: 'lab_test' as const, label: 'Lab Tests' },
-                  { value: 'lab_task' as const, label: 'Lab Tasks' },
-                ].map((item) => (
-                  <button
-                    key={item.value}
-                    type="button"
-                    onClick={() => handleKindChange(item.value)}
-                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                      filterKind === item.value
-                        ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
-                        : 'text-slate-500 hover:text-slate-900'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
-            <button
-              type="button"
-              onClick={openCreateForm}
-              disabled={!filterCourse || creationDisabled}
-              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Plus size={16} />
-              New {filterKind === 'lab_task' ? 'Task' : 'Test'}
-            </button>
+                <Plus size={16} />
+                New {filterKind === "lab_task" ? "Task" : "Test"}
+              </button>
+            </div>
           </div>
-        </div>
 
-        {creationDisabled ? (
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-            This course is archived, so new activities are locked.
-          </div>
-        ) : null}
+          {creationDisabled ? (
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+              This course is archived, so new activities are locked.
+            </div>
+          ) : null}
         </section>
       ) : null}
 
       <Modal
         open={showActivityForm}
         onClose={closeActivityForm}
-        title={`${isEditingActivity ? 'Edit' : 'New'} ${
-          filterKind === 'lab_task' ? 'Lab Task' : 'Lab Test'
+        title={`${isEditingActivity ? "Edit" : "New"} ${
+          filterKind === "lab_task" ? "Lab Task" : "Lab Test"
         }`}
         maxWidthClass="max-w-3xl"
       >
         <form
           onSubmit={activityForm.handleSubmit((values) =>
             isEditingActivity
-              ? updateActivityMutation.mutate(values)
-              : createActivityMutation.mutate(values),
+              ? updateActivityMutation.mutate({
+                  values,
+                  helpFiles: helpPdfFiles,
+                })
+              : createActivityMutation.mutate({
+                  values,
+                  helpFiles: helpPdfFiles,
+                }),
           )}
           className="space-y-5"
         >
@@ -1172,7 +1441,7 @@ export function TeacherLabActivityManager({
                 Activity
               </p>
               <p className="mt-2 text-sm font-semibold text-slate-900">
-                {filterKind === 'lab_task' ? 'Lab Task' : 'Lab Test'}
+                {filterKind === "lab_task" ? "Lab Task" : "Lab Test"}
               </p>
             </div>
 
@@ -1183,24 +1452,30 @@ export function TeacherLabActivityManager({
               <p className="mt-2 text-sm font-semibold text-slate-900">
                 {currentCourse
                   ? `${courseCode(currentCourse)} - ${courseTitle(currentCourse)}`
-                  : 'Select a course'}
+                  : "Select a course"}
               </p>
             </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            {filterKind === 'lab_test' ? (
-              <Field label="Title" error={activityForm.formState.errors.title?.message}>
+            {filterKind === "lab_test" ? (
+              <Field
+                label="Title"
+                error={activityForm.formState.errors.title?.message}
+              >
                 <input
-                  {...activityForm.register('title')}
+                  {...activityForm.register("title")}
                   className={inputClass}
                   placeholder="Lab Test 1"
                 />
               </Field>
             ) : null}
 
-            <Field label="Mode" error={activityForm.formState.errors.type?.message}>
-              <select {...activityForm.register('type')} className={inputClass}>
+            <Field
+              label="Mode"
+              error={activityForm.formState.errors.type?.message}
+            >
+              <select {...activityForm.register("type")} className={inputClass}>
                 <option value="verdict_based">Verdict Based</option>
                 <option value="non_verdict">Non-Verdict</option>
               </select>
@@ -1212,19 +1487,24 @@ export function TeacherLabActivityManager({
             >
               <input
                 type="number"
-                {...activityForm.register('durationMinutes', {
-                  setValueAs: (value) => (value === '' ? undefined : Number(value)),
+                {...activityForm.register("durationMinutes", {
+                  setValueAs: (value) =>
+                    value === "" ? undefined : Number(value),
                 })}
                 className={inputClass}
                 placeholder="90"
               />
             </Field>
 
-            <Field label="Total Marks" error={activityForm.formState.errors.totalMarks?.message}>
+            <Field
+              label="Total Marks"
+              error={activityForm.formState.errors.totalMarks?.message}
+            >
               <input
                 type="number"
-                {...activityForm.register('totalMarks', {
-                  setValueAs: (value) => (value === '' ? undefined : Number(value)),
+                {...activityForm.register("totalMarks", {
+                  setValueAs: (value) =>
+                    value === "" ? undefined : Number(value),
                 })}
                 className={inputClass}
                 placeholder="100"
@@ -1236,11 +1516,19 @@ export function TeacherLabActivityManager({
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Section
                 </p>
-                <p className="mt-2 text-sm font-semibold text-slate-900">{fixedSectionName}</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900">
+                  {fixedSectionName}
+                </p>
               </div>
             ) : (
-              <Field label="Section" error={activityForm.formState.errors.sectionName?.message}>
-                <select {...activityForm.register('sectionName')} className={inputClass}>
+              <Field
+                label="Section"
+                error={activityForm.formState.errors.sectionName?.message}
+              >
+                <select
+                  {...activityForm.register("sectionName")}
+                  className={inputClass}
+                >
                   <option value="">Select section</option>
                   {sectionNames.map((sectionName) => (
                     <option key={sectionName} value={sectionName}>
@@ -1251,7 +1539,7 @@ export function TeacherLabActivityManager({
               </Field>
             )}
 
-            {filterKind === 'lab_task' ? (
+            {filterKind === "lab_task" ? (
               fixedLabClassId?.trim() ? (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -1260,16 +1548,22 @@ export function TeacherLabActivityManager({
                   <p className="mt-2 text-sm font-semibold text-slate-900">
                     {selectedLabClass
                       ? `Lab ${selectedLabClass.labNumber} - ${selectedLabClass.title}`
-                      : 'Selected lab class'}
+                      : "Selected lab class"}
                   </p>
                 </div>
               ) : (
-                <Field label="Lab Class" error={activityForm.formState.errors.labClassId?.message}>
-                  <select {...activityForm.register('labClassId')} className={inputClass}>
+                <Field
+                  label="Lab Class"
+                  error={activityForm.formState.errors.labClassId?.message}
+                >
+                  <select
+                    {...activityForm.register("labClassId")}
+                    className={inputClass}
+                  >
                     <option value="">
                       {availableTaskLabClasses.length
-                        ? 'Select a conducted lab class'
-                        : 'No conducted lab class'}
+                        ? "Select a conducted lab class"
+                        : "No conducted lab class"}
                     </option>
                     {availableTaskLabClasses.map((labClass: any) => (
                       <option key={labClass.id} value={labClass.id}>
@@ -1287,11 +1581,132 @@ export function TeacherLabActivityManager({
             error={activityForm.formState.errors.description?.message}
           >
             <textarea
-              {...activityForm.register('description')}
+              {...activityForm.register("description")}
               className={`${inputClass} min-h-28`}
               placeholder="Optional instructions"
             />
           </Field>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <label
+              className={`flex cursor-pointer gap-3 rounded-[24px] border p-4 transition ${
+                watchedProctoringEnabled
+                  ? "border-amber-200 bg-amber-50"
+                  : "border-slate-200 bg-slate-50"
+              }`}
+            >
+              <input
+                type="checkbox"
+                {...activityForm.register("proctoringEnabled")}
+                className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+              />
+              <div>
+                <p className="text-sm font-semibold text-slate-900">
+                  Enable alert system
+                </p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Keep focus-loss, fullscreen-exit, and copy-paste alerts active
+                  for this activity. This stays enabled by default.
+                </p>
+              </div>
+            </label>
+
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-semibold text-slate-900">Help PDFs</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Attach reference PDFs that students can preview inline while
+                working on the activity.
+              </p>
+              <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100">
+                <Upload size={15} />
+                Add PDFs
+                <input
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  multiple
+                  className="hidden"
+                  onChange={handleHelpPdfSelection}
+                />
+              </label>
+            </div>
+          </div>
+
+          {helpPdfFiles.length ? (
+            <div className="rounded-[24px] border border-sky-200 bg-sky-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    Queued help PDFs
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    These files will upload when you save the activity.
+                  </p>
+                </div>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-sky-100">
+                  {helpPdfFiles.length} file
+                  {helpPdfFiles.length === 1 ? "" : "s"}
+                </span>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {helpPdfFiles.map((file) => {
+                  const fileKey = `${file.name}-${file.size}-${file.lastModified}`;
+                  return (
+                    <div
+                      key={fileKey}
+                      className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-2 text-sm text-slate-700"
+                    >
+                      <span className="max-w-[260px] truncate">
+                        {file.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeQueuedHelpPdf(fileKey)}
+                        className="text-xs font-semibold text-rose-600"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {isEditingActivity && (selectedTest?.helpMaterials ?? []).length ? (
+            <div className="rounded-[24px] border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    Existing help PDFs
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Already attached to this activity.
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                  {(selectedTest?.helpMaterials ?? []).length} PDF
+                  {(selectedTest?.helpMaterials ?? []).length === 1 ? "" : "s"}
+                </span>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {(selectedTest?.helpMaterials ?? []).map((material: any) => (
+                  <a
+                    key={material.id ?? material.url}
+                    href={material.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100"
+                  >
+                    <span className="max-w-[260px] truncate">
+                      {material.fileName}
+                    </span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="flex justify-end gap-3">
             <button
@@ -1309,11 +1724,11 @@ export function TeacherLabActivityManager({
               <Save size={16} />
               {activityFormSubmitting
                 ? isEditingActivity
-                  ? 'Saving...'
-                  : 'Creating...'
+                  ? "Saving..."
+                  : "Creating..."
                 : isEditingActivity
-                  ? 'Save Changes'
-                  : `Create ${filterKind === 'lab_task' ? 'Task' : 'Test'}`}
+                  ? "Save Changes"
+                  : `Create ${filterKind === "lab_task" ? "Task" : "Test"}`}
             </button>
           </div>
         </form>
@@ -1322,7 +1737,7 @@ export function TeacherLabActivityManager({
       <Modal
         open={showProblemModal}
         onClose={closeProblemModal}
-        title={isEditingProblem ? 'Edit Problem' : 'New Problem'}
+        title={isEditingProblem ? "Edit Problem" : "New Problem"}
         maxWidthClass="max-w-4xl"
       >
         <form
@@ -1334,9 +1749,12 @@ export function TeacherLabActivityManager({
           className="space-y-5"
         >
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Title" error={problemForm.formState.errors.title?.message}>
+            <Field
+              label="Title"
+              error={problemForm.formState.errors.title?.message}
+            >
               <input
-                {...problemForm.register('title')}
+                {...problemForm.register("title")}
                 className={inputClass}
                 placeholder="Shortest Path"
               />
@@ -1349,7 +1767,7 @@ export function TeacherLabActivityManager({
               <p className="mt-2 text-sm font-semibold text-slate-900">
                 {isEditingProblem && selectedCatalogProblem
                   ? getProblemCode(selectedCatalogProblem)
-                  : 'Assigned after save'}
+                  : "Assigned after save"}
               </p>
             </div>
 
@@ -1359,23 +1777,29 @@ export function TeacherLabActivityManager({
               className="md:col-span-2"
             >
               <textarea
-                {...problemForm.register('statement')}
+                {...problemForm.register("statement")}
                 className={`${inputClass} min-h-36`}
                 placeholder="Write the full problem statement"
               />
             </Field>
 
-            <Field label="Input" error={problemForm.formState.errors.inputDescription?.message}>
+            <Field
+              label="Input"
+              error={problemForm.formState.errors.inputDescription?.message}
+            >
               <textarea
-                {...problemForm.register('inputDescription')}
+                {...problemForm.register("inputDescription")}
                 className={`${inputClass} min-h-24`}
                 placeholder="Input format"
               />
             </Field>
 
-            <Field label="Output" error={problemForm.formState.errors.outputDescription?.message}>
+            <Field
+              label="Output"
+              error={problemForm.formState.errors.outputDescription?.message}
+            >
               <textarea
-                {...problemForm.register('outputDescription')}
+                {...problemForm.register("outputDescription")}
                 className={`${inputClass} min-h-24`}
                 placeholder="Output format"
               />
@@ -1384,8 +1808,9 @@ export function TeacherLabActivityManager({
             <Field label="Time Limit (ms)">
               <input
                 type="number"
-                {...problemForm.register('timeLimitMs', {
-                  setValueAs: (value) => (value === '' ? undefined : Number(value)),
+                {...problemForm.register("timeLimitMs", {
+                  setValueAs: (value) =>
+                    value === "" ? undefined : Number(value),
                 })}
                 className={inputClass}
                 placeholder="1000"
@@ -1395,8 +1820,9 @@ export function TeacherLabActivityManager({
             <Field label="Memory Limit (KB)">
               <input
                 type="number"
-                {...problemForm.register('memoryLimitKb', {
-                  setValueAs: (value) => (value === '' ? undefined : Number(value)),
+                {...problemForm.register("memoryLimitKb", {
+                  setValueAs: (value) =>
+                    value === "" ? undefined : Number(value),
                 })}
                 className={inputClass}
                 placeholder="262144"
@@ -1408,7 +1834,9 @@ export function TeacherLabActivityManager({
             title="Sample Test Cases"
             description="Shown to students."
             fields={sampleFields.fields}
-            append={() => sampleFields.append({ input: '', output: '', explanation: '' })}
+            append={() =>
+              sampleFields.append({ input: "", output: "", explanation: "" })
+            }
             remove={sampleFields.remove}
             renderBody={(index) => (
               <div className="grid gap-3 md:grid-cols-2">
@@ -1424,7 +1852,9 @@ export function TeacherLabActivityManager({
                 />
                 <div className="md:col-span-2">
                   <input
-                    {...problemForm.register(`sampleTestCases.${index}.explanation`)}
+                    {...problemForm.register(
+                      `sampleTestCases.${index}.explanation`,
+                    )}
                     className={inputClass}
                     placeholder="Explanation"
                   />
@@ -1437,7 +1867,7 @@ export function TeacherLabActivityManager({
             title="Hidden Test Cases"
             description="Used for judging."
             fields={hiddenFields.fields}
-            append={() => hiddenFields.append({ input: '', output: '' })}
+            append={() => hiddenFields.append({ input: "", output: "" })}
             remove={hiddenFields.remove}
             renderBody={(index) => (
               <div className="grid gap-3 md:grid-cols-2">
@@ -1471,11 +1901,11 @@ export function TeacherLabActivityManager({
               <Save size={16} />
               {problemFormSubmitting
                 ? isEditingProblem
-                  ? 'Saving...'
-                  : 'Creating...'
+                  ? "Saving..."
+                  : "Creating..."
                 : isEditingProblem
-                  ? 'Save Changes'
-                  : 'Create Problem'}
+                  ? "Save Changes"
+                  : "Create Problem"}
             </button>
           </div>
         </form>
@@ -1483,7 +1913,9 @@ export function TeacherLabActivityManager({
 
       <div
         className={
-          hideActivityLibrary ? 'space-y-6' : 'grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]'
+          hideActivityLibrary
+            ? "space-y-6"
+            : "grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]"
         }
       >
         {!hideActivityLibrary ? (
@@ -1507,8 +1939,8 @@ export function TeacherLabActivityManager({
               ) : !(labTests as any[]).length ? (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
                   {filterCourse
-                    ? `No ${filterKind === 'lab_task' ? 'lab tasks' : 'lab tests'} found yet.`
-                    : 'Select a course first.'}
+                    ? `No ${filterKind === "lab_task" ? "lab tasks" : "lab tests"} found yet.`
+                    : "Select a course first."}
                 </div>
               ) : (
                 (labTests as any[]).map((item: any) => {
@@ -1520,31 +1952,36 @@ export function TeacherLabActivityManager({
                       onClick={() => setSelectedTestId(item.id)}
                       className={`w-full rounded-2xl border p-4 text-left transition ${
                         selectedTestId === item.id
-                          ? 'border-slate-900 bg-slate-900 text-white'
-                          : 'border-slate-200 bg-white hover:border-slate-300'
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-200 bg-white hover:border-slate-300"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p
                             className={`truncate font-semibold ${
-                              selectedTestId === item.id ? 'text-white' : 'text-slate-900'
+                              selectedTestId === item.id
+                                ? "text-white"
+                                : "text-slate-900"
                             }`}
                           >
                             {getActivityDisplayTitle(item)}
                           </p>
                           <p
                             className={`mt-1 text-xs ${
-                              selectedTestId === item.id ? 'text-slate-200' : 'text-slate-500'
+                              selectedTestId === item.id
+                                ? "text-slate-200"
+                                : "text-slate-500"
                             }`}
                           >
-                            {humanize(item.type)} · {item.totalMarks ?? 'N/A'} marks
+                            {humanize(item.type)} · {item.totalMarks ?? "N/A"}{" "}
+                            marks
                           </p>
                         </div>
                         <span
                           className={`rounded-full px-2.5 py-1 text-xs font-medium ${
                             selectedTestId === item.id
-                              ? 'bg-white/15 text-white'
+                              ? "bg-white/15 text-white"
                               : statusBadge(item.status)
                           }`}
                         >
@@ -1559,8 +1996,8 @@ export function TeacherLabActivityManager({
                               key={`${item.id}-${bit}`}
                               className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
                                 selectedTestId === item.id
-                                  ? 'bg-white/10 text-white'
-                                  : 'bg-slate-100 text-slate-600'
+                                  ? "bg-white/10 text-white"
+                                  : "bg-slate-100 text-slate-600"
                               }`}
                             >
                               {bit}
@@ -1571,13 +2008,25 @@ export function TeacherLabActivityManager({
 
                       <div
                         className={`mt-3 flex flex-wrap gap-2 text-xs ${
-                          selectedTestId === item.id ? 'text-slate-200' : 'text-slate-500'
+                          selectedTestId === item.id
+                            ? "text-slate-200"
+                            : "text-slate-500"
                         }`}
                       >
-                        <span>Duration {formatDurationLabel(getActivityDurationMinutes(item))}</span>
-                        {item.startTime ? <span>Started {formatDateTime(item.startTime)}</span> : null}
-                        {item.endTime && item.status !== 'draft' ? (
-                          <span>Remaining {formatRemainingTime(item.endTime, clockNow)}</span>
+                        <span>
+                          Duration{" "}
+                          {formatDurationLabel(
+                            getActivityDurationMinutes(item),
+                          )}
+                        </span>
+                        {item.startTime ? (
+                          <span>Started {formatDateTime(item.startTime)}</span>
+                        ) : null}
+                        {item.endTime && item.status !== "draft" ? (
+                          <span>
+                            Remaining{" "}
+                            {formatRemainingTime(item.endTime, clockNow)}
+                          </span>
                         ) : null}
                       </div>
                     </button>
@@ -1592,8 +2041,8 @@ export function TeacherLabActivityManager({
           {!selectedTest ? (
             <div className="rounded-[28px] border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500 shadow-sm">
               {autoOpenCreateModal
-                ? `Create a ${filterKind === 'lab_task' ? 'lab task' : 'lab test'} to continue.`
-                : `Select a ${filterKind === 'lab_task' ? 'lab task' : 'lab test'} to continue.`}
+                ? `Create a ${filterKind === "lab_task" ? "lab task" : "lab test"} to continue.`
+                : `Select a ${filterKind === "lab_task" ? "lab task" : "lab test"} to continue.`}
             </div>
           ) : (
             <>
@@ -1609,7 +2058,9 @@ export function TeacherLabActivityManager({
                         {humanize(selectedTest.status)}
                       </span>
                       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                        {selectedTest.activityKind === 'lab_task' ? 'Lab Task' : 'Lab Test'}
+                        {selectedTest.activityKind === "lab_task"
+                          ? "Lab Task"
+                          : "Lab Test"}
                       </span>
                       {selectedTest.sectionName ? (
                         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
@@ -1621,6 +2072,25 @@ export function TeacherLabActivityManager({
                           Lab {selectedTest.labClass.labNumber}
                         </span>
                       ) : null}
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                          selectedTest.proctoringEnabled === false
+                            ? "bg-slate-100 text-slate-600"
+                            : "bg-amber-100 text-amber-700"
+                        }`}
+                      >
+                        {selectedTest.proctoringEnabled === false
+                          ? "Alert system off"
+                          : "Alert system on"}
+                      </span>
+                      {(selectedTest.helpMaterials ?? []).length ? (
+                        <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700">
+                          {(selectedTest.helpMaterials ?? []).length} help PDF
+                          {(selectedTest.helpMaterials ?? []).length === 1
+                            ? ""
+                            : "s"}
+                        </span>
+                      ) : null}
                     </div>
 
                     <h3 className="mt-3 text-2xl font-semibold text-slate-900">
@@ -1628,7 +2098,9 @@ export function TeacherLabActivityManager({
                     </h3>
 
                     {selectedTest.description ? (
-                      <p className="mt-2 text-sm text-slate-600">{selectedTest.description}</p>
+                      <p className="mt-2 text-sm text-slate-600">
+                        {selectedTest.description}
+                      </p>
                     ) : null}
 
                     <div className="mt-3 flex flex-wrap gap-3 text-sm text-slate-500">
@@ -1637,16 +2109,23 @@ export function TeacherLabActivityManager({
                         Duration {formatDurationLabel(selectedDurationMinutes)}
                       </span>
                       {selectedTest.startTime ? (
-                        <span>Started {formatDateTime(selectedTest.startTime)}</span>
-                      ) : null}
-                      {selectedTest.endTime && selectedTest.status !== 'draft' ? (
                         <span>
-                          {selectedTest.status === 'ended' ? 'Ended' : 'Ends'}{' '}
+                          Started {formatDateTime(selectedTest.startTime)}
+                        </span>
+                      ) : null}
+                      {selectedTest.endTime &&
+                      selectedTest.status !== "draft" ? (
+                        <span>
+                          {selectedTest.status === "ended" ? "Ended" : "Ends"}{" "}
                           {formatDateTime(selectedTest.endTime)}
                         </span>
                       ) : null}
-                      {selectedTest.endTime && selectedTest.status !== 'draft' ? (
-                        <span>Remaining {formatRemainingTime(selectedTest.endTime, clockNow)}</span>
+                      {selectedTest.endTime &&
+                      selectedTest.status !== "draft" ? (
+                        <span>
+                          Remaining{" "}
+                          {formatRemainingTime(selectedTest.endTime, clockNow)}
+                        </span>
                       ) : null}
                     </div>
                   </div>
@@ -1662,7 +2141,7 @@ export function TeacherLabActivityManager({
                         Edit
                       </button>
                     ) : null}
-                    {selectedTest.status === 'draft' ? (
+                    {selectedTest.status === "draft" ? (
                       <button
                         type="button"
                         onClick={() => startMutation.mutate(selectedTest.id)}
@@ -1672,7 +2151,7 @@ export function TeacherLabActivityManager({
                         Start
                       </button>
                     ) : null}
-                    {selectedTest.status === 'running' ? (
+                    {selectedTest.status === "running" ? (
                       <button
                         type="button"
                         onClick={() => endMutation.mutate(selectedTest.id)}
@@ -1687,15 +2166,18 @@ export function TeacherLabActivityManager({
 
                 <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-200 pt-4">
                   {[
-                    { key: 'manage' as const, label: 'Manage' },
-                    { key: 'problems' as const, label: 'Problems' },
+                    { key: "manage" as const, label: "Manage" },
+                    { key: "problems" as const, label: "Problems" },
                     {
-                      key: 'submissions' as const,
+                      key: "submissions" as const,
                       label: `Submissions (${(submissions as any[]).length})`,
                     },
                     {
-                      key: 'alerts' as const,
-                      label: `Alerts (${(proctoringEvents as any[]).length})`,
+                      key: "alerts" as const,
+                      label:
+                        selectedTest.proctoringEnabled === false
+                          ? "Alerts Off"
+                          : `Alerts (${(proctoringEvents as any[]).length})`,
                     },
                   ].map((tab) => (
                     <button
@@ -1704,8 +2186,8 @@ export function TeacherLabActivityManager({
                       onClick={() => setActivityTab(tab.key)}
                       className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
                         activityTab === tab.key
-                          ? 'bg-slate-900 text-white'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          ? "bg-slate-900 text-white"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                       }`}
                     >
                       {tab.label}
@@ -1714,7 +2196,7 @@ export function TeacherLabActivityManager({
                 </div>
               </div>
 
-              {activityTab === 'manage' ? (
+              {activityTab === "manage" ? (
                 <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
                   <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1728,7 +2210,7 @@ export function TeacherLabActivityManager({
                       </div>
                       <button
                         type="button"
-                        onClick={() => setActivityTab('problems')}
+                        onClick={() => setActivityTab("problems")}
                         className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                       >
                         <Files size={15} />
@@ -1744,10 +2226,11 @@ export function TeacherLabActivityManager({
 
                     <div className="mt-5 space-y-3">
                       {(problems as any[]).map((problem: any) => {
-                        const scoreValue = scoreDrafts[problem.id] ?? '';
+                        const scoreValue = scoreDrafts[problem.id] ?? "";
                         const isSavingScore =
                           updateActivityProblemMutation.isPending &&
-                          updateActivityProblemMutation.variables?.problemId === problem.id;
+                          updateActivityProblemMutation.variables?.problemId ===
+                            problem.id;
                         const isRemoving =
                           removeProblemMutation.isPending &&
                           removeProblemMutation.variables === problem.id;
@@ -1764,14 +2247,15 @@ export function TeacherLabActivityManager({
                                     {getProblemCode(problem, sourceProblemMap)}
                                   </span>
                                   <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-                                    {`Problem ${problem.orderIndex ?? ''}`}
+                                    {`Problem ${problem.orderIndex ?? ""}`}
                                   </span>
                                 </div>
                                 <h4 className="mt-3 text-base font-semibold text-slate-900">
                                   {problem.title}
                                 </h4>
                                 <p className="mt-2 text-sm text-slate-500">
-                                  {problem.timeLimitMs ?? 1000} ms · {problem.memoryLimitKb ?? 262144} KB
+                                  {problem.timeLimitMs ?? 1000} ms ·{" "}
+                                  {problem.memoryLimitKb ?? 262144} KB
                                 </p>
                               </div>
 
@@ -1797,18 +2281,20 @@ export function TeacherLabActivityManager({
                                     className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                                   >
                                     <Save size={14} />
-                                    {isSavingScore ? 'Saving...' : 'Save'}
+                                    {isSavingScore ? "Saving..." : "Save"}
                                   </button>
                                 </div>
 
                                 <button
                                   type="button"
-                                  onClick={() => removeProblemMutation.mutate(problem.id)}
+                                  onClick={() =>
+                                    removeProblemMutation.mutate(problem.id)
+                                  }
                                   disabled={manageLocked || isRemoving}
                                   className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   <Trash2 size={14} />
-                                  {isRemoving ? 'Removing...' : 'Remove'}
+                                  {isRemoving ? "Removing..." : "Remove"}
                                 </button>
                               </div>
                             </div>
@@ -1831,7 +2317,9 @@ export function TeacherLabActivityManager({
                   <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <h3 className="text-lg font-semibold text-slate-900">Add Problems</h3>
+                        <h3 className="text-lg font-semibold text-slate-900">
+                          Add Problems
+                        </h3>
                         <p className="mt-1 text-sm text-slate-500">
                           Add from your own library or the shared bank.
                         </p>
@@ -1843,11 +2331,15 @@ export function TeacherLabActivityManager({
                         title="My Problems"
                         count={myProblems.length}
                         open={showMyProblemsPanel}
-                        onToggle={() => setShowMyProblemsPanel((current) => !current)}
+                        onToggle={() =>
+                          setShowMyProblemsPanel((current) => !current)
+                        }
                       >
                         {myProblems.length ? (
                           myProblems.map((problem: any) => {
-                            const alreadyAdded = selectedSourceProblemIds.has(problem.id);
+                            const alreadyAdded = selectedSourceProblemIds.has(
+                              problem.id,
+                            );
                             const isAdding =
                               importProblemMutation.isPending &&
                               importProblemMutation.variables === problem.id;
@@ -1859,7 +2351,9 @@ export function TeacherLabActivityManager({
                                 added={alreadyAdded}
                                 disabled={alreadyAdded || manageLocked}
                                 isPending={isAdding}
-                                onAdd={() => importProblemMutation.mutate(problem.id)}
+                                onAdd={() =>
+                                  importProblemMutation.mutate(problem.id)
+                                }
                               />
                             );
                           })
@@ -1872,11 +2366,15 @@ export function TeacherLabActivityManager({
                         title="Problem Bank"
                         count={bankProblems.length}
                         open={showProblemBankPanel}
-                        onToggle={() => setShowProblemBankPanel((current) => !current)}
+                        onToggle={() =>
+                          setShowProblemBankPanel((current) => !current)
+                        }
                       >
                         {bankProblems.length ? (
                           bankProblems.map((problem: any) => {
-                            const alreadyAdded = selectedSourceProblemIds.has(problem.id);
+                            const alreadyAdded = selectedSourceProblemIds.has(
+                              problem.id,
+                            );
                             const isAdding =
                               importProblemMutation.isPending &&
                               importProblemMutation.variables === problem.id;
@@ -1888,7 +2386,9 @@ export function TeacherLabActivityManager({
                                 added={alreadyAdded}
                                 disabled={alreadyAdded || manageLocked}
                                 isPending={isAdding}
-                                onAdd={() => importProblemMutation.mutate(problem.id)}
+                                onAdd={() =>
+                                  importProblemMutation.mutate(problem.id)
+                                }
                               />
                             );
                           })
@@ -1901,13 +2401,17 @@ export function TeacherLabActivityManager({
                 </div>
               ) : null}
 
-              {activityTab === 'problems' ? (
+              {activityTab === "problems" ? (
                 <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
                   <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <h3 className="font-semibold text-slate-900">Problem Library</h3>
-                        <p className="mt-1 text-sm text-slate-500">Browse and manage reusable problems.</p>
+                        <h3 className="font-semibold text-slate-900">
+                          Problem Library
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-500">
+                          Browse and manage reusable problems.
+                        </p>
                       </div>
                       <button
                         type="button"
@@ -1921,8 +2425,14 @@ export function TeacherLabActivityManager({
 
                     <div className="mt-4 flex rounded-full border border-slate-200 bg-slate-50 p-1">
                       {[
-                        { key: 'mine' as const, label: `My Problems (${myProblems.length})` },
-                        { key: 'bank' as const, label: `Problem Bank (${bankProblems.length})` },
+                        {
+                          key: "mine" as const,
+                          label: `My Problems (${myProblems.length})`,
+                        },
+                        {
+                          key: "bank" as const,
+                          label: `Problem Bank (${bankProblems.length})`,
+                        },
                       ].map((tab) => (
                         <button
                           key={tab.key}
@@ -1930,8 +2440,8 @@ export function TeacherLabActivityManager({
                           onClick={() => setProblemCatalogTab(tab.key)}
                           className={`flex-1 rounded-full px-4 py-2 text-sm font-medium transition ${
                             problemCatalogTab === tab.key
-                              ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
-                              : 'text-slate-500 hover:text-slate-900'
+                              ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200"
+                              : "text-slate-500 hover:text-slate-900"
                           }`}
                         >
                           {tab.label}
@@ -1941,16 +2451,19 @@ export function TeacherLabActivityManager({
 
                     <div className="mt-4 space-y-3">
                       {activeCatalogProblems.map((problem: any) => {
-                        const isActive = selectedCatalogProblem?.id === problem.id;
+                        const isActive =
+                          selectedCatalogProblem?.id === problem.id;
                         return (
                           <button
                             key={problem.id}
                             type="button"
-                            onClick={() => setSelectedCatalogProblemId(problem.id)}
+                            onClick={() =>
+                              setSelectedCatalogProblemId(problem.id)
+                            }
                             className={`w-full rounded-2xl border p-4 text-left transition ${
                               isActive
-                                ? 'border-slate-900 bg-slate-900 text-white'
-                                : 'border-slate-200 bg-white hover:border-slate-300'
+                                ? "border-slate-900 bg-slate-900 text-white"
+                                : "border-slate-200 bg-white hover:border-slate-300"
                             }`}
                           >
                             <div className="flex items-start justify-between gap-3">
@@ -1958,15 +2471,15 @@ export function TeacherLabActivityManager({
                                 <span
                                   className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
                                     isActive
-                                      ? 'bg-white/10 text-white'
-                                      : 'bg-slate-100 text-slate-600'
+                                      ? "bg-white/10 text-white"
+                                      : "bg-slate-100 text-slate-600"
                                   }`}
                                 >
                                   {getProblemCode(problem)}
                                 </span>
                                 <p
                                   className={`mt-3 truncate font-semibold ${
-                                    isActive ? 'text-white' : 'text-slate-900'
+                                    isActive ? "text-white" : "text-slate-900"
                                   }`}
                                 >
                                   {problem.title}
@@ -1975,7 +2488,7 @@ export function TeacherLabActivityManager({
                             </div>
                             <p
                               className={`mt-2 line-clamp-2 text-sm ${
-                                isActive ? 'text-slate-200' : 'text-slate-500'
+                                isActive ? "text-slate-200" : "text-slate-500"
                               }`}
                             >
                               {problem.statement}
@@ -1986,9 +2499,9 @@ export function TeacherLabActivityManager({
 
                       {!activeCatalogProblems.length ? (
                         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                          {problemCatalogTab === 'mine'
-                            ? 'No personal problems yet.'
-                            : 'No shared problems available.'}
+                          {problemCatalogTab === "mine"
+                            ? "No personal problems yet."
+                            : "No shared problems available."}
                         </div>
                       ) : null}
                     </div>
@@ -2006,7 +2519,7 @@ export function TeacherLabActivityManager({
                 </div>
               ) : null}
 
-              {activityTab === 'submissions' ? (
+              {activityTab === "submissions" ? (
                 <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
                   <h3 className="font-semibold text-slate-900">
                     Student Submissions ({(submissions as any[]).length})
@@ -2018,7 +2531,8 @@ export function TeacherLabActivityManager({
                   <div className="mt-5 space-y-3">
                     {(submissions as any[]).map((submission: any) => {
                       const currentVerdict =
-                        submission.manualVerdict && submission.manualVerdict !== 'pending'
+                        submission.manualVerdict &&
+                        submission.manualVerdict !== "pending"
                           ? submission.manualVerdict
                           : submission.submissionStatus;
                       return (
@@ -2032,7 +2546,7 @@ export function TeacherLabActivityManager({
                                 {studentDisplayName(submission)}
                               </p>
                               <p className="mt-1 text-xs text-slate-500">
-                                {submission.problem?.title ?? 'Problem'} ·{' '}
+                                {submission.problem?.title ?? "Problem"} ·{" "}
                                 {formatDateTime(submission.submittedAt)}
                               </p>
                             </div>
@@ -2046,9 +2560,13 @@ export function TeacherLabActivityManager({
                           </div>
 
                           <div className="mt-3 grid gap-3 text-xs text-slate-500 sm:grid-cols-3">
-                            <div>Score: {submission.score ?? '—'}</div>
-                            <div>Time: {submission.executionTimeMs ?? '—'} ms</div>
-                            <div>Memory: {submission.memoryUsedKb ?? '—'} KB</div>
+                            <div>Score: {submission.score ?? "—"}</div>
+                            <div>
+                              Time: {submission.executionTimeMs ?? "—"} ms
+                            </div>
+                            <div>
+                              Memory: {submission.memoryUsedKb ?? "—"} KB
+                            </div>
                           </div>
 
                           {submission.judgeMessage ? (
@@ -2060,13 +2578,19 @@ export function TeacherLabActivityManager({
                           {gradingSubId === submission.id ? (
                             <form
                               onSubmit={gradeForm.handleSubmit((values) =>
-                                gradeMutation.mutate({ id: submission.id, values }),
+                                gradeMutation.mutate({
+                                  id: submission.id,
+                                  values,
+                                }),
                               )}
                               className="mt-4 space-y-3"
                             >
                               <div className="grid gap-3 sm:grid-cols-2">
                                 <Field label="Verdict">
-                                  <select {...gradeForm.register('verdict')} className={inputClass}>
+                                  <select
+                                    {...gradeForm.register("verdict")}
+                                    className={inputClass}
+                                  >
                                     {verdictEnum.options.map((option) => (
                                       <option key={option} value={option}>
                                         {humanize(option)}
@@ -2077,9 +2601,11 @@ export function TeacherLabActivityManager({
                                 <Field label="Score">
                                   <input
                                     type="number"
-                                    {...gradeForm.register('score', {
+                                    {...gradeForm.register("score", {
                                       setValueAs: (value) =>
-                                        value === '' ? undefined : Number(value),
+                                        value === ""
+                                          ? undefined
+                                          : Number(value),
                                     })}
                                     className={inputClass}
                                   />
@@ -2087,41 +2613,65 @@ export function TeacherLabActivityManager({
                               </div>
                               <Field label="Instructor Note">
                                 <textarea
-                                  {...gradeForm.register('instructorNote')}
+                                  {...gradeForm.register("instructorNote")}
                                   className={`${inputClass} min-h-24`}
                                   placeholder="Optional note"
                                 />
                               </Field>
-                              <div className="flex justify-end gap-3">
+                              <div className="flex flex-wrap items-center justify-between gap-3">
                                 <button
                                   type="button"
-                                  onClick={() => setGradingSubId(null)}
-                                  className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                  onClick={() =>
+                                    setSelectedSubmission(submission)
+                                  }
+                                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
                                 >
-                                  Cancel
+                                  <Eye size={15} />
+                                  View Submission
                                 </button>
-                                <button
-                                  type="submit"
-                                  disabled={gradeMutation.isPending}
-                                  className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60"
-                                >
-                                  Save Grade
-                                </button>
+                                <div className="flex flex-wrap gap-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => setGradingSubId(null)}
+                                    className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="submit"
+                                    disabled={gradeMutation.isPending}
+                                    className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60"
+                                  >
+                                    Save Grade
+                                  </button>
+                                </div>
                               </div>
                             </form>
                           ) : (
-                            <div className="mt-4 flex justify-end">
+                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSelectedSubmission(submission)
+                                }
+                                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                              >
+                                <Eye size={15} />
+                                View Submission
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => {
                                   setGradingSubId(submission.id);
                                   gradeForm.reset({
                                     verdict:
-                                      submission.manualVerdict && submission.manualVerdict !== 'pending'
+                                      submission.manualVerdict &&
+                                      submission.manualVerdict !== "pending"
                                         ? submission.manualVerdict
-                                        : 'pending',
+                                        : "pending",
                                     score: submission.score ?? undefined,
-                                    instructorNote: submission.instructorNote ?? '',
+                                    instructorNote:
+                                      submission.instructorNote ?? "",
                                   });
                                 }}
                                 className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
@@ -2143,57 +2693,80 @@ export function TeacherLabActivityManager({
                 </section>
               ) : null}
 
-              {activityTab === 'alerts' ? (
+              {activityTab === "alerts" ? (
                 <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <ShieldAlert size={18} className="text-amber-600" />
-                    <div>
-                      <h3 className="font-semibold text-slate-900">
-                        Proctoring Alerts ({(proctoringEvents as any[]).length})
-                      </h3>
-                      <p className="text-sm text-slate-500">
-                        Focus loss, fullscreen exits, and copy-paste attempts.
+                  {selectedTest.proctoringEnabled === false ? (
+                    <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center">
+                      <p className="text-lg font-semibold text-slate-900">
+                        Alert system is disabled
+                      </p>
+                      <p className="mt-2 text-sm text-slate-500">
+                        This activity was created with alerts turned off, so no
+                        proctoring events are recorded.
                       </p>
                     </div>
-                  </div>
-
-                  <div className="mt-5 space-y-3">
-                    {(proctoringEvents as any[]).slice(0, 12).map((event: any) => (
-                      <div
-                        key={event.id}
-                        className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-semibold text-slate-900">
-                              {studentDisplayName(event.student)}
-                            </p>
-                            <p className="mt-1 text-xs text-slate-500">
-                              {formatDateTime(event.createdAt)}
-                            </p>
-                          </div>
-                          <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
-                            {humanize(event.eventType)}
-                          </span>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-3">
+                        <ShieldAlert size={18} className="text-amber-600" />
+                        <div>
+                          <h3 className="font-semibold text-slate-900">
+                            Proctoring Alerts (
+                            {(proctoringEvents as any[]).length})
+                          </h3>
+                          <p className="text-sm text-slate-500">
+                            Focus loss, fullscreen exits, and copy-paste
+                            attempts.
+                          </p>
                         </div>
-                        <p className="mt-3 text-sm text-amber-900">
-                          {event.message ?? humanize(event.eventType)}
-                        </p>
                       </div>
-                    ))}
 
-                    {!(proctoringEvents as any[]).length ? (
-                      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                        No alerts recorded for this activity.
+                      <div className="mt-5 space-y-3">
+                        {(proctoringEvents as any[])
+                          .slice(0, 12)
+                          .map((event: any) => (
+                            <div
+                              key={event.id}
+                              className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-semibold text-slate-900">
+                                    {studentDisplayName(event.student)}
+                                  </p>
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    {formatDateTime(event.createdAt)}
+                                  </p>
+                                </div>
+                                <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
+                                  {humanize(event.eventType)}
+                                </span>
+                              </div>
+                              <p className="mt-3 text-sm text-amber-900">
+                                {event.message ?? humanize(event.eventType)}
+                              </p>
+                            </div>
+                          ))}
+
+                        {!(proctoringEvents as any[]).length ? (
+                          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                            No alerts recorded for this activity.
+                          </div>
+                        ) : null}
                       </div>
-                    ) : null}
-                  </div>
+                    </>
+                  )}
                 </section>
               ) : null}
             </>
           )}
         </section>
       </div>
+      <LabSubmissionViewer
+        open={Boolean(selectedSubmission)}
+        onClose={() => setSelectedSubmission(null)}
+        submission={selectedSubmission}
+      />
     </div>
   );
 }
@@ -2211,7 +2784,9 @@ function Field({
 }) {
   return (
     <div className={className}>
-      <label className="mb-1.5 block text-sm font-medium text-slate-700">{label}</label>
+      <label className="mb-1.5 block text-sm font-medium text-slate-700">
+        {label}
+      </label>
       {children}
       {error ? <p className="mt-1.5 text-xs text-rose-500">{error}</p> : null}
     </div>
@@ -2251,9 +2826,14 @@ function ProblemCaseSection({
 
       <div className="mt-4 space-y-3">
         {fields.map((field, index) => (
-          <div key={field.id} className="rounded-2xl border border-slate-200 bg-white p-3">
+          <div
+            key={field.id}
+            className="rounded-2xl border border-slate-200 bg-white p-3"
+          >
             <div className="mb-3 flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-slate-700">Case {index + 1}</p>
+              <p className="text-sm font-medium text-slate-700">
+                Case {index + 1}
+              </p>
               {fields.length > 1 ? (
                 <button
                   type="button"
@@ -2332,7 +2912,8 @@ function ManageProblemCard({
           </span>
           <p className="mt-3 font-semibold text-slate-900">{problem.title}</p>
           <p className="mt-1 text-xs text-slate-500">
-            {problem.timeLimitMs ?? 1000} ms · {problem.memoryLimitKb ?? 262144} KB
+            {problem.timeLimitMs ?? 1000} ms · {problem.memoryLimitKb ?? 262144}{" "}
+            KB
           </p>
         </div>
         <button
@@ -2341,10 +2922,12 @@ function ManageProblemCard({
           disabled={disabled || isPending}
           className="rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {added ? 'Added' : isPending ? 'Adding...' : 'Add'}
+          {added ? "Added" : isPending ? "Adding..." : "Add"}
         </button>
       </div>
-      <p className="mt-2 line-clamp-3 text-sm text-slate-600">{problem.statement}</p>
+      <p className="mt-2 line-clamp-3 text-sm text-slate-600">
+        {problem.statement}
+      </p>
     </div>
   );
 }
@@ -2385,7 +2968,7 @@ function ProblemPreviewCard({
               {getProblemCode(problem)}
             </span>
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-              {isOwner ? 'My Problem' : 'Problem Bank'}
+              {isOwner ? "My Problem" : "Problem Bank"}
             </span>
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
               {problem.timeLimitMs ?? 1000} ms
@@ -2394,7 +2977,9 @@ function ProblemPreviewCard({
               {problem.memoryLimitKb ?? 262144} KB
             </span>
           </div>
-          <h3 className="mt-3 text-2xl font-semibold text-slate-900">{problem.title}</h3>
+          <h3 className="mt-3 text-2xl font-semibold text-slate-900">
+            {problem.title}
+          </h3>
         </div>
 
         {isOwner && onEdit ? (
@@ -2434,34 +3019,44 @@ function ProblemPreviewCard({
 
         {(problem.sampleTestCases ?? []).length ? (
           <section className="space-y-4">
-            <h4 className="text-lg font-semibold text-slate-900">Sample Test Cases</h4>
-            {(problem.sampleTestCases ?? []).map((sample: any, index: number) => (
-              <div
-                key={`${problem.id}-${index}`}
-                className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4"
-              >
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Sample {index + 1}
-                </p>
-                <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                  <div>
-                    <p className="mb-2 text-xs font-medium text-slate-500">Input</p>
-                    <pre className="overflow-auto rounded-xl bg-white p-3 text-xs text-slate-700">
-                      {sample.input}
-                    </pre>
+            <h4 className="text-lg font-semibold text-slate-900">
+              Sample Test Cases
+            </h4>
+            {(problem.sampleTestCases ?? []).map(
+              (sample: any, index: number) => (
+                <div
+                  key={`${problem.id}-${index}`}
+                  className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Sample {index + 1}
+                  </p>
+                  <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                    <div>
+                      <p className="mb-2 text-xs font-medium text-slate-500">
+                        Input
+                      </p>
+                      <pre className="overflow-auto rounded-xl bg-white p-3 text-xs text-slate-700">
+                        {sample.input}
+                      </pre>
+                    </div>
+                    <div>
+                      <p className="mb-2 text-xs font-medium text-slate-500">
+                        Output
+                      </p>
+                      <pre className="overflow-auto rounded-xl bg-white p-3 text-xs text-slate-700">
+                        {sample.output}
+                      </pre>
+                    </div>
                   </div>
-                  <div>
-                    <p className="mb-2 text-xs font-medium text-slate-500">Output</p>
-                    <pre className="overflow-auto rounded-xl bg-white p-3 text-xs text-slate-700">
-                      {sample.output}
-                    </pre>
-                  </div>
+                  {sample.explanation ? (
+                    <p className="mt-3 text-xs text-slate-500">
+                      {sample.explanation}
+                    </p>
+                  ) : null}
                 </div>
-                {sample.explanation ? (
-                  <p className="mt-3 text-xs text-slate-500">{sample.explanation}</p>
-                ) : null}
-              </div>
-            ))}
+              ),
+            )}
           </section>
         ) : null}
       </article>
@@ -2470,4 +3065,4 @@ function ProblemPreviewCard({
 }
 
 const inputClass =
-  'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-900';
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-900";

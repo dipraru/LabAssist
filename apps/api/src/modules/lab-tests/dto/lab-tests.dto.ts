@@ -60,6 +60,7 @@ export class CreateLabTestDto {
   @IsOptional() @IsNumber() totalMarks?: number;
   @IsOptional() @IsString() sectionName?: string;
   @IsOptional() @IsUUID() labClassId?: string;
+  @IsOptional() @IsBoolean() proctoringEnabled?: boolean;
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
@@ -75,6 +76,7 @@ export class UpdateLabTestDto {
   @IsOptional() @IsNumber() totalMarks?: number;
   @IsOptional() @IsString() sectionName?: string;
   @IsOptional() @IsUUID() labClassId?: string;
+  @IsOptional() @IsBoolean() proctoringEnabled?: boolean;
 }
 
 export class UpdateLabActivityProblemDto {
