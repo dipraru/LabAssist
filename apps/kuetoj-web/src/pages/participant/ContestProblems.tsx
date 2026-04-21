@@ -8,7 +8,7 @@ import { api } from '../../lib/api';
 import { getContestPhase } from '../../components/ContestCountdownBar';
 import { getSocket, joinContest, leaveContest } from '../../lib/socket';
 import { isAcceptedVerdict } from '../../lib/verdict';
-import { ArrowRight, Bell, CheckCircle2, Clock3, XCircle } from 'lucide-react';
+import { ArrowRight, Bell, CheckCircle2, Clock3, Pin, XCircle } from 'lucide-react';
 
 function contestProblemLabel(cp: any, index: number): string {
   const raw = typeof cp?.label === 'string' ? cp.label.trim().toUpperCase() : '';
@@ -67,10 +67,12 @@ export function ContestProblems() {
     };
     socket.on('verdict', verdictHandler);
     socket.on('announcement', refreshAnnouncements);
+    socket.on('announcements:update', refreshAnnouncements);
 
     return () => {
       socket.off('verdict', verdictHandler);
       socket.off('announcement', refreshAnnouncements);
+      socket.off('announcements:update', refreshAnnouncements);
       leaveContest(contest.id);
     };
   }, [contest?.id, id, qc]);
@@ -81,6 +83,11 @@ export function ContestProblems() {
 
   const problems: any[] = [...(contest?.problems ?? contest?.contestProblems ?? [])]
     .sort((a, b) => (a?.orderIndex ?? 0) - (b?.orderIndex ?? 0));
+  const sortedAnnouncements: any[] = [...(announcements as any[])]
+    .sort((left, right) => {
+      if (Boolean(left.isPinned) !== Boolean(right.isPinned)) return left.isPinned ? -1 : 1;
+      return new Date(right.createdAt ?? 0).getTime() - new Date(left.createdAt ?? 0).getTime();
+    });
   const phase = contest?.startTime && contest?.endTime
     ? getContestPhase(contest.startTime, contest.endTime)
     : 'upcoming';
@@ -167,16 +174,19 @@ export function ContestProblems() {
                 )}
               </div>
 
-            {(announcements as any[]).length > 0 && (
+            {sortedAnnouncements.length > 0 && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                 <h3 className="mb-2 flex items-center gap-2 text-sm font-extrabold text-amber-800">
                   <Bell size={15} />
                   Announcements
                 </h3>
                 <div className="space-y-2">
-                  {(announcements as any[]).slice(0, 5).map((announcement: any) => (
+                  {sortedAnnouncements.slice(0, 5).map((announcement: any) => (
                     <div key={announcement.id} className="rounded-lg bg-white/60 px-3 py-2 text-sm text-amber-900">
-                      <span className="font-bold">{announcement.title}</span>
+                      <span className="inline-flex items-center gap-1 font-bold">
+                        {announcement.isPinned && <Pin size={13} />}
+                        {announcement.title}
+                      </span>
                       {announcement.body ? <span className="text-amber-800">: {announcement.body}</span> : null}
                     </div>
                   ))}

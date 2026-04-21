@@ -23,6 +23,10 @@ export function ParticipantStandings() {
   const isIcpc = contest?.type === 'icpc';
   const rows: any[] = standings?.rows ?? standings ?? [];
   const problems: any[] = standings?.problems ?? [];
+  const standingTableMinWidth = Math.max(
+    920,
+    80 + 288 + 112 + (isIcpc ? 112 : 0) + problems.length * 112,
+  );
 
   const getProblemCell = (row: any, label: string) => {
     const fromList = (row?.problems ?? []).find((problem: any) => problem?.label === label);
@@ -73,7 +77,7 @@ export function ParticipantStandings() {
 
         <div className="oj-panel overflow-hidden">
           <div className="overflow-x-auto oj-scrollbar">
-          <table className="min-w-max border-separate border-spacing-0 text-sm">
+          <table className="w-full border-separate border-spacing-0 text-sm" style={{ minWidth: standingTableMinWidth }}>
             <thead className="bg-slate-50">
               <tr>
                 <th className="sticky left-0 z-20 w-20 border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-xs font-extrabold uppercase tracking-wide text-slate-500">Rank</th>
@@ -108,7 +112,7 @@ export function ParticipantStandings() {
                           <td key={problem.label} className="border-b border-slate-100 px-3 py-3 text-center align-middle tabular-nums">
                             {problemCell.accepted ? (
                               <div className={`mx-auto inline-flex min-w-16 flex-col items-center rounded-xl px-2 py-1.5 text-xs font-extrabold ${problemCell.isFirstSolve ? 'bg-amber-50 text-amber-700' : 'bg-teal-50 text-teal-700'}`}>
-                                <CheckCircle2 size={14} />
+                                {problemCell.isFirstSolve ? <span className="text-sm leading-none">★</span> : <CheckCircle2 size={14} />}
                                 <span className="mt-1">
                                   {formatAcceptedText(problemCell.acceptedAtMinute, problemCell.wrongAttempts ?? 0)}
                                 </span>

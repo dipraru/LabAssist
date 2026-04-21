@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -6,9 +7,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
-import { Send } from 'lucide-react';
+import { CheckCircle2, Send } from 'lucide-react';
 import { ParticipantContestNav } from '../../components/ParticipantContestNav';
 import { ParticipantContestHeader } from '../../components/ParticipantContestHeader';
+import { getSocket } from '../../lib/socket';
 
 const schema = z.object({
   question: z.string().min(5, 'Question too short'),
@@ -29,6 +31,18 @@ export function AskClarification() {
     queryKey: ['my-clarifications', id],
     queryFn: () => api.get(`/contests/${id}/clarifications/mine`).then(r => r.data),
   });
+
+  useEffect(() => {
+    if (!id) return;
+    const socket = getSocket();
+    const refreshClarifications = () => {
+      qc.invalidateQueries({ queryKey: ['my-clarifications', id] });
+    };
+    socket.on('clarification', refreshClarifications);
+    return () => {
+      socket.off('clarification', refreshClarifications);
+    };
+  }, [id, qc]);
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -93,9 +107,12 @@ export function AskClarification() {
             <div key={c.id} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between">
                 <p className="text-sm font-medium text-slate-800">{c.question}</p>
-                <span className={`ml-3 px-2 py-0.5 text-xs rounded-full flex-shrink-0 ${
+                <span className={`ml-3 inline-flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-extrabold ${
                   c.status === 'answered' ? 'bg-teal-100 text-teal-700' : 'bg-amber-100 text-amber-700'
-                }`}>{c.status}</span>
+                }`}>
+                  {c.status === 'answered' && <CheckCircle2 size={12} />}
+                  {c.status === 'answered' ? 'Answered' : c.status}
+                </span>
               </div>
               {c.contestProblemLabel && (
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -104,7 +121,10 @@ export function AskClarification() {
               )}
               {c.answer ? (
                 <div className="mt-3 rounded-2xl bg-teal-50 p-3 text-sm text-teal-900">
-                  <p className="font-bold text-xs text-teal-700 mb-0.5">Judge's Answer{c.isBroadcast ? ' (Broadcast)' : ''}:</p>
+                  <p className="mb-0.5 flex flex-wrap items-center gap-2 text-xs font-bold text-teal-700">
+                    <span>Judge's Answer{c.isBroadcast ? ' (Broadcast)' : ''}:</span>
+                    {c.answerEditedAt && <span className="text-amber-700">edited</span>}
+                  </p>
                   {c.answer}
                 </div>
               ) : (

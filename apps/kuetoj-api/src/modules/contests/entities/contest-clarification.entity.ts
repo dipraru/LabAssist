@@ -42,6 +42,9 @@ export class ContestClarification {
   @Column({ type: 'varchar', nullable: true })
   answeredById: string | null;
 
+  @Column({ type: 'timestamptz', nullable: true })
+  answerEditedAt: Date | null;
+
   @Column({
     type: 'enum',
     enum: ClarificationStatus,

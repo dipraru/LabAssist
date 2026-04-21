@@ -154,6 +154,10 @@ export class CreateAnnouncementDto {
   @IsOptional() @IsBoolean() isPinned?: boolean;
 }
 
+export class UpdateAnnouncementPinDto {
+  @IsBoolean() isPinned: boolean;
+}
+
 export class AnswerClarificationDto {
   @IsString() answer: string;
   @IsOptional() @IsBoolean() isBroadcast?: boolean;

@@ -1591,8 +1591,41 @@ export class ContestsService {
     const contest = await this.resolveContestOrThrow(contestId);
     return this.announcementRepo.find({
       where: { contestId: contest.id },
-      order: { createdAt: 'DESC' },
+      order: { isPinned: 'DESC', createdAt: 'DESC' },
     });
+  }
+
+  async updateAnnouncementPin(
+    contestId: string,
+    announcementId: string,
+    isPinned: boolean,
+    judgeUserId: string,
+  ) {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
+    const contest = await this.resolveContestOrThrow(contestId);
+    if (
+      !(await this.canJudgeManageContest(
+        contest.id,
+        contest.createdById,
+        judgeUserId,
+        judgeProfileId,
+      ))
+    ) {
+      throw new ForbiddenException();
+    }
+
+    const announcement = await this.announcementRepo.findOne({
+      where: { id: announcementId, contestId: contest.id },
+    });
+    if (!announcement) throw new NotFoundException('Announcement not found');
+
+    announcement.isPinned = isPinned;
+    const saved = await this.announcementRepo.save(announcement);
+    this.gateway.sendToContest(contest.id, 'announcements:update', {
+      id: saved.id,
+      isPinned: saved.isPinned,
+    });
+    return saved;
   }
 
   // ─── CLARIFICATIONS ───────────────────────────────────────────────────────────
@@ -1711,10 +1744,15 @@ export class ContestsService {
       throw new ForbiddenException();
     }
 
+    const wasAnswered = clar.status === ClarificationStatus.ANSWERED;
+    const previousAnswer = clar.answer ?? '';
     clar.answer = dto.answer;
     clar.status = ClarificationStatus.ANSWERED;
     clar.isBroadcast = dto.isBroadcast ?? false;
     clar.answeredById = judgeUserId;
+    if (wasAnswered && previousAnswer !== dto.answer) {
+      clar.answerEditedAt = new Date();
+    }
     const saved = await this.clarRepo.save(clar);
 
     if (clar.isBroadcast) {
@@ -1723,6 +1761,7 @@ export class ContestsService {
         question: saved.question,
         answer: saved.answer,
         contestProblemId: saved.contestProblemId,
+        answerEditedAt: saved.answerEditedAt,
       });
     } else {
       // Send only to the asker
@@ -1730,6 +1769,7 @@ export class ContestsService {
         id: saved.id,
         question: saved.question,
         answer: saved.answer,
+        answerEditedAt: saved.answerEditedAt,
       });
     }
     return saved;

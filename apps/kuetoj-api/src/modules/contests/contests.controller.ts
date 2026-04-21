@@ -34,6 +34,7 @@ import {
   CreateTempParticipantsDto,
   UpdateProblemDto,
   GradeContestSubmissionDto,
+  UpdateAnnouncementPinDto,
   UpdateContestDto,
 } from './dto/contests.dto';
 import { ContestStatus } from '../../common/enums';
@@ -214,6 +215,22 @@ export class ContestsController {
     @CurrentUser() user: any,
   ) {
     return this.svc.createAnnouncement(id, dto, user.id);
+  }
+
+  @Roles(UserRole.TEMP_JUDGE)
+  @Patch(':id/announcements/:announcementId/pin')
+  updateAnnouncementPin(
+    @Param('id') id: string,
+    @Param('announcementId') announcementId: string,
+    @Body() dto: UpdateAnnouncementPinDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.svc.updateAnnouncementPin(
+      id,
+      announcementId,
+      dto.isPinned,
+      user.id,
+    );
   }
 
   @Roles(UserRole.TEMP_JUDGE)

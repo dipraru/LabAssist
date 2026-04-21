@@ -61,6 +61,7 @@ export function ContestManage() {
   const [gradingId, setGradingId] = useState<string | null>(null);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
   const [editingAnswerId, setEditingAnswerId] = useState<string | null>(null);
+  const [answeringIgnoredId, setAnsweringIgnoredId] = useState<string | null>(null);
   const [answerText, setAnswerText] = useState<{ [key: string]: string }>({});
   const [nowMs, setNowMs] = useState<number>(Date.now());
 
@@ -172,6 +173,8 @@ export function ContestManage() {
     onSuccess: () => {
       toast.success('Saved');
       qc.invalidateQueries({ queryKey: ['contest-clarifications', id] });
+      setEditingAnswerId(null);
+      setAnsweringIgnoredId(null);
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
   });
@@ -190,6 +193,16 @@ export function ContestManage() {
     onSuccess: () => {
       toast.success('Announcement posted');
       announcementForm.reset();
+      qc.invalidateQueries({ queryKey: ['contest-announcements', id] });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
+  });
+
+  const pinAnnouncementMutation = useMutation({
+    mutationFn: ({ announcementId, isPinned }: { announcementId: string; isPinned: boolean }) =>
+      api.patch(`/contests/${id}/announcements/${announcementId}/pin`, { isPinned }),
+    onSuccess: (_response, variables) => {
+      toast.success(variables.isPinned ? 'Announcement pinned' : 'Announcement unpinned');
       qc.invalidateQueries({ queryKey: ['contest-announcements', id] });
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed'),
@@ -215,6 +228,10 @@ export function ContestManage() {
   const standingProblems: any[] = standings?.problems ?? [];
   const isFreezeActive = Boolean(standings?.isFrozen);
   const isIcpcStanding = contest?.type === 'icpc';
+  const standingTableMinWidth = Math.max(
+    920,
+    80 + 288 + 112 + (isIcpcStanding ? 112 : 0) + standingProblems.length * 112,
+  );
 
   const getStandingProblemCell = (row: any, label: string) => {
     const fromList = (row?.problems ?? []).find((problem: any) => problem?.label === label);
@@ -252,6 +269,13 @@ export function ContestManage() {
   const answeredClarifications = useMemo(
     () => (clarifications as any[]).filter((item: any) => item.status === 'answered'),
     [clarifications],
+  );
+  const sortedAnnouncements = useMemo(
+    () => [...(announcements as any[])].sort((left: any, right: any) => {
+      if (Boolean(left.isPinned) !== Boolean(right.isPinned)) return left.isPinned ? -1 : 1;
+      return new Date(right.createdAt ?? 0).getTime() - new Date(left.createdAt ?? 0).getTime();
+    }),
+    [announcements],
   );
 
   const tabs: Array<{ key: ContestTab; label: string; badge?: number }> = [
@@ -537,7 +561,7 @@ export function ContestManage() {
             </div>
             <div className="oj-panel overflow-hidden">
               <div className="overflow-x-auto oj-scrollbar">
-                <table className="min-w-max border-separate border-spacing-0 text-sm">
+                <table className="w-full border-separate border-spacing-0 text-sm" style={{ minWidth: standingTableMinWidth }}>
                   <thead className="bg-slate-50">
                   <tr>
                     <th className="sticky left-0 z-20 w-20 border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-xs font-extrabold uppercase tracking-wide text-slate-500">Rank</th>
@@ -572,7 +596,7 @@ export function ContestManage() {
                               <td key={problem.label} className="border-b border-slate-100 px-3 py-3 text-center align-middle tabular-nums">
                                 {problemCell.accepted ? (
                                   <div className={`mx-auto inline-flex min-w-16 flex-col items-center rounded-xl px-2 py-1.5 text-xs font-extrabold ${problemCell.isFirstSolve ? 'bg-amber-50 text-amber-700' : 'bg-teal-50 text-teal-700'}`}>
-                                    <CheckCircle2 size={14} />
+                                    {problemCell.isFirstSolve ? <span className="text-sm leading-none">★</span> : <CheckCircle2 size={14} />}
                                     <span className="mt-1">
                                       {formatAcceptedText(problemCell.acceptedAtMinute, problemCell.wrongAttempts ?? 0)}
                                     </span>
@@ -676,40 +700,62 @@ export function ContestManage() {
                 <div className="space-y-3">
                   {answeredClarifications.map((c: any) => (
                     <article key={c.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-sm font-extrabold text-slate-900">{c.question}</p>
-                      <p className="mt-1 text-xs font-semibold text-slate-500">
-                        {c.participantName ?? c.participantId}
-                        {c.contestProblemLabel ? ` · Problem ${c.contestProblemLabel}` : ''}
-                      </p>
-                      <textarea
-                        value={answerText[c.id] ?? c.answer ?? ''}
-                        onChange={(e) => setAnswerText((prev) => ({ ...prev, [c.id]: e.target.value }))}
-                        placeholder="Edit answer"
-                        rows={2}
-                        readOnly={editingAnswerId !== c.id}
-                        className="oj-textarea mt-3 resize-none bg-white"
-                      />
-                      <div className="mt-3 flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (editingAnswerId !== c.id) {
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-extrabold text-slate-900">{c.question}</p>
+                          <p className="mt-1 text-xs font-semibold text-slate-500">
+                            {c.participantName ?? c.participantId}
+                            {c.contestProblemLabel ? ` · Problem ${c.contestProblemLabel}` : ''}
+                          </p>
+                        </div>
+                        {editingAnswerId !== c.id && (
+                          <button
+                            type="button"
+                            onClick={() => {
                               setEditingAnswerId(c.id);
                               setAnswerText((prev) => ({ ...prev, [c.id]: prev[c.id] ?? c.answer ?? '' }));
-                              return;
-                            }
-                            answerMutation.mutate({ clarId: c.id, answer: answerText[c.id] ?? c.answer ?? '' }, {
-                              onSuccess: () => {
-                                setEditingAnswerId(null);
-                              },
-                            });
-                          }}
-                          disabled={editingAnswerId === c.id && !((answerText[c.id] ?? c.answer ?? '').trim())}
-                          className="oj-btn-secondary px-3 py-2 text-xs disabled:opacity-50"
-                        >
-                          {editingAnswerId === c.id ? 'Save' : 'Edit'}
-                        </button>
+                            }}
+                            className="oj-btn-secondary px-3 py-2 text-xs"
+                          >
+                            Edit
+                          </button>
+                        )}
                       </div>
+                      {editingAnswerId === c.id ? (
+                        <div className="mt-3 space-y-2">
+                          <textarea
+                            value={answerText[c.id] ?? c.answer ?? ''}
+                            onChange={(e) => setAnswerText((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                            placeholder="Edit answer"
+                            rows={3}
+                            className="oj-textarea resize-none bg-white"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setEditingAnswerId(null)}
+                              className="oj-btn-secondary px-3 py-2 text-xs"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => answerMutation.mutate({ clarId: c.id, answer: answerText[c.id] ?? c.answer ?? '' })}
+                              disabled={!((answerText[c.id] ?? c.answer ?? '').trim())}
+                              className="oj-btn-primary px-3 py-2 text-xs disabled:opacity-50"
+                            >
+                              Commit
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-3 rounded-xl bg-white px-3 py-2 text-sm font-semibold leading-6 text-slate-700">
+                          {c.answer ?? '—'}
+                          {c.answerEditedAt && (
+                            <span className="ml-2 align-middle text-xs font-extrabold text-amber-700">edited</span>
+                          )}
+                        </div>
+                      )}
                     </article>
                   ))}
                   {!answeredClarifications.length && (
@@ -726,18 +772,44 @@ export function ContestManage() {
                 <div className="space-y-3">
                   {ignoredClarifications.map((c: any) => (
                     <article key={c.id} className="rounded-xl border border-slate-200 bg-white p-4">
-                      <p className="text-sm font-extrabold text-slate-900">{c.question}</p>
-                      <p className="mt-1 text-xs font-semibold text-slate-500">
-                        {c.participantName ?? c.participantId}
-                        {c.contestProblemLabel ? ` · Problem ${c.contestProblemLabel}` : ''}
-                      </p>
-                      <div className="mt-3 flex gap-2">
-                        <input
-                          value={answerText[c.id] ?? ''}
-                          onChange={(e) => setAnswerText((prev) => ({ ...prev, [c.id]: e.target.value }))}
-                          placeholder="Write answer"
-                          className="oj-input min-w-0 flex-1 py-2 text-sm"
-                        />
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-extrabold text-slate-900">{c.question}</p>
+                          <p className="mt-1 text-xs font-semibold text-slate-500">
+                            {c.participantName ?? c.participantId}
+                            {c.contestProblemLabel ? ` · Problem ${c.contestProblemLabel}` : ''}
+                          </p>
+                        </div>
+                        {answeringIgnoredId !== c.id && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAnsweringIgnoredId(c.id);
+                              setAnswerText((prev) => ({ ...prev, [c.id]: prev[c.id] ?? '' }));
+                            }}
+                            className="oj-btn-secondary px-3 py-2 text-xs"
+                          >
+                            Answer now
+                          </button>
+                        )}
+                      </div>
+                      {answeringIgnoredId === c.id && (
+                        <div className="mt-3 space-y-2">
+                          <textarea
+                            value={answerText[c.id] ?? ''}
+                            onChange={(e) => setAnswerText((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                            placeholder="Write answer"
+                            rows={3}
+                            className="oj-textarea resize-none"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setAnsweringIgnoredId(null)}
+                              className="oj-btn-secondary px-3 py-2 text-xs"
+                            >
+                              Cancel
+                            </button>
                         <button
                           type="button"
                           onClick={() => answerMutation.mutate({ clarId: c.id, answer: answerText[c.id] ?? '' })}
@@ -746,7 +818,9 @@ export function ContestManage() {
                         >
                           Answer
                         </button>
-                      </div>
+                          </div>
+                        </div>
+                      )}
                     </article>
                   ))}
                   {!ignoredClarifications.length && (
@@ -787,10 +861,10 @@ export function ContestManage() {
                   <p className="oj-kicker"><Archive size={14} /> History</p>
                   <h2 className="mt-3 text-xl font-extrabold text-slate-950">Announcements</h2>
                 </div>
-                <span className="oj-chip bg-slate-100 text-slate-600">{(announcements as any[]).length} total</span>
+                <span className="oj-chip bg-slate-100 text-slate-600">{sortedAnnouncements.length} total</span>
               </div>
               <div className="space-y-3">
-                {(announcements as any[]).map((announcement: any) => (
+                {sortedAnnouncements.map((announcement: any) => (
                   <article key={announcement.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -802,11 +876,22 @@ export function ContestManage() {
                         </div>
                         <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-600">{announcement.body}</p>
                       </div>
-                      <span className="text-xs font-semibold text-slate-400">{new Date(announcement.createdAt).toLocaleString()}</span>
+                      <div className="flex shrink-0 flex-col items-end gap-2">
+                        <span className="text-xs font-semibold text-slate-400">{new Date(announcement.createdAt).toLocaleString()}</span>
+                        <button
+                          type="button"
+                          onClick={() => pinAnnouncementMutation.mutate({ announcementId: announcement.id, isPinned: !announcement.isPinned })}
+                          disabled={pinAnnouncementMutation.isPending}
+                          className="oj-btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
+                        >
+                          <Pin size={13} />
+                          {announcement.isPinned ? 'Unpin' : 'Pin'}
+                        </button>
+                      </div>
                     </div>
                   </article>
                 ))}
-                {!(announcements as any[]).length && (
+                {!sortedAnnouncements.length && (
                   <p className="rounded-xl border border-dashed border-slate-200 py-10 text-center text-sm font-semibold text-slate-400">No announcements yet.</p>
                 )}
               </div>

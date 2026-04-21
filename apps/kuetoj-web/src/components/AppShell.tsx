@@ -63,7 +63,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Online Judge</span>
             </span>
           </Link>
-
           <div ref={menuRef} className="relative">
             <button
               type="button"
