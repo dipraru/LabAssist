@@ -52,7 +52,7 @@ export function BridgeLoginPage() {
           profile: user.profile ?? null,
         });
 
-        navigate(user.role === 'temp_judge' ? '/contests' : '/contest', { replace: true });
+        navigate('/contests', { replace: true });
       } catch {
         toast.error('Bridge login failed. Please sign in again.');
         redirectToLabassistLogout();

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { BridgeLoginPage } from './pages/BridgeLoginPage';
@@ -6,9 +7,11 @@ import { BridgeLoginPage } from './pages/BridgeLoginPage';
 import { JudgeContests } from './pages/judge/JudgeContests';
 import { JudgeProblems } from './pages/judge/JudgeProblems';
 import { JudgeProblemEditor } from './pages/judge/JudgeProblemEditor';
+import { JudgeLatexGuide } from './pages/judge/JudgeLatexGuide';
+import { JudgeContestCreate } from './pages/judge/JudgeContestCreate';
 import { ContestManage } from './pages/judge/ContestManage';
 import { JudgeContestProblem } from './pages/judge/JudgeContestProblem';
-import { JudgeStandingsEntry, PublicContestStandings } from './pages/judge/PublicContestStandings';
+import { PublicContestStandings } from './pages/judge/PublicContestStandings';
 import { ContestParticipants } from './pages/judge/ContestParticipants';
 
 // Participant
@@ -44,20 +47,72 @@ function RoleRedirect() {
   }
   const map: Record<string, string> = {
     temp_judge: '/contests',
-    temp_participant: '/contest',
+    temp_participant: '/contests',
   };
   return <Navigate to={map[user.role] ?? '/login'} replace />;
 }
 
-function JudgeContestDefaultRedirect() {
+function ContestDefaultRedirect() {
   const { id } = useParams<{ id: string }>();
-  return <Navigate to={`/contests/${id}/status`} replace />;
+  return <Navigate to={`/contests/${id}/problems`} replace />;
 }
 
 function LegacyJudgeRedirect() {
   const location = useLocation();
   const nextPath = location.pathname.replace(/^\/judge/, '') || '/';
   return <Navigate to={`${nextPath}${location.search}${location.hash}`} replace />;
+}
+
+function LegacyParticipantRedirect() {
+  const location = useLocation();
+  const nextPath = location.pathname.replace(/^\/contest/, '/contests');
+  return <Navigate to={`${nextPath}${location.search}${location.hash}`} replace />;
+}
+
+function RoleContestIndex() {
+  const { user } = useAuthStore();
+  if (user?.role === 'temp_judge') return <JudgeContests />;
+  return <ParticipantContestEntry />;
+}
+
+function JudgeOnly({ children }: { children: ReactNode }) {
+  const { user } = useAuthStore();
+  if (user?.role !== 'temp_judge') return <Navigate to="/contests" replace />;
+  return children;
+}
+
+function ParticipantOnly({ children }: { children: ReactNode }) {
+  const { user } = useAuthStore();
+  if (user?.role !== 'temp_participant') return <Navigate to="/contests" replace />;
+  return <ParticipantContestAccessGate>{children}</ParticipantContestAccessGate>;
+}
+
+function RoleContestManagePage({ tab }: { tab: 'problems' | 'status' | 'standings' | 'clarifications' | 'announcements' }) {
+  const { user } = useAuthStore();
+  if (user?.role === 'temp_judge') return <ContestManage />;
+  if (tab === 'problems') return <ParticipantContestAccessGate><ContestProblems /></ParticipantContestAccessGate>;
+  if (tab === 'status') return <ParticipantContestAccessGate><ContestView /></ParticipantContestAccessGate>;
+  if (tab === 'standings') return <ParticipantContestAccessGate><ParticipantStandings /></ParticipantContestAccessGate>;
+  if (tab === 'clarifications') return <ParticipantContestAccessGate><AskClarification /></ParticipantContestAccessGate>;
+  return <Navigate to="/contests" replace />;
+}
+
+function RoleContestProblemPage() {
+  const { user } = useAuthStore();
+  if (user?.role === 'temp_judge') return <JudgeContestProblem />;
+  return <ParticipantContestAccessGate><ContestProblem /></ParticipantContestAccessGate>;
+}
+
+function ContestStandingsEntry() {
+  const { id } = useParams<{ id: string }>();
+  const { token, user } = useAuthStore();
+
+  if (token && user?.role === 'temp_judge') return <ContestManage />;
+  if (token && user?.role === 'temp_participant') {
+    return <ParticipantContestAccessGate><ParticipantStandings /></ParticipantContestAccessGate>;
+  }
+
+  return <Navigate to={`/contests/${id}/standings/public`} replace />;
 }
 
 export default function App() {
@@ -71,41 +126,34 @@ export default function App() {
         </div>
       } />
 
-      <Route path="/contests/:id/standings" element={<JudgeStandingsEntry />} />
       <Route path="/contests/:id/standings/public" element={<PublicContestStandings />} />
+      <Route path="/contests/:id/standings" element={<ContestStandingsEntry />} />
 
-      {/* Judge */}
-      <Route element={<ProtectedRoute allowedRoles={['temp_judge']} />}>
-        <Route path="/judge" element={<Navigate to="/contests" replace />} />
-        <Route path="/contests" element={<JudgeContests />} />
-        <Route path="/problems" element={<JudgeProblems />} />
-        <Route path="/problems/new" element={<JudgeProblemEditor />} />
-        <Route path="/problems/:problemId/edit" element={<JudgeProblemEditor />} />
-        <Route path="/contests/:id" element={<JudgeContestDefaultRedirect />} />
-        <Route path="/contests/:id/problems" element={<ContestManage />} />
-        <Route path="/contests/:id/status" element={<ContestManage />} />
-        <Route path="/contests/:id/clarifications" element={<ContestManage />} />
-        <Route path="/contests/:id/announcements" element={<ContestManage />} />
-        <Route path="/contests/:id/problems/:problemId" element={<JudgeContestProblem />} />
-        <Route path="/contests/:id/participants" element={<ContestParticipants />} />
+      <Route element={<ProtectedRoute allowedRoles={['temp_judge', 'temp_participant']} />}>
+        <Route path="/contests" element={<RoleContestIndex />} />
+        <Route path="/contests/new" element={<JudgeOnly><JudgeContestCreate /></JudgeOnly>} />
+        <Route path="/contests/:id" element={<ContestDefaultRedirect />} />
+        <Route path="/contests/:id/problems" element={<RoleContestManagePage tab="problems" />} />
+        <Route path="/contests/:id/status" element={<RoleContestManagePage tab="status" />} />
+        <Route path="/contests/:id/clarifications" element={<RoleContestManagePage tab="clarifications" />} />
+        <Route path="/contests/:id/announcements" element={<RoleContestManagePage tab="announcements" />} />
+        <Route path="/contests/:id/problems/:problemId" element={<RoleContestProblemPage />} />
+        <Route path="/contests/:id/submissions" element={<ParticipantOnly><ContestSubmissions /></ParticipantOnly>} />
+        <Route path="/contests/:id/submissions/:submissionId" element={<ParticipantOnly><ContestSubmissionDetail /></ParticipantOnly>} />
+        <Route path="/contests/:id/participants" element={<JudgeOnly><ContestParticipants /></JudgeOnly>} />
       </Route>
 
-      {/* Participant */}
-      <Route element={<ProtectedRoute allowedRoles={['temp_participant']} />}>
-        <Route path="/contest" element={<ParticipantContestEntry />} />
-        <Route path="/contest/:id" element={<ParticipantContestAccessGate />}>
-          <Route index element={<Navigate to="problems" replace />} />
-          <Route path="status" element={<ContestView />} />
-          <Route path="problems" element={<ContestProblems />} />
-          <Route path="problems/:problemLabel" element={<ContestProblem />} />
-          <Route path="submissions" element={<ContestSubmissions />} />
-          <Route path="submissions/:submissionId" element={<ContestSubmissionDetail />} />
-          <Route path="standings" element={<ParticipantStandings />} />
-          <Route path="clarifications" element={<AskClarification />} />
-        </Route>
+      {/* Judge tools outside contest runtime */}
+      <Route element={<ProtectedRoute allowedRoles={['temp_judge']} />}>
+        <Route path="/judge" element={<Navigate to="/contests" replace />} />
+        <Route path="/problems" element={<JudgeProblems />} />
+        <Route path="/problems/new" element={<JudgeProblemEditor />} />
+        <Route path="/problems/latex-guide" element={<JudgeLatexGuide />} />
+        <Route path="/problems/:problemId/edit" element={<JudgeProblemEditor />} />
       </Route>
 
       <Route path="/judge/*" element={<LegacyJudgeRedirect />} />
+      <Route path="/contest/*" element={<LegacyParticipantRedirect />} />
       <Route path="/" element={<RoleRedirect />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

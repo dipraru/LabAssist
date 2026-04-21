@@ -8,7 +8,7 @@ import 'ace-builds/src-noconflict/mode-c_cpp';
 import 'ace-builds/src-noconflict/mode-java';
 import 'ace-builds/src-noconflict/mode-python';
 import 'ace-builds/src-noconflict/mode-javascript';
-import 'ace-builds/src-noconflict/theme-monokai';
+import 'ace-builds/src-noconflict/theme-github';
 import toast from 'react-hot-toast';
 import { Upload, Code2 } from 'lucide-react';
 import { getSocket, joinContest, leaveContest } from '../../lib/socket';
@@ -87,7 +87,7 @@ export function ContestSubmit() {
       setFile(null);
       const submissionId = response.data?.id;
       if (submissionId && contestPathId) {
-        navigate(`/contest/${contestPathId}/submissions/${submissionId}`);
+        navigate(`/contests/${contestPathId}/submissions/${submissionId}`);
       }
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? 'Submission failed'),
@@ -97,23 +97,23 @@ export function ContestSubmit() {
 
   return (
     <AppShell>
-      <div className="max-w-4xl">
-        <Link to={`/contest/${id}`} className="text-sm text-indigo-600 hover:underline mb-4 inline-block">
+      <div className="oj-page max-w-5xl">
+        <Link to={`/contests/${id}`} className="mb-4 inline-block text-sm font-bold text-teal-700 hover:underline">
           ← Back to contest
         </Link>
-        <h1 className="text-2xl font-bold text-slate-900 mb-6">Submit Solution</h1>
+        <h1 className="mb-6 text-2xl font-extrabold text-slate-950">Submit Solution</h1>
 
-        <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
-          <span>📝</span>
-          <span className="font-medium">Editor only — no code execution in MVP. Submissions are reviewed manually.</span>
+        <div className="mb-4 flex items-center gap-2 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm font-semibold text-teal-800">
+          <Code2 size={16} />
+          <span>Submit inline code or upload a source file. Verdicts update automatically when judging finishes.</span>
         </div>
 
         <div className="grid grid-cols-3 gap-6">
-          <div className="col-span-2 space-y-4">
+          <div className="oj-panel col-span-2 space-y-4 p-5">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Problem</label>
               <select value={selectedCPId} onChange={e => setSelectedCPId(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                className="oj-select">
                 <option value="">— select problem —</option>
                 {problems.map((cp: any) => (
                   <option key={cp.id} value={cp.id}>{cp.label}. {cp.problem?.title}</option>
@@ -125,17 +125,17 @@ export function ContestSubmit() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Language</label>
                 <select value={language} onChange={e => setLanguage(e.target.value)}
-                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                  className="oj-select w-auto">
                   {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
                 </select>
               </div>
               <div className="mt-5 flex gap-2">
                 <button type="button" onClick={() => setUseFile(false)}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm ${!useFile ? 'bg-indigo-600 text-white' : 'border border-slate-300 text-slate-700'}`}>
+                  className={`flex items-center gap-1.5 rounded-2xl px-3 py-2 text-sm font-extrabold ${!useFile ? 'bg-teal-700 text-white' : 'border border-slate-300 text-slate-700'}`}>
                   <Code2 size={14} /> Editor
                 </button>
                 <button type="button" onClick={() => setUseFile(true)}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm ${useFile ? 'bg-indigo-600 text-white' : 'border border-slate-300 text-slate-700'}`}>
+                  className={`flex items-center gap-1.5 rounded-2xl px-3 py-2 text-sm font-extrabold ${useFile ? 'bg-teal-700 text-white' : 'border border-slate-300 text-slate-700'}`}>
                   <Upload size={14} /> File
                 </button>
               </div>
@@ -144,7 +144,7 @@ export function ContestSubmit() {
             {!useFile ? (
               <AceEditor
                 mode={LANG_MODES[language] ?? 'c_cpp'}
-                theme="monokai"
+                theme="github"
                 value={code}
                 onChange={setCode}
                 name="contest-editor"
@@ -168,14 +168,14 @@ export function ContestSubmit() {
             <button
               disabled={submitMutation.isPending || !selectedCPId || (!useFile && !code.trim()) || (useFile && !file)}
               onClick={() => submitMutation.mutate()}
-              className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-              {submitMutation.isPending ? 'Submitting…' : 'Submit'}
+              className="oj-btn-primary disabled:opacity-50">
+              {submitMutation.isPending ? 'Submitting...' : 'Submit'}
             </button>
           </div>
 
           {/* My submissions */}
-          <div className="col-span-1">
-            <h2 className="font-semibold text-slate-800 mb-3 text-sm">My Submissions</h2>
+          <div className="oj-panel col-span-1 p-5">
+            <h2 className="font-extrabold text-slate-800 mb-3 text-sm">My Submissions</h2>
             <div className="space-y-2 max-h-96 overflow-y-auto">
               {(mySubmissions as any[]).length === 0 ? (
                 <p className="text-xs text-slate-400">No submissions yet</p>

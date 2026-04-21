@@ -8,7 +8,8 @@ export interface JudgeJobCasePayload {
   index: number;
   isSample: boolean;
   input: string;
-  output: string;
+  output?: string;
+  isCustomInput?: boolean;
 }
 
 export interface JudgeJobPayload {
@@ -37,6 +38,7 @@ export interface JudgeCaseResultPayload {
   timeMs: number | null;
   memoryKb: number | null;
   message?: string | null;
+  actualOutput?: string | null;
 }
 
 export interface JudgeResultPayload {

@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Plus, GripVertical, X } from 'lucide-react';
+import { Archive, CalendarClock, Download, FileUp, GripVertical, KeyRound, Pencil, PlayCircle, Plus, Trash2, Trophy, UserPlus, UsersRound, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
 import { getContestPhase } from '../../components/ContestCountdownBar';
+import { parseParticipantCsv, type ParticipantImportRow } from '../../lib/participantCsv';
 
 type ProblemItem = {
   id: string;
@@ -73,8 +74,8 @@ export function JudgeContests() {
   const [standingVisibility, setStandingVisibility] = useState<'private' | 'public'>('private');
   const [startAtText, setStartAtText] = useState('');
   const [contestLengthText, setContestLengthText] = useState('05:00');
-  const [freezeEnabled, setFreezeEnabled] = useState(true);
-  const [manualUnfreeze, setManualUnfreeze] = useState(false);
+  const [freezeEnabled, setFreezeEnabled] = useState(false);
+  const [manualUnfreeze, setManualUnfreeze] = useState(true);
   const [freezeBeforeMinutesText, setFreezeBeforeMinutesText] = useState('60');
   const [freezeAfterMinutesText, setFreezeAfterMinutesText] = useState('0');
   const [problemSearchText, setProblemSearchText] = useState('');
@@ -100,8 +101,7 @@ export function JudgeContests() {
 
   const [participantsContest, setParticipantsContest] = useState<ContestItem | null>(null);
   const [participantCsvFileName, setParticipantCsvFileName] = useState('');
-  const [participantNames, setParticipantNames] = useState<string[]>([]);
-  const [latestPdfBase64, setLatestPdfBase64] = useState<string | null>(null);
+  const [participantRows, setParticipantRows] = useState<ParticipantImportRow[]>([]);
 
   const { data: contests = [] } = useQuery({
     queryKey: ['judge-contests'],
@@ -225,8 +225,8 @@ export function JudgeContests() {
     setStandingVisibility('private');
     setStartAtText(toPlainDateTimeText(oneHourLater));
     setContestLengthText('05:00');
-    setFreezeEnabled(true);
-    setManualUnfreeze(false);
+    setFreezeEnabled(false);
+    setManualUnfreeze(true);
     setFreezeBeforeMinutesText('60');
     setFreezeAfterMinutesText('0');
     setProblemSearchText('');
@@ -536,90 +536,72 @@ export function JudgeContests() {
   const openParticipantsModal = (contest: ContestItem) => {
     setParticipantsContest(contest);
     setParticipantCsvFileName('');
-    setParticipantNames([]);
-    setLatestPdfBase64(null);
+    setParticipantRows([]);
     setShowParticipantsModal(true);
-  };
-
-  const parseParticipantCsv = (rawText: string): string[] => {
-    const stripped = rawText.replace(/^\uFEFF/, '');
-    const lines = stripped.split(/\r?\n/);
-
-    while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
-      lines.pop();
-    }
-
-    const names = lines.map((line) => {
-      if (line.includes(',')) {
-        throw new Error('CSV must contain exactly one column (participant name only)');
-      }
-      return line.trim();
-    });
-
-    if (!names.length) {
-      throw new Error('CSV file is empty');
-    }
-
-    if (names.length > 200) {
-      throw new Error('Maximum 200 participants are allowed per batch');
-    }
-
-    return names;
   };
 
   const onParticipantCsvSelected = async (file: File | null) => {
     if (!file) return;
     try {
       const text = await file.text();
-      const names = parseParticipantCsv(text);
+      const rows = parseParticipantCsv(text);
       setParticipantCsvFileName(file.name);
-      setParticipantNames(names);
+      setParticipantRows(rows);
     } catch (error: any) {
       setParticipantCsvFileName('');
-      setParticipantNames([]);
+      setParticipantRows([]);
       toast.error(error?.message ?? 'Failed to parse CSV file');
     }
   };
 
-  const updateParticipantNameAt = (index: number, value: string) => {
-    setParticipantNames((prev) => prev.map((name, idx) => (idx === index ? value : name)));
+  const updateParticipantRowAt = (index: number, patch: Partial<ParticipantImportRow>) => {
+    setParticipantRows((prev) => prev.map((row, idx) => (idx === index ? { ...row, ...patch } : row)));
   };
 
   const addParticipantRow = () => {
-    setParticipantNames((prev) => [...prev, '']);
+    setParticipantRows((prev) => [...prev, { name: '', universityName: '' }]);
   };
 
   const removeParticipantRow = (index: number) => {
-    setParticipantNames((prev) => prev.filter((_, idx) => idx !== index));
+    setParticipantRows((prev) => prev.filter((_, idx) => idx !== index));
   };
 
   const createParticipantsMutation = useMutation({
     mutationFn: () => {
       if (!participantsContest) throw new Error('Contest not selected');
 
-      const normalizedNames = participantNames.map((name) => name.trim());
-      if (!normalizedNames.length) {
-        throw new Error('Please select a CSV file and load participant names first');
+      const participants = participantRows.map((row) => ({
+        name: row.name.trim(),
+        universityName: row.universityName.trim(),
+      }));
+      if (!participants.length) {
+        throw new Error('Please add participant rows first');
       }
-      if (normalizedNames.length > 200) {
+      if (participants.length > 200) {
         throw new Error('Maximum 200 participants are allowed per batch');
       }
-      if (normalizedNames.some((name) => !name)) {
-        throw new Error('Participant name list contains empty fields. Fill or remove empty rows.');
+      if (participants.some((row) => !row.name || !row.universityName)) {
+        throw new Error('Each row needs both participant name and university name.');
       }
 
       return api.post('/contests/participants/bulk', {
         contestId: participantsContest.id,
-        names: normalizedNames,
+        participants,
       });
     },
     onSuccess: (res) => {
       const pdf = res.data?.credentialsPdfBase64;
       const created = res.data?.participants?.length ?? 0;
+      const targetContest = participantsContest;
       toast.success(`${created} participants created`);
-      if (pdf) {
-        setLatestPdfBase64(pdf);
+      if (pdf && targetContest) {
+        downloadPdfBase64(pdf, `contest-${targetContest.id}-latest-credentials.pdf`);
       }
+      qc.invalidateQueries({ queryKey: ['judge-contests'] });
+      setShowParticipantsModal(false);
+      setParticipantsContest(null);
+      setParticipantCsvFileName('');
+      setParticipantRows([]);
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message ?? err.message ?? 'Failed to create participants');
@@ -751,104 +733,149 @@ export function JudgeContests() {
     return `${hours}h ${minutes}m`;
   };
 
-  const renderContestTable = (title: string, rows: ContestItem[], section: 'running' | 'upcoming' | 'past') => (
-    <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-      <h2 className="text-lg font-semibold text-slate-900 mb-4">{title}</h2>
-      <div className="overflow-x-auto">
-        <table className="w-full table-auto text-sm">
-          <thead className="bg-slate-50 border-y border-slate-200">
-            <tr>
-              <th className="px-3 py-2 text-left font-medium text-slate-600">Title</th>
-              <th className="px-3 py-2 text-left font-medium text-slate-600">Duration</th>
-              <th className="px-3 py-2 text-left font-medium text-slate-600">Start Time</th>
-              <th className="px-3 py-2 text-left font-medium text-slate-600">End Time</th>
-              <th className="px-3 py-2 text-left font-medium text-slate-600">{section === 'past' ? 'Total Participant' : section === 'upcoming' ? 'Starts In' : 'Remaining'}</th>
-              <th className="px-3 py-2 text-left font-medium text-slate-600">Status</th>
-              <th className="px-3 py-2 text-right font-medium text-slate-600 whitespace-nowrap" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.map((contest) => {
-              const phase = getContestPhase(contest.startTime ?? '', contest.endTime ?? '');
-              const contestRouteId = String(contest.contestNumber ?? contest.id);
-              const contestOpenHref =
-                phase === 'old'
-                  ? `/contests/${contestRouteId}/status`
-                  : `/contests/${contestRouteId}`;
-              return (
-                <tr key={contest.id} className="hover:bg-slate-50">
-                  <td className="px-3 py-3 font-medium text-slate-900 truncate">
-                    <button
-                      type="button"
-                      onClick={() => navigate(contestOpenHref)}
-                      className="text-left text-indigo-700 hover:underline truncate max-w-full"
-                    >
-                      {contest.title}
-                    </button>
-                  </td>
-                  <td className="px-3 py-3 text-slate-700 text-xs">{durationText(contest)}</td>
-                  <td className="px-3 py-3 text-slate-700 truncate">{contest.startTime ? new Date(contest.startTime).toLocaleString() : '—'}</td>
-                  <td className="px-3 py-3 text-slate-700 truncate">{contest.endTime ? new Date(contest.endTime).toLocaleString() : '—'}</td>
-                  <td className="px-3 py-3 text-slate-700 text-xs">
+  const renderContestSection = (title: string, rows: ContestItem[], section: 'running' | 'upcoming' | 'past') => {
+    const Icon = section === 'running' ? PlayCircle : section === 'upcoming' ? CalendarClock : Archive;
+    return (
+    <section className="oj-panel p-5">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="oj-kicker"><Icon size={14} /> {section}</p>
+          <h2 className="mt-3 text-xl font-extrabold text-slate-950">{title}</h2>
+        </div>
+        <span className="oj-chip bg-slate-100 text-slate-600">{rows.length} contests</span>
+      </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        {rows.map((contest) => {
+          const phase = getContestPhase(contest.startTime ?? '', contest.endTime ?? '');
+          const contestRouteId = String(contest.contestNumber ?? contest.id);
+          const contestOpenHref = `/contests/${contestRouteId}/problems`;
+          return (
+            <article key={contest.id} className="oj-panel-strong oj-card-hover overflow-hidden p-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => navigate(contestOpenHref)}
+                    className="block max-w-full truncate text-left text-xl font-extrabold tracking-tight text-slate-950 hover:text-teal-700"
+                  >
+                    {contest.title}
+                  </button>
+                  <p className="mt-1 text-sm font-semibold text-slate-500">
+                    #{contest.contestNumber ?? 'draft'} · {contest.type === 'icpc' ? 'ICPC' : 'Score Based'} · {durationText(contest)}
+                  </p>
+                </div>
+                <span className={`oj-chip ${PHASE_COLOR[phase] ?? 'bg-slate-100 text-slate-700'}`}>
+                  {phaseLabel(phase)}
+                </span>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl bg-slate-50 p-3">
+                  <p className="text-xs font-bold text-slate-500">Start</p>
+                  <p className="mt-1 text-sm font-extrabold text-slate-900">{contest.startTime ? new Date(contest.startTime).toLocaleString() : '—'}</p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-3">
+                  <p className="text-xs font-bold text-slate-500">End</p>
+                  <p className="mt-1 text-sm font-extrabold text-slate-900">{contest.endTime ? new Date(contest.endTime).toLocaleString() : '—'}</p>
+                </div>
+                <div className="rounded-2xl bg-teal-50 p-3">
+                  <p className="text-xs font-bold text-teal-700">{section === 'past' ? 'Participants' : section === 'upcoming' ? 'Starts In' : 'Remaining'}</p>
+                  <p className="mt-1 text-sm font-extrabold text-teal-800">
                     {section === 'past' ? (contest.participatedCount ?? 0) : phaseTime(contest)}
-                  </td>
-                  <td className="px-3 py-3 whitespace-nowrap">
-                    <span className={`text-xs px-2 py-1 rounded-full ${PHASE_COLOR[phase] ?? 'bg-slate-100 text-slate-700'}`}>
-                      {phaseLabel(phase)}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 whitespace-nowrap">
-                    <div className="flex items-center justify-end gap-2">
-                      {phase !== 'old' && (
-                        <button onClick={() => openEditContestModal(contest)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Edit</button>
-                      )}
-                      {phase !== 'old' && (
-                        <button onClick={() => openParticipantsModal(contest)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50">Create Participants</button>
-                      )}
-                      <button
-                        onClick={() => downloadAllCredentialsMutation.mutate(contest.id)}
-                        disabled={downloadAllCredentialsMutation.isPending}
-                        className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-60"
-                      >
-                        Download All Credentials
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-            {!rows.length && (
-              <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-slate-500">No contests in this section.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                <button type="button" onClick={() => navigate(contestOpenHref)} className="oj-btn-primary px-3 py-2 text-xs">
+                  <Trophy size={14} />
+                  Manage
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/contests/${contestRouteId}/standings`)}
+                  className="oj-btn-secondary px-3 py-2 text-xs"
+                >
+                  View Standings
+                </button>
+                {phase !== 'old' && (
+                  <button type="button" onClick={() => openEditContestModal(contest)} className="oj-btn-secondary px-3 py-2 text-xs">
+                    <Pencil size={14} />
+                    Edit
+                  </button>
+                )}
+                {phase !== 'old' && (
+                  <button type="button" onClick={() => openParticipantsModal(contest)} className="oj-btn-secondary px-3 py-2 text-xs">
+                    <UsersRound size={14} />
+                    Participants
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => downloadAllCredentialsMutation.mutate(contest.id)}
+                  disabled={downloadAllCredentialsMutation.isPending}
+                  className="oj-btn-secondary px-3 py-2 text-xs disabled:opacity-60"
+                >
+                  <Download size={14} />
+                  Credentials
+                </button>
+              </div>
+            </article>
+          );
+        })}
+        {!rows.length && (
+          <p className="rounded-3xl border border-dashed border-slate-200 bg-white/70 py-10 text-center text-sm font-semibold text-slate-500">
+            No contests in this section.
+          </p>
+        )}
       </div>
     </section>
-  );
+    );
+  };
 
   return (
     <AppShell>
-      <div className="space-y-6">
-        <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900">My Contests</h1>
-            <p className="text-sm text-slate-500 mt-1">Manage your contests and build new ones from your own problem set.</p>
-          </div>
-          <div className="flex items-center gap-2">
+      <div className="oj-page space-y-6">
+        <section className="oj-hero p-6 sm:p-7">
+          <div className="relative z-10 flex flex-wrap items-center justify-between gap-6">
+            <div>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-1.5 text-xs font-extrabold uppercase tracking-[0.18em] text-teal-50 ring-1 ring-white/20">
+                <KeyRound size={14} />
+                Judge Control Room
+              </div>
+              <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">My Contests</h1>
+              <p className="mt-2 max-w-2xl text-sm font-semibold text-teal-50/85">Launch contests, create participant credentials, and monitor live rounds from one polished workspace.</p>
+            </div>
             <button
-              onClick={() => setShowCreateContestModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium"
+              onClick={() => navigate('/contests/new')}
+              className="oj-btn-primary"
             >
               <Plus size={16} /> Create New Contest
             </button>
           </div>
+          <div className="relative z-10 mt-7 grid gap-3 sm:grid-cols-4">
+            <div className="rounded-2xl bg-white/12 p-4 ring-1 ring-white/20">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-50/70">Running</p>
+              <p className="mt-1 text-2xl font-extrabold">{runningContests.length}</p>
+            </div>
+            <div className="rounded-2xl bg-white/12 p-4 ring-1 ring-white/20">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-50/70">Upcoming</p>
+              <p className="mt-1 text-2xl font-extrabold">{upcomingContests.length}</p>
+            </div>
+            <div className="rounded-2xl bg-white/12 p-4 ring-1 ring-white/20">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-50/70">Past</p>
+              <p className="mt-1 text-2xl font-extrabold">{pastContests.length}</p>
+            </div>
+            <div className="rounded-2xl bg-white/12 p-4 ring-1 ring-white/20">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-50/70">Problem Bank</p>
+              <p className="mt-1 text-2xl font-extrabold">{allProblems.length}</p>
+            </div>
+          </div>
         </section>
 
-        {renderContestTable('Running Contests', runningContests, 'running')}
-        {renderContestTable('Upcoming Contests', upcomingContests, 'upcoming')}
-        {renderContestTable('Past Contests', pastContests, 'past')}
+        {renderContestSection('Running Contests', runningContests, 'running')}
+        {renderContestSection('Upcoming Contests', upcomingContests, 'upcoming')}
+        {renderContestSection('Past Contests', pastContests, 'past')}
 
         <Modal
           open={showCreateContestModal}
@@ -1391,92 +1418,91 @@ export function JudgeContests() {
           open={showParticipantsModal}
           title={participantsContest ? `Create Participants — ${participantsContest.title}` : 'Create Participants'}
           onClose={() => setShowParticipantsModal(false)}
-          maxWidthClass="max-w-2xl"
+          maxWidthClass="max-w-3xl"
         >
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs font-medium text-slate-600">Participant CSV File</label>
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                onChange={(e) => {
-                  const selectedFile = e.target.files?.[0] ?? null;
-                  void onParticipantCsvSelected(selectedFile);
-                }}
-                className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
-              />
-              <p className="text-xs text-slate-500 mt-1">CSV must contain one column: participant name.</p>
-            </div>
-
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-medium text-slate-700">Participant Names</p>
-                  <p className="text-xs text-slate-500">
-                    {participantCsvFileName
-                      ? `${participantCsvFileName} · ${participantNames.length} rows loaded`
-                      : 'Choose a CSV file to load rows'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={addParticipantRow}
-                  className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-100"
-                >
-                  Add Row
-                </button>
-              </div>
-
-              <div className="mt-3 max-h-56 overflow-auto space-y-2">
-                {participantNames.length ? participantNames.map((name, index) => (
-                  <div key={`participant-name-${index}`} className="flex items-center gap-2">
-                    <span className="w-8 shrink-0 text-right text-xs text-slate-500">{index + 1}.</span>
-                    <input
-                      value={name}
-                      onChange={(e) => updateParticipantNameAt(index, e.target.value)}
-                      placeholder="Participant name"
-                      className="flex-1 border border-slate-300 rounded-md px-3 py-1.5 text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeParticipantRow(index)}
-                      className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-100"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                )) : (
-                  <p className="text-xs text-slate-500">No rows loaded yet.</p>
-                )}
-              </div>
-            </div>
-
-            {latestPdfBase64 && (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                <p className="text-sm text-emerald-800">Latest batch created successfully.</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!participantsContest) return;
-                    downloadPdfBase64(latestPdfBase64, `contest-${participantsContest.id}-latest-credentials.pdf`);
+          <div className="space-y-5">
+            <div className="grid gap-4 md:grid-cols-[0.95fr_1.05fr]">
+              <label className="flex cursor-pointer flex-col justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 transition-colors hover:border-teal-300 hover:bg-teal-50">
+                <span className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-950 text-white">
+                  <FileUp size={20} />
+                </span>
+                <span className="text-sm font-extrabold text-slate-900">Upload CSV</span>
+                <span className="mt-1 text-xs font-semibold text-slate-500">
+                  {participantCsvFileName ? `${participantCsvFileName} loaded` : 'Two columns: participant name, university name'}
+                </span>
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(e) => {
+                    const selectedFile = e.target.files?.[0] ?? null;
+                    void onParticipantCsvSelected(selectedFile);
                   }}
-                  className="mt-2 px-3 py-1.5 text-xs border border-emerald-300 rounded-md hover:bg-emerald-100"
+                  className="hidden"
+                />
+              </label>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-extrabold text-slate-900">Participants</p>
+                    <p className="text-xs font-semibold text-slate-500">{participantRows.length} ready to create</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addParticipantRow}
+                    className="oj-btn-secondary px-3 py-2 text-xs"
+                  >
+                    <UserPlus size={14} />
+                    Add Row
+                  </button>
+                </div>
+
+                <div className="mt-4 max-h-72 space-y-2 overflow-auto pr-1 oj-scrollbar">
+                  {participantRows.length ? participantRows.map((row, index) => (
+                    <div key={`participant-name-${index}`} className="grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 sm:grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)_auto]">
+                      <span className="text-right text-xs font-extrabold text-slate-400">{index + 1}</span>
+                      <input
+                        value={row.name}
+                        onChange={(e) => updateParticipantRowAt(index, { name: e.target.value })}
+                        placeholder="Participant name"
+                        className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-teal-400"
+                      />
+                      <input
+                        value={row.universityName}
+                        onChange={(e) => updateParticipantRowAt(index, { universityName: e.target.value })}
+                        placeholder="University name"
+                        className="col-start-2 min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-teal-400 sm:col-start-auto"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeParticipantRow(index)}
+                        className="row-span-2 rounded-lg p-2 text-rose-600 hover:bg-rose-50 sm:row-span-1"
+                        aria-label={`Remove participant ${index + 1}`}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  )) : (
+                    <p className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-sm font-semibold text-slate-400">No participants loaded.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+              <p className="text-xs font-semibold text-slate-500">Credentials PDF downloads automatically after creation.</p>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setShowParticipantsModal(false)} className="oj-btn-secondary px-4 py-2 text-sm">Close</button>
+                <button
+                  type="button"
+                  onClick={() => createParticipantsMutation.mutate()}
+                  disabled={createParticipantsMutation.isPending}
+                  className="oj-btn-primary px-4 py-2 text-sm disabled:opacity-60"
                 >
-                  Download Latest Credentials
+                  <UsersRound size={15} />
+                  {createParticipantsMutation.isPending ? 'Creating...' : 'Create Participants'}
                 </button>
               </div>
-            )}
-
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setShowParticipantsModal(false)} className="px-4 py-2 border border-slate-300 rounded-md text-sm">Close</button>
-              <button
-                type="button"
-                onClick={() => createParticipantsMutation.mutate()}
-                disabled={createParticipantsMutation.isPending}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-md text-sm font-medium"
-              >
-                {createParticipantsMutation.isPending ? 'Creating…' : 'Create Participants'}
-              </button>
             </div>
           </div>
         </Modal>

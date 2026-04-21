@@ -1,23 +1,39 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { access, mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { JudgeJobPayload, JudgeResultPayload } from './judge.types';
 
 const execFileAsync = promisify(execFile);
+type JudgeExecutionMode = 'local' | 'remote';
 
 @Injectable()
 export class JudgeRemoteService {
   constructor(private readonly config: ConfigService) {}
 
   isEnabled(): boolean {
-    return this.config.get<string>('JUDGE_ENABLED') === 'true';
+    return (
+      String(this.config.get<string>('JUDGE_ENABLED') ?? '').toLowerCase() ===
+      'true'
+    );
+  }
+
+  getExecutionMode(): JudgeExecutionMode {
+    const mode = String(
+      this.config.get<string>('JUDGE_EXECUTION_MODE') ?? '',
+    ).toLowerCase();
+    if (mode === 'local' || mode === 'remote') return mode;
+    return this.isEnabled() ? 'remote' : 'local';
   }
 
   getServerName(): string {
+    if (this.getExecutionMode() === 'local') {
+      return this.config.get<string>('JUDGE_SERVER_NAME') ?? 'local-judge';
+    }
+
     return (
       this.config.get<string>('JUDGE_SERVER_NAME') ??
       this.config.get<string>('JUDGE_SSH_HOST') ??
@@ -49,6 +65,47 @@ export class JudgeRemoteService {
       this.config.get<string>('JUDGE_REMOTE_JOBS_DIR') ??
       '/opt/kuetoj-judge/jobs'
     );
+  }
+
+  private getLocalNodeBin(): string {
+    return this.config.get<string>('JUDGE_LOCAL_NODE_BIN') ?? process.execPath;
+  }
+
+  private getLocalRunnerCandidates(): string[] {
+    const configured = this.config.get<string>('JUDGE_LOCAL_RUNNER_PATH');
+    if (configured) return [configured];
+
+    return [
+      resolve(process.cwd(), '..', 'kuetoj-judge-agent', 'runner.js'),
+      resolve(process.cwd(), 'apps', 'kuetoj-judge-agent', 'runner.js'),
+      resolve(process.cwd(), '..', '..', 'kuetoj-judge-agent', 'runner.js'),
+    ];
+  }
+
+  private async resolveLocalRunnerPath(): Promise<string> {
+    const candidates = this.getLocalRunnerCandidates();
+    for (const candidate of candidates) {
+      try {
+        await access(candidate);
+        return candidate;
+      } catch {
+        // try the next likely monorepo location
+      }
+    }
+    return candidates[0];
+  }
+
+  private getLocalRunnerEnv(): NodeJS.ProcessEnv {
+    return {
+      ...process.env,
+      JUDGE_WORK_ROOT:
+        this.config.get<string>('JUDGE_LOCAL_WORK_ROOT') ??
+        join(tmpdir(), 'kuetoj-local-judge-work'),
+      JUDGE_USE_CGROUPS:
+        this.config.get<string>('JUDGE_LOCAL_USE_CGROUPS') ??
+        this.config.get<string>('JUDGE_USE_CGROUPS') ??
+        'false',
+    };
   }
 
   private getConnectTimeoutMs(): number {
@@ -139,7 +196,37 @@ export class JudgeRemoteService {
     });
   }
 
+  private async executeLocalJob(job: JudgeJobPayload): Promise<JudgeResultPayload> {
+    const tempDir = await mkdtemp(join(tmpdir(), 'kuetoj-local-judge-'));
+    const localJobPath = join(tempDir, `${job.submissionId}.json`);
+
+    try {
+      const runnerPath = await this.resolveLocalRunnerPath();
+      await writeFile(localJobPath, JSON.stringify(job), 'utf8');
+      const { stdout } = await execFileAsync(
+        this.getLocalNodeBin(),
+        [runnerPath, '--job', localJobPath],
+        {
+          timeout: this.getExecTimeoutMs(),
+          maxBuffer: 8 * 1024 * 1024,
+          env: this.getLocalRunnerEnv(),
+        },
+      );
+      return JSON.parse(stdout.trim()) as JudgeResultPayload;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown local judge failure';
+      throw new Error(`Local judge execution failed: ${message}`);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  }
+
   async executeJob(job: JudgeJobPayload): Promise<JudgeResultPayload> {
+    if (this.getExecutionMode() === 'local') {
+      return this.executeLocalJob(job);
+    }
+
     this.ensureConfigured();
 
     const tempDir = await mkdtemp(join(tmpdir(), 'kuetoj-judge-'));

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -6,9 +7,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
-import { Send } from 'lucide-react';
+import { CheckCircle2, Send } from 'lucide-react';
 import { ParticipantContestNav } from '../../components/ParticipantContestNav';
 import { ParticipantContestHeader } from '../../components/ParticipantContestHeader';
+import { getSocket } from '../../lib/socket';
 
 const schema = z.object({
   question: z.string().min(5, 'Question too short'),
@@ -30,6 +32,18 @@ export function AskClarification() {
     queryFn: () => api.get(`/contests/${id}/clarifications/mine`).then(r => r.data),
   });
 
+  useEffect(() => {
+    if (!id) return;
+    const socket = getSocket();
+    const refreshClarifications = () => {
+      qc.invalidateQueries({ queryKey: ['my-clarifications', id] });
+    };
+    socket.on('clarification', refreshClarifications);
+    return () => {
+      socket.off('clarification', refreshClarifications);
+    };
+  }, [id, qc]);
+
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
@@ -49,17 +63,19 @@ export function AskClarification() {
 
   return (
     <AppShell>
-      <div className="w-full">
+      <div className="oj-page">
         {id && <ParticipantContestHeader contestId={id} />}
         {id && <ParticipantContestNav contestId={id} />}
-        <h1 className="text-2xl font-bold text-slate-900 mb-6">Clarifications</h1>
 
-        <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 mb-6">
-          <h2 className="font-semibold mb-4 flex items-center gap-2"><Send size={16} /> Ask a Question</h2>
+        <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="oj-panel p-5">
+          <p className="oj-kicker"><Send size={14} /> Clarifications</p>
+          <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-950">Ask a Question</h1>
+          <p className="mt-1 text-sm font-semibold text-slate-500">Send a private clarification to the judge panel.</p>
           <form onSubmit={handleSubmit(d => askMutation.mutate(d))} className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Problem (optional)</label>
-              <select {...register('contestProblemId')} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+              <label className="mb-1 block text-sm font-bold text-slate-700">Problem (optional)</label>
+              <select {...register('contestProblemId')} className="oj-select">
                 <option value="">General question</option>
                 {problems.map((cp: any, index: number) => {
                   const label = cp?.label ? String(cp.label).trim() : String.fromCharCode(65 + index);
@@ -68,28 +84,35 @@ export function AskClarification() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Your Question</label>
+              <label className="mb-1 block text-sm font-bold text-slate-700">Your Question</label>
               <textarea {...register('question')} rows={3}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="Describe your question clearly…" />
+                className="oj-textarea resize-none"
+                placeholder="Describe your question clearly..." />
               {errors.question && <p className="text-red-500 text-xs mt-1">{errors.question.message}</p>}
             </div>
             <button type="submit" disabled={isSubmitting}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
+              className="oj-btn-primary disabled:opacity-50">
               Submit Question
             </button>
           </form>
         </div>
 
-        <h2 className="font-semibold text-slate-800 mb-3">My Questions</h2>
-        <div className="space-y-3">
+        <div className="oj-panel p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-extrabold text-slate-950">My Questions</h2>
+            <span className="oj-chip bg-slate-100 text-slate-600">{(myClarifications as any[]).length} total</span>
+          </div>
+        <div className="max-h-[640px] space-y-3 overflow-auto pr-1 oj-scrollbar">
           {(myClarifications as any[]).map((c: any) => (
-            <div key={c.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
+            <div key={c.id} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between">
                 <p className="text-sm font-medium text-slate-800">{c.question}</p>
-                <span className={`ml-3 px-2 py-0.5 text-xs rounded-full flex-shrink-0 ${
-                  c.status === 'answered' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                }`}>{c.status}</span>
+                <span className={`ml-3 inline-flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-extrabold ${
+                  c.status === 'answered' ? 'bg-teal-100 text-teal-700' : 'bg-amber-100 text-amber-700'
+                }`}>
+                  {c.status === 'answered' && <CheckCircle2 size={12} />}
+                  {c.status === 'answered' ? 'Answered' : c.status}
+                </span>
               </div>
               {c.contestProblemLabel && (
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -97,8 +120,11 @@ export function AskClarification() {
                 </p>
               )}
               {c.answer ? (
-                <div className="mt-2 bg-green-50 rounded-lg p-3 text-sm text-green-800">
-                  <p className="font-medium text-xs text-green-600 mb-0.5">Judge's Answer{c.isBroadcast ? ' (Broadcast)' : ''}:</p>
+                <div className="mt-3 rounded-2xl bg-teal-50 p-3 text-sm text-teal-900">
+                  <p className="mb-0.5 flex flex-wrap items-center gap-2 text-xs font-bold text-teal-700">
+                    <span>Judge's Answer{c.isBroadcast ? ' (Broadcast)' : ''}:</span>
+                    {c.answerEditedAt && <span className="text-amber-700">edited</span>}
+                  </p>
                   {c.answer}
                 </div>
               ) : (
@@ -107,8 +133,10 @@ export function AskClarification() {
             </div>
           ))}
           {!(myClarifications as any[]).length && (
-            <p className="text-center text-slate-400 py-6">No questions asked yet</p>
+            <p className="rounded-3xl border border-dashed border-slate-200 bg-white/70 py-10 text-center text-sm font-semibold text-slate-400">No questions asked yet</p>
           )}
+        </div>
+        </div>
         </div>
       </div>
     </AppShell>

@@ -29,13 +29,13 @@ export class JudgeDispatchService implements OnModuleInit, OnModuleDestroy {
     await this.ensureJudgeSubmissionSchema();
 
     if (!this.judgeRemote.isEnabled()) {
-      this.logger.log('Remote judge dispatcher is disabled');
+      this.logger.log('Judge dispatcher is disabled');
       return;
     }
 
     const intervalMs = this.getPollIntervalMs();
     this.logger.log(
-      `Remote judge dispatcher started for ${this.judgeRemote.getServerName()} with ${intervalMs}ms polling`,
+      `Judge dispatcher started for ${this.judgeRemote.getServerName()} (${this.judgeRemote.getExecutionMode()}) with ${intervalMs}ms polling`,
     );
     this.timer = setInterval(() => {
       void this.tick();

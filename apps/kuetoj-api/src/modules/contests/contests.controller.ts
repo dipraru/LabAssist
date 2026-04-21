@@ -27,6 +27,7 @@ import {
   AnswerClarificationDto,
   AskClarificationDto,
   ContestJudgeResultDto,
+  ContestRunInputDto,
   ContestSubmitDto,
   CreateAnnouncementDto,
   CreateContestDto,
@@ -34,6 +35,7 @@ import {
   CreateTempParticipantsDto,
   UpdateProblemDto,
   GradeContestSubmissionDto,
+  UpdateAnnouncementPinDto,
   UpdateContestDto,
 } from './dto/contests.dto';
 import { ContestStatus } from '../../common/enums';
@@ -217,6 +219,22 @@ export class ContestsController {
   }
 
   @Roles(UserRole.TEMP_JUDGE)
+  @Patch(':id/announcements/:announcementId/pin')
+  updateAnnouncementPin(
+    @Param('id') id: string,
+    @Param('announcementId') announcementId: string,
+    @Body() dto: UpdateAnnouncementPinDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.svc.updateAnnouncementPin(
+      id,
+      announcementId,
+      dto.isPinned,
+      user.id,
+    );
+  }
+
+  @Roles(UserRole.TEMP_JUDGE)
   @Get(':id/clarifications/pending')
   pendingClarifications(@Param('id') id: string, @CurrentUser() user: any) {
     return this.svc.getPendingClarifications(id, user.id);
@@ -283,6 +301,51 @@ export class ContestsController {
       user.username,
       file,
     );
+  }
+
+  @Roles(UserRole.TEMP_PARTICIPANT)
+  @Post(':id/run-samples')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  runSamples(
+    @Param('id') contestId: string,
+    @Body() dto: ContestSubmitDto,
+    @CurrentUser() user: any,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.svc.runSampleCases(
+      contestId,
+      dto,
+      user.id,
+      user.username,
+      file,
+    );
+  }
+
+  @Roles(UserRole.TEMP_PARTICIPANT)
+  @Post(':id/run-input')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  runInput(
+    @Param('id') contestId: string,
+    @Body() dto: ContestRunInputDto,
+    @CurrentUser() user: any,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.svc.runCustomInput(
+      contestId,
+      dto,
+      user.id,
+      user.username,
+      file,
+    );
+  }
+
+  @Roles(UserRole.TEMP_PARTICIPANT)
+  @Get(':id/submissions')
+  contestSubmissionsForParticipant(
+    @Param('id') contestId: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.svc.getContestSubmissionsForParticipant(contestId, user.id);
   }
 
   @Roles(UserRole.TEMP_PARTICIPANT)

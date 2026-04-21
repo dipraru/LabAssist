@@ -5,9 +5,11 @@ import { AppShell } from '../../components/AppShell';
 import { ParticipantContestNav } from '../../components/ParticipantContestNav';
 import { ParticipantContestHeader } from '../../components/ParticipantContestHeader';
 import { Modal } from '../../components/Modal';
+import { CodePreview } from '../../components/CodePreview';
 import { api } from '../../lib/api';
 import { getSocket, joinContest, leaveContest } from '../../lib/socket';
 import { getEffectiveVerdict, getVerdictBadgeClass } from '../../lib/verdict';
+import { ListChecks } from 'lucide-react';
 
 export function ContestSubmissions() {
   const { id } = useParams<{ id: string }>();
@@ -56,15 +58,25 @@ export function ContestSubmissions() {
 
   return (
     <AppShell>
-      <div className="w-full">
+      <div className="oj-page">
         {id && <ParticipantContestHeader contestId={id} />}
         {id && <ParticipantContestNav contestId={id} />}
-        <h1 className="mb-1 text-2xl font-bold text-slate-900">My Submissions</h1>
-        <p className="mb-4 text-sm text-slate-500">All submissions in this contest</p>
 
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="w-full text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50">
+        <section className="oj-panel mb-5 flex flex-wrap items-center justify-between gap-3 p-5">
+          <div>
+            <p className="oj-kicker"><ListChecks size={14} /> Submission Ledger</p>
+            <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-950">My Submissions</h1>
+            <p className="mt-1 text-sm font-semibold text-slate-500">All submissions in this contest, newest first.</p>
+          </div>
+          <div className="rounded-2xl bg-slate-950 px-4 py-3 text-center text-white">
+            <p className="text-2xl font-extrabold">{(submissions as any[]).length}</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-300">Total</p>
+          </div>
+        </section>
+
+        <div className="oj-panel overflow-x-auto">
+          <table className="oj-table">
+            <thead>
               <tr>
                 <th className="px-4 py-3 text-left">ID</th>
                 <th className="px-4 py-3 text-left">Who</th>
@@ -78,7 +90,7 @@ export function ContestSubmissions() {
             </thead>
             <tbody>
               {isLoading && (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">Loading submissions…</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">Loading submissions...</td></tr>
               )}
 
               {!isLoading && !(submissions as any[]).length && (
@@ -92,7 +104,7 @@ export function ContestSubmissions() {
                   <td className="px-4 py-3 font-mono text-xs">
                     <button
                       type="button"
-                      className="text-indigo-600 hover:underline"
+                      className="font-bold text-teal-700 hover:underline"
                       onClick={() => setSelectedSubmissionId(submission.id)}
                     >
                       {submission.submissionDisplayId}
@@ -136,13 +148,18 @@ export function ContestSubmissions() {
             {selected.code ? (
               <div>
                 <p className="mb-1 font-semibold">Code</p>
-                <pre className="max-h-80 overflow-auto rounded-lg bg-slate-50 p-3 text-xs">{selected.code}</pre>
+                <CodePreview
+                  code={selected.code}
+                  language={selected.language}
+                  height="360px"
+                  name={`participant-submission-${selected.id}`}
+                />
               </div>
             ) : (
               <p className="text-slate-500">No inline code. File upload submission.</p>
             )}
             <div>
-              <Link to={`/contest/${contestPathId}/submissions/${selected.id}`} className="text-indigo-600 hover:underline">
+              <Link to={`/contests/${contestPathId}/submissions/${selected.id}`} className="text-indigo-600 hover:underline">
                 Open in separate page
               </Link>
             </div>

@@ -118,6 +118,10 @@ export function PublicContestStandings() {
   const rows = data.rows ?? [];
   const problems = data.problems ?? [];
   const isIcpc = data?.type === 'icpc' || data?.contest?.type === 'icpc';
+  const standingTableMinWidth = Math.max(
+    980,
+    64 + 288 + 112 + problems.length * 112,
+  );
 
   const getProblemCell = (row: any, label: string) => {
     const fromList = (row?.problems ?? []).find((problem: any) => problem?.label === label);
@@ -173,7 +177,7 @@ export function PublicContestStandings() {
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
-          <table className="w-full min-w-[980px] text-sm">
+          <table className="w-full text-sm" style={{ minWidth: standingTableMinWidth }}>
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="w-12 px-4 py-3 text-left font-semibold text-slate-700">Rank</th>
@@ -205,7 +209,10 @@ export function PublicContestStandings() {
               {rows.map((row: any, index: number) => (
                 <tr key={row.participantId ?? index} className="hover:bg-slate-50">
                   <td className="px-4 py-3 font-semibold text-slate-600">{row.rank ?? index + 1}</td>
-                  <td className="px-4 py-3 font-medium">{row.participantName ?? row.participantId}</td>
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-slate-900">{row.participantName ?? row.participantId}</div>
+                    <div className="mt-0.5 max-w-64 truncate text-[11px] font-semibold text-slate-400">{row.universityName ?? 'University not set'}</div>
+                  </td>
                   {isIcpc ? (
                     <>
                       <td

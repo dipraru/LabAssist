@@ -8,6 +8,7 @@ import { api } from '../../lib/api';
 import { getContestPhase } from '../../components/ContestCountdownBar';
 import { getSocket, joinContest, leaveContest } from '../../lib/socket';
 import { isAcceptedVerdict } from '../../lib/verdict';
+import { ArrowRight, Bell, CheckCircle2, Clock3, Pin, XCircle } from 'lucide-react';
 
 function contestProblemLabel(cp: any, index: number): string {
   const raw = typeof cp?.label === 'string' ? cp.label.trim().toUpperCase() : '';
@@ -66,10 +67,12 @@ export function ContestProblems() {
     };
     socket.on('verdict', verdictHandler);
     socket.on('announcement', refreshAnnouncements);
+    socket.on('announcements:update', refreshAnnouncements);
 
     return () => {
       socket.off('verdict', verdictHandler);
       socket.off('announcement', refreshAnnouncements);
+      socket.off('announcements:update', refreshAnnouncements);
       leaveContest(contest.id);
     };
   }, [contest?.id, id, qc]);
@@ -80,106 +83,116 @@ export function ContestProblems() {
 
   const problems: any[] = [...(contest?.problems ?? contest?.contestProblems ?? [])]
     .sort((a, b) => (a?.orderIndex ?? 0) - (b?.orderIndex ?? 0));
+  const sortedAnnouncements: any[] = [...(announcements as any[])]
+    .sort((left, right) => {
+      if (Boolean(left.isPinned) !== Boolean(right.isPinned)) return left.isPinned ? -1 : 1;
+      return new Date(right.createdAt ?? 0).getTime() - new Date(left.createdAt ?? 0).getTime();
+    });
   const phase = contest?.startTime && contest?.endTime
     ? getContestPhase(contest.startTime, contest.endTime)
     : 'upcoming';
-
   return (
     <AppShell>
-      <div className="w-full">
+      <div className="oj-page">
         {id && <ParticipantContestHeader contestId={id} />}
         {id && <ParticipantContestNav contestId={id} />}
 
-        {isLoading && <p className="py-8 text-center text-slate-400">Loading problems…</p>}
+        {isLoading && (
+          <div className="oj-panel p-8 text-center text-sm font-semibold text-slate-400">
+            Loading problems...
+          </div>
+        )}
 
         {!isLoading && phase === 'upcoming' && (
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+          <div className="oj-panel border-sky-200 bg-sky-50/90 p-6 text-sm font-semibold text-sky-800">
             Problems are hidden until the contest starts.
           </div>
         )}
 
         {!isLoading && phase !== 'upcoming' && (
-          <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-12 lg:col-span-9">
-              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                <table className="w-full text-sm">
-                  <thead className="border-b border-slate-200 bg-slate-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left">#</th>
-                      <th className="px-4 py-3 text-left">Problem</th>
-                      <th className="px-4 py-3 text-left">Done</th>
-                      <th className="px-4 py-3 text-left">Solved/Attempt</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {problems.map((cp: any, index: number) => {
-                      const label = contestProblemLabel(cp, index);
-                      const myProblemSubs = (mySubmissions as any[]).filter((submission) => submission.contestProblemId === cp.id);
-                      const accepted = myProblemSubs.some((submission) => isAcceptedVerdict(submission));
-                      const hasSubmission = myProblemSubs.length > 0;
-                      const doneClass = accepted
-                        ? 'bg-green-100 text-green-700'
-                        : hasSubmission
-                          ? 'bg-red-100 text-red-700'
-                          : 'bg-transparent text-slate-500';
+          <div className="space-y-4">
+            <div className="space-y-3">
+                {problems.map((cp: any, index: number) => {
+                  const label = contestProblemLabel(cp, index);
+                  const myProblemSubs = (mySubmissions as any[]).filter((submission) => submission.contestProblemId === cp.id);
+                  const accepted = myProblemSubs.some((submission) => isAcceptedVerdict(submission));
+                  const hasSubmission = myProblemSubs.length > 0;
+                  const rows: any[] = standings?.rows ?? [];
+                  let solvedCount = 0;
+                  let attemptCount = 0;
+                  rows.forEach((row: any) => {
+                    const problemStatus = row.problemStatus?.[label];
+                    if (!problemStatus) return;
+                    if (problemStatus.accepted) solvedCount += 1;
+                    attemptCount += (problemStatus.tries ?? 0) + (problemStatus.accepted ? 1 : 0);
+                  });
+                  const statusNode = accepted ? (
+                    <span className="oj-chip bg-teal-50 text-teal-700"><CheckCircle2 size={13} /> Solved</span>
+                  ) : hasSubmission ? (
+                    <span className="oj-chip bg-rose-50 text-rose-700"><XCircle size={13} /> Tried</span>
+                  ) : (
+                    <span className="oj-chip bg-slate-100 text-slate-500"><Clock3 size={13} /> Open</span>
+                  );
 
-                      const rows: any[] = standings?.rows ?? [];
-                      let solvedCount = 0;
-                      let attemptCount = 0;
-                      rows.forEach((row: any) => {
-                        const problemStatus = row.problemStatus?.[label];
-                        if (!problemStatus) return;
-                        if (problemStatus.accepted) solvedCount += 1;
-                        attemptCount += (problemStatus.tries ?? 0) + (problemStatus.accepted ? 1 : 0);
-                      });
-
-                      return (
-                        <tr key={cp.id} className="border-t border-slate-100 hover:bg-slate-50">
-                          <td className="px-4 py-3 font-semibold text-slate-700">{label}</td>
-                          <td className="px-4 py-3">
-                            <Link to={`/contest/${contestPathId}/problems/${encodeURIComponent(label)}`} className="font-semibold text-indigo-700 hover:underline">
-                              {cp.problem?.title}
-                            </Link>
-                            <div className="text-xs text-slate-500">
+                  return (
+                    <Link
+                      key={cp.id}
+                      to={`/contests/${contestPathId}/problems/${encodeURIComponent(label)}`}
+                      className="group block overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-teal-300"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex min-w-0 items-start gap-4">
+                          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-base font-extrabold text-white">
+                            {label}
+                          </span>
+                          <div className="min-w-0">
+                            <h2 className="truncate text-base font-extrabold text-slate-950 group-hover:text-teal-700">{cp.problem?.title ?? 'Untitled Problem'}</h2>
+                            <p className="mt-1 text-xs font-semibold text-slate-500">
                               {cp.problem?.timeLimitMs ?? '—'} ms · {cp.problem?.memoryLimitKb ?? '—'} KB
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ${doneClass}`}>
-                              {accepted ? 'Solved' : hasSubmission ? 'Tried' : '—'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-slate-700">{solvedCount}/{attemptCount}</td>
-                        </tr>
-                      );
-                    })}
-                    {!problems.length && (
-                      <tr>
-                        <td colSpan={4} className="px-4 py-8 text-center text-slate-400">No problems available.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                              {contest?.type === 'score_based' && cp.score != null ? ` · ${cp.score} pts` : ''}
+                            </p>
+                          </div>
+                        </div>
+                        {statusNode}
+                      </div>
 
-            <div className="col-span-12 lg:col-span-3">
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <h3 className="mb-3 text-sm font-semibold text-slate-800">Announcements</h3>
-                <div className="space-y-3">
-                  {(announcements as any[]).map((announcement: any) => (
-                    <div key={announcement.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                      <p className="text-sm font-semibold text-slate-800">{announcement.title}</p>
-                      <p className="mt-1 text-xs text-slate-600">{announcement.body}</p>
-                      <p className="mt-2 text-[11px] text-slate-400">{new Date(announcement.createdAt).toLocaleString()}</p>
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs font-bold text-slate-500">
+                        <span>Solved/Attempts: {solvedCount}/{attemptCount}</span>
+                        <span>My submissions: {myProblemSubs.length}</span>
+                        <span className="inline-flex items-center gap-1 text-teal-700">
+                          Open <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
+                        </span>
+                      </div>
+                    </Link>
+                  );
+                })}
+
+                {!problems.length && (
+                  <div className="oj-panel col-span-full p-10 text-center text-sm font-semibold text-slate-400">
+                    No problems available.
+                  </div>
+                )}
+              </div>
+
+            {sortedAnnouncements.length > 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <h3 className="mb-2 flex items-center gap-2 text-sm font-extrabold text-amber-800">
+                  <Bell size={15} />
+                  Announcements
+                </h3>
+                <div className="space-y-2">
+                  {sortedAnnouncements.slice(0, 5).map((announcement: any) => (
+                    <div key={announcement.id} className="rounded-lg bg-white/60 px-3 py-2 text-sm text-amber-900">
+                      <span className="inline-flex items-center gap-1 font-bold">
+                        {announcement.isPinned && <Pin size={13} />}
+                        {announcement.title}
+                      </span>
+                      {announcement.body ? <span className="text-amber-800">: {announcement.body}</span> : null}
                     </div>
                   ))}
-                  {!(announcements as any[]).length && (
-                    <p className="text-xs text-slate-400">No announcements yet.</p>
-                  )}
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>

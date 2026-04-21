@@ -6,6 +6,7 @@ interface Credential {
   username: string;
   password: string;
   name: string;
+  universityName?: string | null;
 }
 
 @Injectable()
@@ -82,15 +83,25 @@ export class CredentialsPdfService {
           });
 
         doc
+          .fontSize(7)
+          .font('Helvetica')
+          .fillColor('#475569')
+          .text(cred.universityName ?? '', x + cardPadding, y + 37, {
+            width: colWidth - cardPadding * 2,
+            ellipsis: true,
+          });
+
+        doc
+          .fillColor('#000000')
           .fontSize(8)
           .font('Helvetica')
-          .text('Username: ', x + cardPadding, y + 40, { continued: true })
+          .text('Username: ', x + cardPadding, y + 49, { continued: true })
           .font('Helvetica-Bold')
           .text(cred.username);
 
         doc
           .font('Helvetica')
-          .text('Password: ', x + cardPadding, y + 52, { continued: true })
+          .text('Password: ', x + cardPadding, y + 61, { continued: true })
           .font('Helvetica-Bold')
           .text(cred.password);
 
@@ -101,7 +112,7 @@ export class CredentialsPdfService {
           .text(
             '* Keep this card private during contest',
             x + cardPadding,
-            y + 64,
+            y + 71,
             {
               width: colWidth - cardPadding * 2,
             },
