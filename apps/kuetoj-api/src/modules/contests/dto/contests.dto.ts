@@ -11,7 +11,6 @@ import {
   IsInt,
   IsIn,
   ArrayMaxSize,
-  ArrayNotEmpty,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
@@ -174,13 +173,24 @@ export class AskClarificationDto {
 
 // ─── Temp Participant ────────────────────────────────────────────────────────
 
+class TempParticipantRowDto {
+  @IsString() name: string;
+  @IsString() universityName: string;
+}
+
 export class CreateTempParticipantsDto {
   @IsUUID() contestId: string;
+  @IsOptional()
   @IsArray()
-  @ArrayNotEmpty()
   @ArrayMaxSize(200)
   @IsString({ each: true })
-  names: string[];
+  names?: string[];
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => TempParticipantRowDto)
+  participants?: TempParticipantRowDto[];
 }
 
 // ─── Judge webhook ───────────────────────────────────────────────────────────

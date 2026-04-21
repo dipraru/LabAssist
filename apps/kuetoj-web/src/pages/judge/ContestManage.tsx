@@ -5,7 +5,21 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
-import { Archive, Bell, CheckCircle2, MessageSquare, Pin, RefreshCw, Send, Snowflake, XCircle } from 'lucide-react';
+import {
+  Archive,
+  BarChart3,
+  Bell,
+  CheckCircle2,
+  ClipboardList,
+  HelpCircle,
+  MessageSquare,
+  Pin,
+  RefreshCw,
+  Send,
+  Snowflake,
+  Trophy,
+  XCircle,
+} from 'lucide-react';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
@@ -278,12 +292,12 @@ export function ContestManage() {
     [announcements],
   );
 
-  const tabs: Array<{ key: ContestTab; label: string; badge?: number }> = [
-    { key: 'problems', label: 'Problems' },
-    { key: 'status', label: 'Status' },
-    { key: 'standings', label: 'Standings' },
-    { key: 'clarifications', label: 'Clarifications', badge: pendingClarifications.length },
-    { key: 'announcements', label: 'Announcements' },
+  const tabs: Array<{ key: ContestTab; label: string; icon: typeof ClipboardList; badge?: number }> = [
+    { key: 'problems', label: 'Problems', icon: ClipboardList },
+    { key: 'status', label: 'Status', icon: BarChart3 },
+    { key: 'standings', label: 'Standings', icon: Trophy },
+    { key: 'clarifications', label: 'Clarifications', icon: HelpCircle, badge: pendingClarifications.length },
+    { key: 'announcements', label: 'Announcements', icon: Bell },
   ];
 
   const tabHref = (tab: ContestTab) => `/contests/${id}/${tab}`;
@@ -354,25 +368,29 @@ export function ContestManage() {
         <div className="mb-6 rounded-3xl border border-white/80 bg-white/80 p-2 shadow-lg shadow-slate-900/5 backdrop-blur">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => navigate(tabHref(tab.key))}
-                  className={`rounded-2xl px-4 py-2.5 text-sm font-extrabold transition-all ${
-                    activeTab === tab.key
-                      ? 'bg-teal-700 text-white shadow-lg shadow-teal-900/15'
-                      : 'text-slate-600 hover:bg-white hover:text-teal-700'
-                  }`}
-                >
-                  {tab.label}
-                  {tab.key === 'clarifications' && (tab.badge ?? 0) > 0 && (
-                    <span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs text-white">
-                      {tab.badge}
-                    </span>
-                  )}
-                </button>
-              ))}
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => navigate(tabHref(tab.key))}
+                    className={`inline-flex items-center gap-2 whitespace-nowrap rounded-2xl px-4 py-2.5 text-sm font-extrabold transition-all ${
+                      activeTab === tab.key
+                        ? 'bg-teal-700 text-white shadow-lg shadow-teal-900/15'
+                        : 'text-slate-600 hover:bg-white hover:text-teal-700'
+                    }`}
+                  >
+                    <Icon size={16} />
+                    {tab.label}
+                    {tab.key === 'clarifications' && (tab.badge ?? 0) > 0 && (
+                      <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs text-white">
+                        {tab.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
             <div className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-extrabold text-white">
               {remainingLabel}
@@ -381,78 +399,92 @@ export function ContestManage() {
         </div>
 
         {activeTab === 'problems' && (
-          <div className="grid grid-cols-12 gap-4">
-            <div className="oj-panel col-span-12 overflow-hidden lg:col-span-9">
-              <h2 className="border-b border-slate-100 px-5 py-4 font-extrabold text-slate-950">Problems</h2>
-              <table className="oj-table">
-                <thead>
-                  <tr>
-                    <th className="px-4 py-3 text-left">#</th>
-                    <th className="px-4 py-3 text-left">Problem</th>
-                    <th className="px-4 py-3 text-left">Solved/Attempt</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {problems.map((cp: any, index: number) => {
-                    const rows: any[] = standingRows ?? [];
-                    const label = contestProblemLabel(cp, index);
-                    let solvedCount = 0;
-                    let attemptCount = 0;
-                    rows.forEach((row: any) => {
-                      const problemStatus = row.problemStatus?.[label];
-                      if (!problemStatus) return;
-                      if (problemStatus.accepted) solvedCount += 1;
-                      attemptCount += (problemStatus.tries ?? 0) + (problemStatus.accepted ? 1 : 0);
-                    });
+          <div className="grid gap-5 xl:grid-cols-[1fr_20rem]">
+            <section className="oj-panel overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+                <div>
+                  <p className="oj-kicker"><ClipboardList size={14} /> Problems</p>
+                  <h2 className="mt-2 text-xl font-extrabold text-slate-950">Contest Problem Set</h2>
+                </div>
+                <span className="oj-chip bg-teal-50 text-teal-700">{problems.length} added</span>
+              </div>
 
-                    return (
-                      <tr key={cp.id} className="hover:bg-slate-50">
-                        <td className="px-4 py-3 font-semibold text-slate-700">{label}</td>
-                        <td className="px-4 py-3">
-                          <Link
-                            to={`/contests/${id}/problems/${cp.problem?.problemCode ?? cp.problem?.id}`}
-                            className="font-extrabold text-teal-700 hover:underline"
-                          >
-                            {cp.problem?.title ?? '—'}
-                          </Link>
-                          <div className="text-xs text-slate-500">
-                            {cp.problem?.timeLimitMs ?? '—'} ms · {cp.problem?.memoryLimitKb ?? '—'} KB
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-slate-700">{solvedCount}/{attemptCount}</td>
-                      </tr>
-                    );
-                  })}
-                  {!problems.length && (
-                    <tr><td colSpan={3} className="px-4 py-8 text-center text-slate-400">No problems added yet</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+              <div className="divide-y divide-slate-100">
+                {problems.map((cp: any, index: number) => {
+                  const rows: any[] = standingRows ?? [];
+                  const label = contestProblemLabel(cp, index);
+                  let solvedCount = 0;
+                  let attemptCount = 0;
+                  rows.forEach((row: any) => {
+                    const problemStatus = row.problemStatus?.[label];
+                    if (!problemStatus) return;
+                    if (problemStatus.accepted) solvedCount += 1;
+                    attemptCount += Number(problemStatus.tries ?? 0) + (problemStatus.accepted ? 1 : 0);
+                  });
 
-            <div className="col-span-12 lg:col-span-3">
-              <div className="oj-panel p-5">
-                <h3 className="mb-3 text-sm font-extrabold uppercase tracking-[0.14em] text-slate-700">Short Standings</h3>
-                <div className="space-y-2">
+                  return (
+                    <article key={cp.id} className="grid gap-4 px-5 py-4 transition-colors hover:bg-slate-50 md:grid-cols-[4rem_minmax(0,1fr)_11rem] md:items-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-lg font-extrabold text-white shadow-sm">
+                        {label}
+                      </div>
+                      <div className="min-w-0">
+                        <Link
+                          to={`/contests/${id}/problems/${cp.problem?.problemCode ?? cp.problem?.id}`}
+                          className="truncate text-lg font-extrabold text-slate-950 hover:text-teal-700"
+                        >
+                          {cp.problem?.title ?? 'Untitled Problem'}
+                        </Link>
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold text-slate-500">
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1">{cp.problem?.timeLimitMs ?? '—'} ms</span>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1">{cp.problem?.memoryLimitKb ?? '—'} KB</span>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1">Order {index + 1}</span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-center">
+                        <div className="rounded-2xl bg-teal-50 px-3 py-2">
+                          <p className="text-lg font-extrabold text-teal-700">{solvedCount}</p>
+                          <p className="text-[11px] font-bold uppercase tracking-wide text-teal-700/70">Solved</p>
+                        </div>
+                        <div className="rounded-2xl bg-slate-100 px-3 py-2">
+                          <p className="text-lg font-extrabold text-slate-800">{attemptCount}</p>
+                          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Attempts</p>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+                {!problems.length && (
+                  <p className="px-5 py-12 text-center text-sm font-semibold text-slate-400">No problems added yet.</p>
+                )}
+              </div>
+            </section>
+
+            <aside className="space-y-5">
+              <section className="oj-panel p-5">
+                <p className="oj-kicker"><Trophy size={14} /> Top Teams</p>
+                <div className="mt-4 space-y-2">
                   {standingRows.slice(0, 5).map((row: any, idx: number) => (
-                    <div key={row.participantId ?? idx} className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs">
-                      <span className="font-medium text-slate-700">{idx + 1}. {row.participantName ?? row.participantId}</span>
-                      <span className="text-slate-500">{row.solved ?? 0}</span>
+                    <div key={row.participantId ?? idx} className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2">
+                      <div className="flex items-center justify-between gap-3 text-sm">
+                        <span className="truncate font-extrabold text-slate-800">{idx + 1}. {row.participantName ?? row.participantId}</span>
+                        <span className="shrink-0 font-extrabold text-teal-700">{isIcpcStanding ? row.solved ?? 0 : row.totalScore ?? row.scores ?? 0}</span>
+                      </div>
+                      <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-400">{row.universityName ?? 'University not set'}</p>
                     </div>
                   ))}
                   {!standingRows.length && (
-                    <p className="text-xs text-slate-400">No standing data yet.</p>
+                    <p className="rounded-2xl border border-dashed border-slate-200 py-8 text-center text-xs font-semibold text-slate-400">No standing data yet.</p>
                   )}
                 </div>
                 <button
                   type="button"
                   onClick={() => navigate(tabHref('standings'))}
-                  className="oj-btn-secondary mt-3 w-full px-3 py-2 text-xs"
+                  className="oj-btn-secondary mt-4 w-full px-3 py-2 text-xs"
                 >
                   Go to Full Standings
                 </button>
-              </div>
-            </div>
+              </section>
+            </aside>
           </div>
         )}
 
@@ -584,7 +616,7 @@ export function ContestManage() {
                       <td className="sticky left-0 z-10 border-b border-slate-100 bg-white px-4 py-3 font-extrabold text-slate-700 group-hover:bg-slate-50">{row.rank ?? idx + 1}</td>
                       <td className="sticky left-20 z-10 border-b border-slate-100 bg-white px-4 py-3 group-hover:bg-slate-50">
                         <div className="max-w-64 truncate font-extrabold text-slate-900">{row.participantName ?? row.participantId}</div>
-                        <div className="mt-0.5 text-[11px] font-semibold text-slate-400">{row.participantId}</div>
+                        <div className="mt-0.5 max-w-64 truncate text-[11px] font-semibold text-slate-400">{row.universityName ?? 'University not set'}</div>
                       </td>
                       {isIcpcStanding ? (
                         <>

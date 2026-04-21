@@ -5,25 +5,7 @@ import toast from 'react-hot-toast';
 import { Download, FileText, KeyRound, Plus, Users } from 'lucide-react';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
-
-function parseNames(rawText: string): string[] {
-  const lines = rawText
-    .replace(/^\uFEFF/, '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  if (!lines.length) {
-    throw new Error('Add at least one participant name');
-  }
-  if (lines.length > 200) {
-    throw new Error('Maximum 200 participants are allowed per batch');
-  }
-  if (lines.some((line) => line.includes(','))) {
-    throw new Error('Use one participant name per line, without commas');
-  }
-  return lines;
-}
+import { parseParticipantCsv } from '../../lib/participantCsv';
 
 function downloadPdfBase64(base64: string, fileName: string) {
   const byteCharacters = atob(base64);
@@ -43,7 +25,7 @@ function downloadPdfBase64(base64: string, fileName: string) {
 export function ContestParticipants() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
-  const [namesText, setNamesText] = useState('');
+  const [participantsText, setParticipantsText] = useState('');
   const [latestPdfBase64, setLatestPdfBase64] = useState<string | null>(null);
 
   const { data: contest } = useQuery({
@@ -60,17 +42,17 @@ export function ContestParticipants() {
 
   const parsedPreview = useMemo(() => {
     try {
-      return parseNames(namesText);
+      return parseParticipantCsv(participantsText);
     } catch {
       return [];
     }
-  }, [namesText]);
+  }, [participantsText]);
 
   const createMutation = useMutation({
     mutationFn: () => {
       if (!id) throw new Error('Contest not selected');
-      const names = parseNames(namesText);
-      return api.post('/contests/participants/bulk', { contestId: id, names });
+      const participants = parseParticipantCsv(participantsText);
+      return api.post('/contests/participants/bulk', { contestId: id, participants });
     },
     onSuccess: (res) => {
       const pdf = res.data?.credentialsPdfBase64;
@@ -80,7 +62,7 @@ export function ContestParticipants() {
         setLatestPdfBase64(pdf);
         downloadPdfBase64(pdf, `contest-${id}-latest-credentials.pdf`);
       }
-      setNamesText('');
+      setParticipantsText('');
       qc.invalidateQueries({ queryKey: ['contest-participants', id] });
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? e.message ?? 'Failed'),
@@ -103,9 +85,9 @@ export function ContestParticipants() {
     if (!file) return;
     try {
       const text = await file.text();
-      const names = parseNames(text);
-      setNamesText(names.join('\n'));
-      toast.success(`${names.length} names loaded`);
+      const participants = parseParticipantCsv(text);
+      setParticipantsText(participants.map((row) => `${row.name}, ${row.universityName}`).join('\n'));
+      toast.success(`${participants.length} participants loaded`);
     } catch (error: any) {
       toast.error(error?.message ?? 'Failed to parse CSV');
     }
@@ -122,7 +104,7 @@ export function ContestParticipants() {
                 Participants
               </div>
               <h1 className="text-3xl font-extrabold tracking-tight">{contest?.title ?? 'Contest Participants'}</h1>
-              <p className="mt-2 text-sm font-semibold text-teal-50/85">Create temporary accounts from real names and immediately download secure credentials.</p>
+              <p className="mt-2 text-sm font-semibold text-teal-50/85">Create temporary accounts with university identity and immediately download secure credentials.</p>
             </div>
             <button
               type="button"
@@ -154,16 +136,16 @@ export function ContestParticipants() {
           <section className="oj-panel p-5">
             <p className="oj-kicker"><Plus size={14} /> Bulk Create</p>
             <h2 className="mt-3 text-xl font-extrabold text-slate-950">Create Participant Accounts</h2>
-            <p className="mt-1 text-sm font-semibold text-slate-500">Paste one name per line or upload a one-column CSV file.</p>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Paste or upload CSV rows as participant name, university name.</p>
 
             <div className="mt-5 space-y-4">
               <label className="block">
-                <span className="mb-1 block text-sm font-bold text-slate-700">Participant names</span>
+                <span className="mb-1 block text-sm font-bold text-slate-700">Participant CSV rows</span>
                 <textarea
-                  value={namesText}
-                  onChange={(event) => setNamesText(event.target.value)}
+                  value={participantsText}
+                  onChange={(event) => setParticipantsText(event.target.value)}
                   rows={12}
-                  placeholder={'Ayesha Rahman\nNafis Ahmed\nMaliha Karim'}
+                  placeholder={'Ayesha Rahman, KUET\nNafis Ahmed, University of Dhaka\nMaliha Karim, BUET'}
                   className="oj-textarea resize-y"
                 />
               </label>
@@ -172,7 +154,7 @@ export function ContestParticipants() {
                 <FileText size={22} className="text-teal-700" />
                 <span>
                   <span className="block text-sm font-extrabold text-slate-800">Upload CSV</span>
-                  <span className="block text-xs font-semibold text-slate-500">One column only, participant name per row.</span>
+                  <span className="block text-xs font-semibold text-slate-500">Two columns: participant name, university name.</span>
                 </span>
                 <input
                   type="file"
@@ -185,7 +167,7 @@ export function ContestParticipants() {
               <button
                 type="button"
                 onClick={() => createMutation.mutate()}
-                disabled={createMutation.isPending || parsedPreview.length === 0}
+                disabled={createMutation.isPending || !participantsText.trim()}
                 className="oj-btn-primary w-full disabled:opacity-50"
               >
                 <KeyRound size={16} />
@@ -202,6 +184,23 @@ export function ContestParticipants() {
                   Download Latest Batch Again
                 </button>
               )}
+
+              {parsedPreview.length > 0 && (
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                  <div className="grid grid-cols-2 border-b border-slate-100 bg-slate-50 px-3 py-2 text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                    <span>Participant</span>
+                    <span>University</span>
+                  </div>
+                  <div className="max-h-44 overflow-auto oj-scrollbar">
+                    {parsedPreview.map((participant, index) => (
+                      <div key={`${participant.name}-${index}`} className="grid grid-cols-2 gap-3 border-b border-slate-100 px-3 py-2 text-sm last:border-b-0">
+                        <span className="truncate font-semibold text-slate-800">{participant.name}</span>
+                        <span className="truncate text-slate-600">{participant.universityName}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 
@@ -214,7 +213,7 @@ export function ContestParticipants() {
               <table className="oj-table">
                 <thead>
                   <tr>
-                    {['Participant ID', 'Username', 'Full Name', 'Access Until'].map((heading) => (
+                    {['Participant ID', 'Username', 'Full Name', 'University', 'Access Until'].map((heading) => (
                       <th key={heading}>{heading}</th>
                     ))}
                   </tr>
@@ -223,13 +222,14 @@ export function ContestParticipants() {
                   {(participants as any[]).map((participant: any) => (
                     <tr key={participant.id}>
                       <td className="font-mono text-xs">{participant.participantId}</td>
-                      <td className="font-semibold">{participant.user?.username ?? '—'}</td>
+                      <td className="font-semibold">{participant.username ?? participant.user?.username ?? '—'}</td>
                       <td>{participant.fullName}</td>
+                      <td>{participant.universityName ?? '—'}</td>
                       <td className="text-slate-500">{participant.accessUntil?.slice(0, 16).replace('T', ' ') ?? '—'}</td>
                     </tr>
                   ))}
                   {!(participants as any[]).length && (
-                    <tr><td colSpan={4} className="px-4 py-10 text-center text-slate-400">No participants yet</td></tr>
+                    <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-400">No participants yet</td></tr>
                   )}
                 </tbody>
               </table>

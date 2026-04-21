@@ -523,7 +523,11 @@ export function ContestProblem() {
                   </div>
 
                   <div className="min-h-0 flex-1 overflow-auto px-5 py-6 oj-scrollbar">
-                    <article className="max-w-4xl space-y-7 text-[15px] leading-7 text-slate-700">
+                    <article
+                      className="max-w-4xl select-none space-y-7 text-[15px] leading-7 text-slate-700"
+                      onCopy={(event) => event.preventDefault()}
+                      onCut={(event) => event.preventDefault()}
+                    >
                       <section>
                         <pre className="whitespace-pre-wrap font-sans">{textOrDash(problem.statement)}</pre>
                       </section>

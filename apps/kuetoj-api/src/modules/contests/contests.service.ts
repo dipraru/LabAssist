@@ -108,11 +108,27 @@ export class ContestsService {
   private async getContestParticipantNameMap(
     contestId: string,
   ): Promise<Map<string, string>> {
+    const participantMetaMap =
+      await this.getContestParticipantMetaMap(contestId);
+    return new Map(
+      Array.from(participantMetaMap.entries()).map(([userId, participant]) => [
+        userId,
+        participant.fullName,
+      ]),
+    );
+  }
+
+  private async getContestParticipantMetaMap(
+    contestId: string,
+  ): Promise<Map<string, { fullName: string; universityName: string | null }>> {
     const participants = await this.tpRepo.find({ where: { contestId } });
     return new Map(
       participants.map((participant) => [
         participant.userId,
-        participant.fullName,
+        {
+          fullName: participant.fullName,
+          universityName: participant.universityName ?? null,
+        },
       ]),
     );
   }
@@ -922,7 +938,7 @@ export class ContestsService {
       where: { contestId: contest.id },
       order: { submittedAt: 'ASC' },
     });
-    const participantNameMap = await this.getContestParticipantNameMap(
+    const participantMetaMap = await this.getContestParticipantMetaMap(
       contest.id,
     );
     const problemMap = new Map(
@@ -944,6 +960,7 @@ export class ContestsService {
       {
         participantId: string;
         participantName: string;
+        universityName: string | null;
         solved: number;
         penalty: number;
         scores: number;
@@ -992,12 +1009,12 @@ export class ContestsService {
       if (cutoff && sub.submittedAt > cutoff) continue;
 
       if (!participantMap.has(sub.participantId)) {
+        const participantMeta = participantMetaMap.get(sub.participantId);
         participantMap.set(sub.participantId, {
           participantId: sub.participantId,
           participantName:
-            participantNameMap.get(sub.participantId) ??
-            sub.participantName ??
-            sub.participantId,
+            participantMeta?.fullName ?? sub.participantName ?? sub.participantId,
+          universityName: participantMeta?.universityName ?? null,
           solved: 0,
           penalty: 0,
           scores: 0,
@@ -1111,6 +1128,7 @@ export class ContestsService {
         rank: idx + 1,
         participantId: r.participantId,
         participantName: r.participantName,
+        universityName: r.universityName,
         solved: r.solved,
         penalty: r.penalty,
         totalPenalty: r.penalty,
@@ -1950,16 +1968,35 @@ export class ContestsService {
     ) {
       throw new ForbiddenException();
     }
-    const normalizedNames = (dto.names ?? []).map((name) =>
-      typeof name === 'string' ? name.trim() : '',
-    );
-    if (!normalizedNames.length || normalizedNames.length > 200) {
+    const participantRows = dto.participants?.length
+      ? dto.participants.map((participant) => ({
+          fullName:
+            typeof participant.name === 'string' ? participant.name.trim() : '',
+          universityName:
+            typeof participant.universityName === 'string'
+              ? participant.universityName.trim()
+              : '',
+        }))
+      : (dto.names ?? []).map((name) => ({
+          fullName: typeof name === 'string' ? name.trim() : '',
+          universityName: '',
+        }));
+
+    if (!participantRows.length || participantRows.length > 200) {
       throw new BadRequestException(
-        'Participant names must contain between 1 and 200 rows',
+        'Participants must contain between 1 and 200 rows',
       );
     }
-    if (normalizedNames.some((name) => !name)) {
+    if (participantRows.some((participant) => !participant.fullName)) {
       throw new BadRequestException('Participant names contain empty rows');
+    }
+    if (
+      dto.participants?.length &&
+      participantRows.some((participant) => !participant.universityName)
+    ) {
+      throw new BadRequestException(
+        'University names are required for every participant',
+      );
     }
 
     const qr = this.dataSource.createQueryRunner();
@@ -1971,6 +2008,7 @@ export class ContestsService {
         password: string;
         participantId: string;
         name: string;
+        universityName: string | null;
       }[] = [];
 
       // Find the highest existing TP serial for this contest
@@ -1989,7 +2027,7 @@ export class ContestsService {
         contest.contestNumber ?? contest.id.replace(/-/g, '').slice(0, 6),
       ).toUpperCase();
 
-      for (let i = 0; i < normalizedNames.length; i++) {
+      for (let i = 0; i < participantRows.length; i++) {
         let participantId = '';
         let username = '';
         do {
@@ -2007,7 +2045,8 @@ export class ContestsService {
           .toString(36)
           .slice(-8)
           .toUpperCase();
-        const fullName = normalizedNames[i];
+        const fullName = participantRows[i].fullName;
+        const universityName = participantRows[i].universityName || null;
 
         const user = qr.manager.create(User, {
           username,
@@ -2022,6 +2061,7 @@ export class ContestsService {
         const tp = qr.manager.create(TempParticipant, {
           participantId,
           fullName,
+          universityName,
           contestId: contest.id,
           createdByJudgeId: judgeProfileId,
           userId: user.id,
@@ -2034,6 +2074,7 @@ export class ContestsService {
           password: plainPassword,
           participantId,
           name: fullName,
+          universityName,
         });
       }
 
@@ -2075,6 +2116,7 @@ export class ContestsService {
       id: tp.id,
       participantId: tp.participantId,
       fullName: tp.fullName,
+      universityName: tp.universityName ?? null,
       username: tp.user?.username ?? null,
       password: tp.loginPassword ?? null,
       createdAt: tp.createdAt,

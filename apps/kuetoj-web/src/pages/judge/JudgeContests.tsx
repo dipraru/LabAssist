@@ -7,6 +7,7 @@ import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
 import { getContestPhase } from '../../components/ContestCountdownBar';
+import { parseParticipantCsv, type ParticipantImportRow } from '../../lib/participantCsv';
 
 type ProblemItem = {
   id: string;
@@ -100,7 +101,7 @@ export function JudgeContests() {
 
   const [participantsContest, setParticipantsContest] = useState<ContestItem | null>(null);
   const [participantCsvFileName, setParticipantCsvFileName] = useState('');
-  const [participantNames, setParticipantNames] = useState<string[]>([]);
+  const [participantRows, setParticipantRows] = useState<ParticipantImportRow[]>([]);
 
   const { data: contests = [] } = useQuery({
     queryKey: ['judge-contests'],
@@ -535,80 +536,57 @@ export function JudgeContests() {
   const openParticipantsModal = (contest: ContestItem) => {
     setParticipantsContest(contest);
     setParticipantCsvFileName('');
-    setParticipantNames([]);
+    setParticipantRows([]);
     setShowParticipantsModal(true);
-  };
-
-  const parseParticipantCsv = (rawText: string): string[] => {
-    const stripped = rawText.replace(/^\uFEFF/, '');
-    const lines = stripped.split(/\r?\n/);
-
-    while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
-      lines.pop();
-    }
-
-    const names = lines.map((line) => {
-      if (line.includes(',')) {
-        throw new Error('CSV must contain exactly one column (participant name only)');
-      }
-      return line.trim();
-    });
-
-    if (!names.length) {
-      throw new Error('CSV file is empty');
-    }
-
-    if (names.length > 200) {
-      throw new Error('Maximum 200 participants are allowed per batch');
-    }
-
-    return names;
   };
 
   const onParticipantCsvSelected = async (file: File | null) => {
     if (!file) return;
     try {
       const text = await file.text();
-      const names = parseParticipantCsv(text);
+      const rows = parseParticipantCsv(text);
       setParticipantCsvFileName(file.name);
-      setParticipantNames(names);
+      setParticipantRows(rows);
     } catch (error: any) {
       setParticipantCsvFileName('');
-      setParticipantNames([]);
+      setParticipantRows([]);
       toast.error(error?.message ?? 'Failed to parse CSV file');
     }
   };
 
-  const updateParticipantNameAt = (index: number, value: string) => {
-    setParticipantNames((prev) => prev.map((name, idx) => (idx === index ? value : name)));
+  const updateParticipantRowAt = (index: number, patch: Partial<ParticipantImportRow>) => {
+    setParticipantRows((prev) => prev.map((row, idx) => (idx === index ? { ...row, ...patch } : row)));
   };
 
   const addParticipantRow = () => {
-    setParticipantNames((prev) => [...prev, '']);
+    setParticipantRows((prev) => [...prev, { name: '', universityName: '' }]);
   };
 
   const removeParticipantRow = (index: number) => {
-    setParticipantNames((prev) => prev.filter((_, idx) => idx !== index));
+    setParticipantRows((prev) => prev.filter((_, idx) => idx !== index));
   };
 
   const createParticipantsMutation = useMutation({
     mutationFn: () => {
       if (!participantsContest) throw new Error('Contest not selected');
 
-      const normalizedNames = participantNames.map((name) => name.trim());
-      if (!normalizedNames.length) {
-        throw new Error('Please select a CSV file and load participant names first');
+      const participants = participantRows.map((row) => ({
+        name: row.name.trim(),
+        universityName: row.universityName.trim(),
+      }));
+      if (!participants.length) {
+        throw new Error('Please add participant rows first');
       }
-      if (normalizedNames.length > 200) {
+      if (participants.length > 200) {
         throw new Error('Maximum 200 participants are allowed per batch');
       }
-      if (normalizedNames.some((name) => !name)) {
-        throw new Error('Participant name list contains empty fields. Fill or remove empty rows.');
+      if (participants.some((row) => !row.name || !row.universityName)) {
+        throw new Error('Each row needs both participant name and university name.');
       }
 
       return api.post('/contests/participants/bulk', {
         contestId: participantsContest.id,
-        names: normalizedNames,
+        participants,
       });
     },
     onSuccess: (res) => {
@@ -623,7 +601,7 @@ export function JudgeContests() {
       setShowParticipantsModal(false);
       setParticipantsContest(null);
       setParticipantCsvFileName('');
-      setParticipantNames([]);
+      setParticipantRows([]);
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message ?? err.message ?? 'Failed to create participants');
@@ -1453,7 +1431,7 @@ export function JudgeContests() {
                 </span>
                 <span className="text-sm font-extrabold text-slate-900">Upload CSV</span>
                 <span className="mt-1 text-xs font-semibold text-slate-500">
-                  {participantCsvFileName ? `${participantCsvFileName} loaded` : 'One participant name per row'}
+                  {participantCsvFileName ? `${participantCsvFileName} loaded` : 'Two columns: participant name, university name'}
                 </span>
                 <input
                   type="file"
@@ -1470,7 +1448,7 @@ export function JudgeContests() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-extrabold text-slate-900">Participants</p>
-                    <p className="text-xs font-semibold text-slate-500">{participantNames.length} ready to create</p>
+                    <p className="text-xs font-semibold text-slate-500">{participantRows.length} ready to create</p>
                   </div>
                   <button
                     type="button"
@@ -1483,19 +1461,25 @@ export function JudgeContests() {
                 </div>
 
                 <div className="mt-4 max-h-72 space-y-2 overflow-auto pr-1 oj-scrollbar">
-                  {participantNames.length ? participantNames.map((name, index) => (
-                    <div key={`participant-name-${index}`} className="grid grid-cols-[2.25rem_1fr_auto] items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  {participantRows.length ? participantRows.map((row, index) => (
+                    <div key={`participant-name-${index}`} className="grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 sm:grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)_auto]">
                       <span className="text-right text-xs font-extrabold text-slate-400">{index + 1}</span>
                       <input
-                        value={name}
-                        onChange={(e) => updateParticipantNameAt(index, e.target.value)}
+                        value={row.name}
+                        onChange={(e) => updateParticipantRowAt(index, { name: e.target.value })}
                         placeholder="Participant name"
                         className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-teal-400"
+                      />
+                      <input
+                        value={row.universityName}
+                        onChange={(e) => updateParticipantRowAt(index, { universityName: e.target.value })}
+                        placeholder="University name"
+                        className="col-start-2 min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-teal-400 sm:col-start-auto"
                       />
                       <button
                         type="button"
                         onClick={() => removeParticipantRow(index)}
-                        className="rounded-lg p-2 text-rose-600 hover:bg-rose-50"
+                        className="row-span-2 rounded-lg p-2 text-rose-600 hover:bg-rose-50 sm:row-span-1"
                         aria-label={`Remove participant ${index + 1}`}
                       >
                         <Trash2 size={15} />

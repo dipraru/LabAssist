@@ -209,7 +209,10 @@ export function PublicContestStandings() {
               {rows.map((row: any, index: number) => (
                 <tr key={row.participantId ?? index} className="hover:bg-slate-50">
                   <td className="px-4 py-3 font-semibold text-slate-600">{row.rank ?? index + 1}</td>
-                  <td className="px-4 py-3 font-medium">{row.participantName ?? row.participantId}</td>
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-slate-900">{row.participantName ?? row.participantId}</div>
+                    <div className="mt-0.5 max-w-64 truncate text-[11px] font-semibold text-slate-400">{row.universityName ?? 'University not set'}</div>
+                  </td>
                   {isIcpc ? (
                     <>
                       <td

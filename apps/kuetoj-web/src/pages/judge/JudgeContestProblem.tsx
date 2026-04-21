@@ -4,7 +4,22 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
-import { Copy, Plus, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  BarChart3,
+  Bell,
+  CheckCircle2,
+  ClipboardList,
+  Copy,
+  Edit3,
+  HelpCircle,
+  Plus,
+  Save,
+  TimerReset,
+  Trash2,
+  Trophy,
+  X,
+} from 'lucide-react';
 
 type ProblemCase = {
   input: string;
@@ -228,34 +243,76 @@ export function JudgeContestProblem() {
 
   return (
     <AppShell>
-      <div className="oj-page">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <div>
-            <h1 className="text-lg font-extrabold text-slate-950">{contest?.title ?? 'Contest'}</h1>
-            <p className="text-xs font-semibold text-slate-500">{contest?.type} · #{contest?.contestNumber ?? '—'}</p>
+      <div className="oj-page space-y-5">
+        <section className="oj-hero p-6 sm:p-7">
+          <div className="relative z-10 flex flex-wrap items-end justify-between gap-5">
+            <div>
+              <Link
+                to={`/contests/${id}/problems`}
+                className="mb-4 inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-1.5 text-xs font-extrabold uppercase tracking-[0.16em] text-teal-50 ring-1 ring-white/20 hover:bg-white/20"
+              >
+                <ArrowLeft size={14} />
+                Problems
+              </Link>
+              <h1 className="text-3xl font-extrabold tracking-tight">{currentProblemLabel}. {problem.title}</h1>
+              <p className="mt-2 text-sm font-semibold text-teal-50/85">{contest?.title ?? 'Contest'} · {contest?.type} · #{contest?.contestNumber ?? '—'}</p>
+            </div>
+            <div className="rounded-2xl bg-white/12 px-5 py-4 text-right ring-1 ring-white/20">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-50/70">Clock</p>
+              <p className="mt-1 text-xl font-extrabold">{remainingLabel}</p>
+            </div>
           </div>
-          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
-            {remainingLabel}
+        </section>
+
+        <div className="overflow-x-auto rounded-3xl border border-white/80 bg-white/80 p-2 shadow-lg shadow-slate-900/5 backdrop-blur oj-scrollbar">
+          <div className="flex min-w-max items-center gap-2">
+            {[
+              { label: 'Problems', icon: ClipboardList, href: `/contests/${id}/problems`, active: true },
+              { label: 'Status', icon: BarChart3, href: `/contests/${id}/status` },
+              { label: 'Standings', icon: Trophy, href: `/contests/${id}/standings` },
+              { label: 'Clarifications', icon: HelpCircle, href: `/contests/${id}/clarifications` },
+              { label: 'Announcements', icon: Bell, href: `/contests/${id}/announcements` },
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.label}
+                  to={item.href}
+                  className={`inline-flex items-center gap-2 whitespace-nowrap rounded-2xl px-4 py-2.5 text-sm font-extrabold transition-all ${
+                    item.active
+                      ? 'bg-teal-700 text-white shadow-lg shadow-teal-900/15'
+                      : 'text-slate-600 hover:bg-white hover:text-teal-700'
+                  }`}
+                >
+                  <Icon size={16} />
+                  {item.label}
+                </Link>
+              );
+            })}
           </div>
         </div>
 
-        <div className="mb-4 overflow-x-auto">
-          <div className="flex min-w-full flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2">
-            <Link to={`/contests/${id}/problems`} className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-bold text-white">Problems</Link>
-            <Link to={`/contests/${id}/status`} className="rounded-lg px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100">Status</Link>
-            <Link to={`/contests/${id}/standings`} className="rounded-lg px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100">Standings</Link>
-            <Link to={`/contests/${id}/clarifications`} className="rounded-lg px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100">Clarifications</Link>
-            <Link to={`/contests/${id}/announcements`} className="rounded-lg px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100">Announcements</Link>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-2 rounded-2xl bg-slate-100 px-3 py-2 text-sm font-extrabold text-slate-700">
+              <TimerReset size={15} />
+              {problem.timeLimitMs} ms
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-2xl bg-slate-100 px-3 py-2 text-sm font-extrabold text-slate-700">
+              {problem.memoryLimitKb} KB
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-2xl bg-teal-50 px-3 py-2 text-sm font-extrabold text-teal-700">
+              <CheckCircle2 size={15} />
+              {problem.sampleTestCases?.length ?? 0} samples
+            </span>
           </div>
-        </div>
-
-        <div className="mb-3 flex justify-end">
           {!isEditing ? (
             <button
               type="button"
               onClick={() => setIsEditing(true)}
-              className="oj-btn-secondary px-3 py-2 text-sm"
+              className="oj-btn-primary px-4 py-2 text-sm"
             >
+              <Edit3 size={15} />
               Edit Problem
             </button>
           ) : (
@@ -263,90 +320,98 @@ export function JudgeContestProblem() {
               <button
                 type="button"
                 onClick={() => setIsEditing(false)}
-                className="oj-btn-secondary px-3 py-2 text-sm"
+                className="oj-btn-secondary px-4 py-2 text-sm"
               >
+                <X size={15} />
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => updateMutation.mutate()}
                 disabled={updateMutation.isPending}
-                className="oj-btn-primary px-3 py-2 text-sm disabled:opacity-60"
+                className="oj-btn-primary px-4 py-2 text-sm disabled:opacity-60"
               >
-                {updateMutation.isPending ? 'Saving…' : 'Save Changes'}
+                <Save size={15} />
+                {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           )}
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
           {!isEditing ? (
-            <>
-              <div className="mb-4 flex items-start gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-950 font-bold text-white">
+            <div className="p-5 sm:p-6">
+              <div className="mb-5 flex items-start gap-3">
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-lg font-extrabold text-white">
                   {currentProblemLabel}
                 </span>
                 <div>
                   <h1 className="text-xl font-extrabold text-slate-950">{problem.title}</h1>
-                  <p className="text-sm text-slate-500">Time: {problem.timeLimitMs}ms · Memory: {problem.memoryLimitKb}KB</p>
+                  <p className="text-sm font-semibold text-slate-500">Judge preview of the participant-facing statement.</p>
                 </div>
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-700">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-[15px] leading-7 text-slate-700">
                 <pre className="whitespace-pre-wrap font-sans">{problem.statement}</pre>
               </div>
 
               {problem.inputDescription && (
                 <div className="mt-5">
-                  <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-700">Input</h3>
-                  <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm text-slate-800 font-sans">{problem.inputDescription}</pre>
+                  <h3 className="mb-2 text-sm font-extrabold uppercase tracking-wide text-slate-700">Input</h3>
+                  <pre className="whitespace-pre-wrap rounded-2xl bg-slate-50 p-4 text-sm text-slate-800 font-sans">{problem.inputDescription}</pre>
                 </div>
               )}
 
               {problem.outputDescription && (
                 <div className="mt-5">
-                  <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-700">Output</h3>
-                  <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm text-slate-800 font-sans">{problem.outputDescription}</pre>
+                  <h3 className="mb-2 text-sm font-extrabold uppercase tracking-wide text-slate-700">Output</h3>
+                  <pre className="whitespace-pre-wrap rounded-2xl bg-slate-50 p-4 text-sm text-slate-800 font-sans">{problem.outputDescription}</pre>
                 </div>
               )}
 
               {problem.sampleTestCases?.length > 0 && (
                 <div className="mt-6">
-                  <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">Sample Test Cases</h3>
+                  <h3 className="mb-3 text-sm font-extrabold uppercase tracking-wide text-slate-700">Sample Test Cases</h3>
                   <div className="space-y-3">
                     {problem.sampleTestCases.map((tc: any, index: number) => (
-                      <div key={index} className="rounded-lg border border-slate-200 p-3 space-y-3">
-                        <p className="text-xs font-semibold text-slate-600">Sample #{index + 1}</p>
-                        <div>
-                          <div className="mb-1 flex items-center justify-between">
-                            <p className="text-xs font-medium text-slate-500">Input {index + 1}</p>
+                      <div key={index} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
+                          <p className="text-sm font-extrabold text-slate-800">Sample #{index + 1}</p>
+                        </div>
+                        <div className="grid md:grid-cols-2">
+                          <div className="border-b border-slate-100 md:border-b-0 md:border-r">
+                            <div className="flex items-center justify-between px-4 py-3">
+                              <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Input</p>
                             <button
                               type="button"
                               onClick={() => void copyBlock(tc.input, `Sample ${index + 1} input`, `sample-${index}-input`)}
-                              className="cursor-pointer rounded px-2 py-1 text-xs font-medium text-indigo-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-extrabold text-teal-700 transition-colors hover:bg-teal-50"
                             >
+                              {copiedKey === `sample-${index}-input` ? <CheckCircle2 size={13} /> : <Copy size={13} />}
                               {copiedKey === `sample-${index}-input` ? 'Copied' : 'Copy'}
                             </button>
+                            </div>
+                            <pre className="min-h-28 overflow-auto bg-slate-50 p-4 font-mono text-sm text-slate-800 whitespace-pre-wrap">{tc.input}</pre>
                           </div>
-                          <pre className="overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-sm text-slate-800 whitespace-pre-wrap">{tc.input}</pre>
-                        </div>
-                        <div>
-                          <div className="mb-1 flex items-center justify-between">
-                            <p className="text-xs font-medium text-slate-500">Output {index + 1}</p>
+                          <div>
+                            <div className="flex items-center justify-between px-4 py-3">
+                              <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Output</p>
                             <button
                               type="button"
                               onClick={() => void copyBlock(tc.output, `Sample ${index + 1} output`, `sample-${index}-output`)}
-                              className="cursor-pointer rounded px-2 py-1 text-xs font-medium text-indigo-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-extrabold text-teal-700 transition-colors hover:bg-teal-50"
                             >
+                              {copiedKey === `sample-${index}-output` ? <CheckCircle2 size={13} /> : <Copy size={13} />}
                               {copiedKey === `sample-${index}-output` ? 'Copied' : 'Copy'}
                             </button>
+                            </div>
+                            <pre className="min-h-28 overflow-auto bg-slate-50 p-4 font-mono text-sm text-slate-800 whitespace-pre-wrap">{tc.output}</pre>
                           </div>
-                          <pre className="overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-sm text-slate-800 whitespace-pre-wrap">{tc.output}</pre>
                         </div>
                         {(tc.note || tc.explanation) && (
-                          <div>
-                            <p className="mb-1 text-xs font-medium text-slate-500">Note</p>
-                            <pre className="whitespace-pre-wrap rounded-lg bg-indigo-50 p-3 text-sm text-slate-700 font-sans">{tc.note ?? tc.explanation}</pre>
+                          <div className="border-t border-slate-100 px-4 py-3">
+                            <p className="mb-1 text-xs font-extrabold uppercase tracking-wide text-slate-500">Note</p>
+                            <pre className="whitespace-pre-wrap rounded-xl bg-teal-50 p-3 text-sm text-slate-700 font-sans">{tc.note ?? tc.explanation}</pre>
                           </div>
                         )}
                       </div>
@@ -354,9 +419,9 @@ export function JudgeContestProblem() {
                   </div>
                 </div>
               )}
-            </>
+            </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4 p-5 sm:p-6">
               <section className="space-y-3">
                 <div>
                   <label className="text-xs font-medium text-slate-600">Title</label>

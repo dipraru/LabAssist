@@ -100,7 +100,7 @@ export function ParticipantStandings() {
                   <td className="sticky left-0 z-10 border-b border-slate-100 bg-white px-4 py-3 font-extrabold text-slate-700 group-hover:bg-slate-50">{row.rank ?? idx + 1}</td>
                   <td className="sticky left-20 z-10 border-b border-slate-100 bg-white px-4 py-3 group-hover:bg-slate-50">
                     <div className="max-w-64 truncate font-extrabold text-slate-900">{row.participantName ?? row.participantId}</div>
-                    <div className="mt-0.5 text-[11px] font-semibold text-slate-400">{row.participantId}</div>
+                    <div className="mt-0.5 max-w-64 truncate text-[11px] font-semibold text-slate-400">{row.universityName ?? 'University not set'}</div>
                   </td>
                   {isIcpc ? (
                     <>
