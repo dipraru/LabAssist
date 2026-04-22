@@ -8,6 +8,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   BookOpen,
+  ClipboardList,
   Download,
   FilePlus2,
   Files,
@@ -24,6 +25,7 @@ import { studentDisplayName } from '../../lib/display';
 import { Modal } from '../../components/Modal';
 import { CourseAnnouncementsPanel } from '../../components/CourseAnnouncementsPanel';
 import { TeacherLabActivityManager } from './TeacherLabActivityManager';
+import { TeacherLabQuizManager } from './TeacherLabQuizManager';
 import {
   StudentAvatar,
   TeacherAvatarStack,
@@ -98,6 +100,7 @@ type CourseTab =
   | 'lecture-materials'
   | 'lab-tasks'
   | 'lab-tests'
+  | 'lab-quizzes'
   | 'assignments'
   | 'announcements'
   | 'members';
@@ -112,6 +115,7 @@ const tabItems: { key: CourseTab; label: string; icon: ReactNode }[] = [
   { key: 'lecture-materials', label: 'Lecture Materials', icon: <Files size={16} /> },
   { key: 'lab-tasks', label: 'Lab Tasks', icon: <BookOpen size={16} /> },
   { key: 'lab-tests', label: 'Lab Tests', icon: <BookOpen size={16} /> },
+  { key: 'lab-quizzes', label: 'Lab Quiz', icon: <ClipboardList size={16} /> },
   { key: 'assignments', label: 'Assignments', icon: <FilePlus2 size={16} /> },
   { key: 'announcements', label: 'Announcements', icon: <BookOpen size={16} /> },
   { key: 'members', label: 'Members', icon: <Users size={16} /> },
@@ -851,6 +855,19 @@ export function TeacherCourseDetail() {
             title: 'Lab Tests',
             description:
               'Manage all lab tests for this course here, including section-scoped scheduling, problems, submissions, and grading.',
+          }}
+        />
+      ) : null}
+
+      {activeTab === 'lab-quizzes' ? (
+        <TeacherLabQuizManager
+          fixedCourseId={courseId}
+          disableCreation={archived}
+          heading={{
+            eyebrow: 'Course Workspace',
+            title: 'Lab Quiz',
+            description:
+              'Create Socrative-style lab quizzes with randomized question order, live fullscreen enforcement, manual short-answer grading, and PDF results.',
           }}
         />
       ) : null}

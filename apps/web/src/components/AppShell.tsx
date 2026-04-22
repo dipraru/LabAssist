@@ -47,6 +47,7 @@ const roleNavItems: Record<string, { label: string; href: string; icon: ReactNod
     { label: 'Dashboard', href: '/teacher', icon: <LayoutDashboard size={18} /> },
     { label: 'Courses', href: '/teacher/courses', icon: <BookOpen size={18} /> },
     { label: 'Lab Tests', href: '/teacher/lab-tests', icon: <FlaskConical size={18} /> },
+    { label: 'Lab Quiz', href: '/teacher/lab-quizzes', icon: <FileStack size={18} /> },
   ],
   student: [
     { label: 'Dashboard', href: '/student', icon: <LayoutDashboard size={18} /> },
@@ -55,6 +56,7 @@ const roleNavItems: Record<string, { label: string; href: string; icon: ReactNod
     { label: 'Courses', href: '/student/courses', icon: <BookOpen size={18} /> },
     { label: 'Assignments', href: '/student/assignments', icon: <BookOpen size={18} /> },
     { label: 'Lab Tests', href: '/student/lab-tests', icon: <FlaskConical size={18} /> },
+    { label: 'Lab Quiz', href: '/student/lab-quizzes', icon: <FileStack size={18} /> },
   ],
 };
 
@@ -106,6 +108,7 @@ function getTeacherHeaderLabel(pathname: string): string {
   if (pathname.startsWith('/teacher/courses/')) return 'Course Workspace';
   if (pathname.startsWith('/teacher/courses')) return 'Courses';
   if (pathname.startsWith('/teacher/lab-tests')) return 'Lab Tests';
+  if (pathname.startsWith('/teacher/lab-quizzes')) return 'Lab Quiz';
   if (pathname.startsWith('/teacher/notifications')) return 'Notifications';
   if (pathname.startsWith('/teacher/profile')) return 'Profile';
   if (pathname.startsWith('/teacher/change-password')) return 'Account';
@@ -121,6 +124,7 @@ function getStudentHeaderLabel(pathname: string): string {
   if (pathname.startsWith('/student/courses')) return 'Courses';
   if (pathname.startsWith('/student/assignments')) return 'Assignments';
   if (pathname.startsWith('/student/lab-tests')) return 'Lab Tests';
+  if (pathname.startsWith('/student/lab-quizzes')) return 'Lab Quiz';
   if (pathname.startsWith('/student/notifications')) return 'Notifications';
   if (pathname.startsWith('/student/profile')) return 'Profile';
   if (pathname.startsWith('/student/change-password')) return 'Account';
@@ -156,7 +160,7 @@ function NotificationMenu({
   notificationsHref: string;
 }) {
   return (
-    <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[min(92vw,24rem)] overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_28px_80px_-42px_rgba(15,23,42,0.45)]">
+    <div className="fixed right-4 top-20 z-[100] w-[min(92vw,24rem)] overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_28px_80px_-42px_rgba(15,23,42,0.45)] sm:right-8">
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
         <div>
           <p className="text-sm font-semibold text-slate-900">Notifications</p>
@@ -307,7 +311,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     queryKey: ['notifications', 'menu'],
     queryFn: () => api.get('/notifications').then((response) => response.data),
     enabled: Boolean(user && notificationsHref !== '#'),
-    staleTime: 20_000,
+    staleTime: 0,
+  });
+  const { data: runningLabQuizzes = [] } = useQuery({
+    queryKey: ['running-lab-quizzes', user?.role],
+    queryFn: () => api.get('/lab-quizzes/running').then((response) => response.data),
+    enabled: Boolean(user && (user.role === 'teacher' || user.role === 'student')),
+    refetchInterval: 5000,
   });
 
   const notifications = useMemo(
@@ -377,16 +387,48 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (!user || notificationsHref === '#') return;
 
     const socket = getSocket();
-    const handleNotification = () => {
+    const handleNotification = (notification?: any) => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+      queryClient.invalidateQueries({ queryKey: ['running-lab-quizzes'] });
+      if (
+        user.role === 'student' &&
+        typeof notification?.targetPath === 'string' &&
+        notification.targetPath.startsWith('/student/lab-quizzes/')
+      ) {
+        navigate(notification.targetPath, { replace: true });
+      }
     };
 
     socket.on('notification:new', handleNotification);
     return () => {
       socket.off('notification:new', handleNotification);
     };
-  }, [notificationsHref, queryClient, user]);
+  }, [navigate, notificationsHref, queryClient, user]);
+
+  useEffect(() => {
+    if (!user || !Array.isArray(runningLabQuizzes) || !runningLabQuizzes.length) return;
+    const quiz = runningLabQuizzes[0];
+    if (!quiz?.id) return;
+
+    const targetPath =
+      user.role === 'teacher'
+        ? `/teacher/lab-quizzes?courseId=${quiz.courseId}`
+        : user.role === 'student'
+          ? `/student/lab-quizzes/${quiz.id}`
+          : null;
+    if (!targetPath) return;
+    const targetPathname = targetPath.split('?')[0];
+    if (
+      user.role === 'student' &&
+      targetPathname &&
+      location.pathname === targetPathname
+    ) {
+      return;
+    }
+    if (`${location.pathname}${location.search}` === targetPath) return;
+    navigate(targetPath, { replace: true });
+  }, [location.pathname, location.search, navigate, runningLabQuizzes, user]);
 
   const handleLogout = () => {
     disconnectSocket();
@@ -411,7 +453,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div ref={notificationRef} className="relative">
       <button
         type="button"
-        onClick={() => setNotificationMenuOpen((current) => !current)}
+        onClick={() => {
+          queryClient.invalidateQueries({ queryKey: ['notifications'] });
+          queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+          setNotificationMenuOpen((current) => !current);
+        }}
         className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900"
         aria-label="Notifications"
       >

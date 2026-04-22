@@ -40,6 +40,7 @@ import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { CredentialsPdfService } from './credentials-pdf.service';
 import { JudgeRemoteService } from './judge-remote.service';
+import { ContestSchemaService } from './contest-schema.service';
 import { JudgeJobPayload, JudgeResultPayload } from './judge.types';
 import {
   ContestStatus,
@@ -80,6 +81,7 @@ export class ContestsService {
     private gateway: NotificationsGateway,
     private credentialsPdf: CredentialsPdfService,
     private judgeRemote: JudgeRemoteService,
+    private contestSchema: ContestSchemaService,
   ) {}
 
   private contestPhase(
@@ -139,6 +141,7 @@ export class ContestsService {
   private async getContestProblemMetaMap(
     contestId: string,
   ): Promise<Map<string, { label: string; title: string }>> {
+    await this.contestSchema.ensureProblemBankSchema();
     const contestProblems = await this.cpRepo.find({
       where: { contestId },
       order: { orderIndex: 'ASC' },
@@ -228,6 +231,10 @@ export class ContestsService {
     identifier: string,
     relations?: string[],
   ): Promise<Contest | null> {
+    if (relations?.some((relation) => relation.includes('problem'))) {
+      await this.contestSchema.ensureProblemBankSchema();
+    }
+
     if (this.isNumericContestIdentifier(identifier)) {
       return this.contestRepo.findOne({
         where: { contestNumber: Number(identifier) },
@@ -279,6 +286,7 @@ export class ContestsService {
   private async withProblemCodeLock<T>(
     work: (problemRepo: Repository<Problem>) => Promise<T>,
   ): Promise<T> {
+    await this.contestSchema.ensureProblemBankSchema();
     return this.dataSource.transaction(async (manager) => {
       await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
         PROBLEM_CODE_LOCK_KEY,
@@ -952,6 +960,7 @@ export class ContestsService {
   // ─── STANDINGS ───────────────────────────────────────────────────────────────
 
   async getStandings(contestId: string, judgeUserId?: string) {
+    await this.contestSchema.ensureProblemBankSchema();
     const contest = await this.getContestById(contestId);
     const now = new Date();
     const freezeStartReached =

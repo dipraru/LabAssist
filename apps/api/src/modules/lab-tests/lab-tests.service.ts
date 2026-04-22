@@ -333,7 +333,10 @@ export class LabTestsService {
   }
 
   private canStudentAccessActivity(
-    labTest: Pick<LabTest, 'id' | 'sectionName' | 'labClassId'>,
+    labTest: Pick<
+      LabTest,
+      'id' | 'sectionName' | 'labClassId' | 'activityKind' | 'status'
+    >,
     viewerSectionName: string,
     participation: {
       presentSectionsByLabClassId: Map<string, Set<string>>;
@@ -344,15 +347,33 @@ export class LabTestsService {
       ? normalizeSectionName(labTest.sectionName)
       : null;
 
+    if (participation.submittedActivityIds.has(labTest.id)) {
+      return true;
+    }
+
+    if (
+      labTest.activityKind === LabActivityKind.LAB_TASK &&
+      labTest.status === LabTestStatus.RUNNING &&
+      labTest.labClassId
+    ) {
+      const presentSections =
+        participation.presentSectionsByLabClassId.get(labTest.labClassId);
+      if (!presentSections?.size) {
+        return false;
+      }
+
+      if (!scopedSectionName || scopedSectionName === 'All Students') {
+        return presentSections.has(normalizeSectionName(viewerSectionName));
+      }
+
+      return presentSections.has(scopedSectionName);
+    }
+
     if (!scopedSectionName || scopedSectionName === 'All Students') {
       return true;
     }
 
     if (scopedSectionName === normalizeSectionName(viewerSectionName)) {
-      return true;
-    }
-
-    if (participation.submittedActivityIds.has(labTest.id)) {
       return true;
     }
 

@@ -18,6 +18,7 @@ import { TeacherDashboard } from './pages/teacher/TeacherDashboard';
 import { TeacherCourses } from './pages/teacher/TeacherCourses';
 import { AssignmentManage } from './pages/teacher/AssignmentManage';
 import { LabTestManage } from './pages/teacher/LabTestManage';
+import { LabQuizManage } from './pages/teacher/LabQuizManage';
 import { LectureSheets } from './pages/teacher/LectureSheets';
 import { TeacherNotifications } from './pages/teacher/TeacherNotifications';
 import { TeacherProfile } from './pages/teacher/TeacherProfile';
@@ -27,6 +28,7 @@ import { StudentDashboard } from './pages/student/StudentDashboard';
 import { StudentCourses } from './pages/student/StudentCourses';
 import { StudentAssignments } from './pages/student/StudentAssignments';
 import { StudentLabTests } from './pages/student/StudentLabTests';
+import { StudentLabQuizzes } from './pages/student/StudentLabQuizzes';
 import { StudentProfile } from './pages/student/StudentProfile';
 import { StudentNotifications } from './pages/student/StudentNotifications';
 
@@ -99,6 +101,8 @@ export default function App() {
         <Route path="/teacher/courses/:courseId" element={<TeacherCourses />} />
         <Route path="/teacher/assignments" element={<AssignmentManage />} />
         <Route path="/teacher/lab-tests" element={<LabTestManage />} />
+        <Route path="/teacher/lab-quizzes" element={<LabQuizManage />} />
+        <Route path="/teacher/lab-quizzes/:quizId" element={<LabQuizManage />} />
         <Route path="/teacher/lecture-sheets" element={<LectureSheets />} />
         <Route path="/teacher/notifications" element={<TeacherNotifications />} />
         <Route path="/teacher/profile" element={<TeacherProfile />} />
@@ -125,6 +129,8 @@ export default function App() {
         <Route path="/student/assignments" element={<StudentAssignments />} />
         <Route path="/student/lab-tests" element={<StudentLabTests />} />
         <Route path="/student/lab-tests/:labTestId" element={<StudentLabTests />} />
+        <Route path="/student/lab-quizzes" element={<StudentLabQuizzes />} />
+        <Route path="/student/lab-quizzes/:quizId" element={<StudentLabQuizzes />} />
         <Route path="/student/profile" element={<StudentProfile />} />
         <Route path="/student/notifications" element={<StudentNotifications />} />
         <Route path="/student/change-password" element={<ChangePasswordPage />} />

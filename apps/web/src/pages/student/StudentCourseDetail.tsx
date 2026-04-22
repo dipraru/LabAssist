@@ -6,6 +6,7 @@ import {
   ArrowRight,
   BookOpen,
   CheckCircle2,
+  ClipboardList,
   FilePlus2,
   Files,
   FlaskConical,
@@ -40,6 +41,7 @@ type CourseTab =
   | 'lecture-materials'
   | 'lab-tasks'
   | 'lab-tests'
+  | 'lab-quizzes'
   | 'assignments'
   | 'announcements'
   | 'members';
@@ -49,6 +51,7 @@ const tabItems: { key: CourseTab; label: string; icon: ReactNode }[] = [
   { key: 'lecture-materials', label: 'Lecture Materials', icon: <Files size={16} /> },
   { key: 'lab-tasks', label: 'Lab Tasks', icon: <BookOpen size={16} /> },
   { key: 'lab-tests', label: 'Lab Tests', icon: <BookOpen size={16} /> },
+  { key: 'lab-quizzes', label: 'Lab Quiz', icon: <ClipboardList size={16} /> },
   { key: 'assignments', label: 'Assignments', icon: <FilePlus2 size={16} /> },
   { key: 'announcements', label: 'Announcements', icon: <BookOpen size={16} /> },
   { key: 'members', label: 'Members', icon: <Users size={16} /> },
@@ -294,6 +297,12 @@ export function StudentCourseDetail() {
           params: { kind: 'lab_task' },
         })
         .then((response) => response.data),
+    enabled: Boolean(courseId),
+  });
+  const { data: labQuizzes = [] } = useQuery({
+    queryKey: ['student-course-lab-quizzes-page', courseId],
+    queryFn: () =>
+      api.get(`/lab-quizzes/course/${courseId}`).then((response) => response.data),
     enabled: Boolean(courseId),
   });
 
@@ -847,6 +856,14 @@ export function StudentCourseDetail() {
         />
       ) : null}
 
+      {activeTab === 'lab-quizzes' ? (
+        <QuizList
+          courseId={String(courseId)}
+          quizzes={labQuizzes as any[]}
+          title="No lab quiz yet"
+        />
+      ) : null}
+
       {activeTab === 'lab-tasks' ? (
         <ActivityList
           courseId={String(courseId)}
@@ -855,6 +872,84 @@ export function StudentCourseDetail() {
         />
       ) : null}
     </div>
+  );
+}
+
+function QuizList({
+  courseId,
+  quizzes,
+  title,
+}: {
+  courseId: string;
+  quizzes: any[];
+  title: string;
+}) {
+  if (!quizzes.length) {
+    return (
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
+        <EmptyState title={title} />
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_-40px_rgba(15,23,42,0.3)]">
+      <div className="space-y-4">
+        {quizzes.map((quiz: any) => (
+          <div
+            key={quiz.id}
+            className={`rounded-[26px] border p-5 shadow-[0_18px_48px_-36px_rgba(15,23,42,0.35)] ${getActivityStatusSurface(
+              quiz.status,
+            )}`}
+          >
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${getActivityStatusClasses(
+                      quiz.status,
+                    )}`}
+                  >
+                    {String(quiz.status ?? 'draft').replace(/_/g, ' ')}
+                  </span>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                    {quiz.sectionName ?? 'All Students'}
+                  </span>
+                </div>
+                <h3 className="mt-3 text-lg font-semibold text-slate-900">{quiz.title}</h3>
+                {quiz.description ? (
+                  <p className="mt-2 text-sm text-slate-500">{quiz.description}</p>
+                ) : null}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                  {quiz.durationMinutes} min
+                </span>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                  {quiz.startTime ? formatDateTime(quiz.startTime) : 'Not started'}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-5 flex items-center justify-between border-t border-white/80 pt-4">
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
+                  MCQ and short-answer quiz
+                </span>
+              </div>
+              <Link
+                to={`/student/lab-quizzes/${quiz.id}?courseId=${courseId}`}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                Open quiz
+                <ArrowRight size={16} />
+              </Link>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
