@@ -1,13 +1,16 @@
+import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { CheckCircle2, RefreshCw, Trophy } from 'lucide-react';
 import { ParticipantContestNav } from '../../components/ParticipantContestNav';
 import { ParticipantContestHeader } from '../../components/ParticipantContestHeader';
+import { getSocket, joinContest, leaveContest } from '../../lib/socket';
 
 export function ParticipantStandings() {
   const { id } = useParams<{ id: string }>();
+  const qc = useQueryClient();
 
   const { data: contest } = useQuery({
     queryKey: ['contest', id],
@@ -20,6 +23,25 @@ export function ParticipantStandings() {
     refetchInterval: 60000,
   });
 
+  useEffect(() => {
+    if (!contest?.id || !id) return;
+
+    joinContest(contest.id);
+    const socket = getSocket();
+    const refreshStandings = () => {
+      qc.invalidateQueries({ queryKey: ['contest-standings', id] });
+    };
+
+    socket.on('verdict', refreshStandings);
+    socket.on('standings:freeze', refreshStandings);
+
+    return () => {
+      socket.off('verdict', refreshStandings);
+      socket.off('standings:freeze', refreshStandings);
+      leaveContest(contest.id);
+    };
+  }, [contest?.id, id, qc]);
+
   const isIcpc = contest?.type === 'icpc';
   const rows: any[] = standings?.rows ?? standings ?? [];
   const problems: any[] = standings?.problems ?? [];
@@ -30,17 +52,25 @@ export function ParticipantStandings() {
 
   const getProblemCell = (row: any, label: string) => {
     const fromList = (row?.problems ?? []).find((problem: any) => problem?.label === label);
-    if (fromList) return fromList;
+    if (fromList) {
+      return {
+        ...fromList,
+        hiddenAttempts: Number(fromList.hiddenAttempts ?? 0),
+        isFrozenPending: Boolean(fromList.isFrozenPending),
+      };
+    }
 
     const fromStatus = row?.problemStatus?.[label];
     if (!fromStatus) {
-      return { accepted: false, wrongAttempts: 0, attempts: 0, acceptedAtMinute: null };
+      return { accepted: false, wrongAttempts: 0, attempts: 0, hiddenAttempts: 0, isFrozenPending: false, acceptedAtMinute: null };
     }
 
     return {
       accepted: Boolean(fromStatus.accepted),
       wrongAttempts: Number(fromStatus.tries ?? 0),
       attempts: Number(fromStatus.attempts ?? fromStatus.tries ?? 0),
+      hiddenAttempts: Number(fromStatus.hiddenAttempts ?? 0),
+      isFrozenPending: Boolean(fromStatus.isFrozenPending),
       acceptedAtMinute: fromStatus.acceptedAtMinute ?? null,
       isFirstSolve: Boolean(fromStatus.isFirstSolve),
       score: fromStatus.score ?? null,
@@ -110,7 +140,9 @@ export function ParticipantStandings() {
                         const problemCell = getProblemCell(row, problem.label);
                         return (
                           <td key={problem.label} className="border-b border-slate-100 px-3 py-3 text-center align-middle tabular-nums">
-                            {problemCell.accepted ? (
+                            {problemCell.isFrozenPending ? (
+                              <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-sky-50 px-2 text-sm font-extrabold text-sky-700 ring-1 ring-sky-100">?</span>
+                            ) : problemCell.accepted ? (
                               <div className={`mx-auto inline-flex min-w-16 flex-col items-center rounded-xl px-2 py-1.5 text-xs font-extrabold ${problemCell.isFirstSolve ? 'bg-amber-50 text-amber-700' : 'bg-teal-50 text-teal-700'}`}>
                                 {problemCell.isFirstSolve ? <span className="text-sm leading-none">★</span> : <CheckCircle2 size={14} />}
                                 <span className="mt-1">
@@ -131,7 +163,9 @@ export function ParticipantStandings() {
                         const problemCell = getProblemCell(row, problem.label);
                         return (
                           <td key={problem.label} className="border-b border-slate-100 px-3 py-3 text-center text-xs tabular-nums">
-                            {problemCell.score != null ? <span className="inline-flex min-w-12 justify-center rounded-full bg-teal-50 px-2 py-1 font-extrabold text-teal-700">{problemCell.score}</span> : <span className="text-slate-300">—</span>}
+                            {problemCell.isFrozenPending ? (
+                              <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-sky-50 px-2 text-sm font-extrabold text-sky-700 ring-1 ring-sky-100">?</span>
+                            ) : problemCell.score != null ? <span className="inline-flex min-w-12 justify-center rounded-full bg-teal-50 px-2 py-1 font-extrabold text-teal-700">{problemCell.score}</span> : <span className="text-slate-300">—</span>}
                           </td>
                         );
                       })}

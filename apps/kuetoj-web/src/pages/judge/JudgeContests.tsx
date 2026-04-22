@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Archive, CalendarClock, Download, FileUp, Globe2, GripVertical, KeyRound, LockKeyhole, Pencil, PlayCircle, Plus, Trash2, Trophy, UserPlus, UsersRound, X } from 'lucide-react';
+import { Archive, CalendarClock, Clock3, Download, FileUp, Globe2, GripVertical, KeyRound, LockKeyhole, Pencil, PlayCircle, Plus, Save, Search, Shuffle, Snowflake, Trash2, Trophy, UserPlus, UsersRound, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
@@ -673,6 +673,34 @@ export function JudgeContests() {
     return new Date(computedEndTime.getTime() + Math.max(0, freezeAfterMinutesPreview) * 60 * 1000);
   }, [freezeEnabled, computedEndTime, freezeAfterMinutesPreview]);
 
+  const editParsedStartAt = useMemo(() => parseDateTimeText(editStartAtText), [editStartAtText]);
+  const editParsedLength = useMemo(() => parseDurationText(editContestLengthText), [editContestLengthText]);
+
+  const editComputedEndTime = useMemo(() => {
+    if (!editParsedStartAt || !editParsedLength || editParsedLength.totalMinutes <= 0) return null;
+    return new Date(editParsedStartAt.getTime() + editParsedLength.totalMinutes * 60 * 1000);
+  }, [editParsedStartAt, editParsedLength]);
+
+  const editFreezeBeforeMinutesPreview = useMemo(() => {
+    if (!/^\d+$/.test(editFreezeBeforeMinutesText.trim())) return 0;
+    return Number(editFreezeBeforeMinutesText.trim());
+  }, [editFreezeBeforeMinutesText]);
+
+  const editFreezeAfterMinutesPreview = useMemo(() => {
+    if (!/^\d+$/.test(editFreezeAfterMinutesText.trim())) return 0;
+    return Number(editFreezeAfterMinutesText.trim());
+  }, [editFreezeAfterMinutesText]);
+
+  const editComputedFreezeStart = useMemo(() => {
+    if (!editFreezeEnabled || !editComputedEndTime) return null;
+    return new Date(editComputedEndTime.getTime() - Math.max(0, editFreezeBeforeMinutesPreview) * 60 * 1000);
+  }, [editFreezeEnabled, editComputedEndTime, editFreezeBeforeMinutesPreview]);
+
+  const editComputedFreezeEnd = useMemo(() => {
+    if (!editFreezeEnabled || !editComputedEndTime || editManualUnfreeze) return null;
+    return new Date(editComputedEndTime.getTime() + Math.max(0, editFreezeAfterMinutesPreview) * 60 * 1000);
+  }, [editFreezeEnabled, editComputedEndTime, editManualUnfreeze, editFreezeAfterMinutesPreview]);
+
   const sortByNewestStart = (rows: ContestItem[]) => [...rows].sort((a, b) => {
     const timeA = new Date(a.startTime ?? 0).getTime();
     const timeB = new Date(b.startTime ?? 0).getTime();
@@ -1127,143 +1155,231 @@ export function JudgeContests() {
             setShowEditContestModal(false);
             resetEditContestForm();
           }}
-          maxWidthClass="max-w-3xl"
+          maxWidthClass="max-w-5xl"
         >
           {isEditLoading ? (
-            <p className="text-sm text-slate-500">Loading contest details...</p>
+            <div className="flex min-h-64 items-center justify-center">
+              <div className="text-center">
+                <Clock3 size={28} className="mx-auto animate-spin text-teal-700" />
+                <p className="mt-3 text-sm font-bold text-slate-500">Loading contest details...</p>
+              </div>
+            </div>
           ) : (
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-medium text-slate-600">Contest Title</label>
-                <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="Enter your contest title" className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm" />
+            <div className="space-y-5">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Phase</p>
+                  <p className="mt-1 text-sm font-extrabold text-slate-900">{phaseLabel(editingContestPhase)}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Problems</p>
+                  <p className="mt-1 text-sm font-extrabold text-slate-900">{editSelected.length} selected</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Standing</p>
+                  <p className="mt-1 inline-flex items-center gap-1 text-sm font-extrabold text-slate-900">
+                    {editStandingVisibility === 'public' ? <Globe2 size={14} /> : <LockKeyhole size={14} />}
+                    {editStandingVisibility === 'public' ? 'Public' : 'Private'}
+                  </p>
+                </div>
               </div>
 
-              <div>
-                <label className="text-xs font-medium text-slate-600">Contest Description (Optional)</label>
-                <textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={3} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm resize-none" />
-              </div>
+              <div className="grid gap-5 lg:grid-cols-[1.08fr_0.92fr]">
+                <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <p className="oj-kicker"><Pencil size={14} /> Details</p>
+                  <div className="mt-4 grid gap-4">
+                    <label>
+                      <span className="mb-1 block text-sm font-bold text-slate-700">Title</span>
+                      <input
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        placeholder="Contest title"
+                        className="oj-input"
+                      />
+                    </label>
 
-              <div>
-                <label className="text-xs font-medium text-slate-600">Contest Type</label>
-                <select value={editType} onChange={(e) => setEditType(e.target.value as 'icpc' | 'score_based')} className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-700 bg-white">
-                  <option value="icpc">ICPC</option>
-                  <option value="score_based">Score Based</option>
-                </select>
-              </div>
+                    <label>
+                      <span className="mb-1 block text-sm font-bold text-slate-700">Description</span>
+                      <textarea
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        rows={4}
+                        className="oj-textarea resize-none"
+                      />
+                    </label>
 
-              <div>
-                <label className="text-xs font-medium text-slate-600">Standing Visibility</label>
-                <select
-                  value={editStandingVisibility}
-                  onChange={(e) => setEditStandingVisibility(e.target.value as 'private' | 'public')}
-                  className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-700 bg-white"
-                >
-                  <option value="private">Private</option>
-                  <option value="public">Public</option>
-                </select>
-              </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label>
+                        <span className="mb-1 block text-sm font-bold text-slate-700">Type</span>
+                        <select
+                          value={editType}
+                          onChange={(e) => setEditType(e.target.value as 'icpc' | 'score_based')}
+                          className="oj-select"
+                        >
+                          <option value="icpc">ICPC</option>
+                          <option value="score_based">Score Based</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span className="mb-1 block text-sm font-bold text-slate-700">Standing Visibility</span>
+                        <select
+                          value={editStandingVisibility}
+                          onChange={(e) => setEditStandingVisibility(e.target.value as 'private' | 'public')}
+                          className="oj-select"
+                        >
+                          <option value="private">Private</option>
+                          <option value="public">Public</option>
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                </section>
 
-              <div>
-                <label className="text-xs font-medium text-slate-600">Start Date &amp; Time (text)</label>
-                <input
-                  value={editStartAtText}
-                  onChange={(e) => setEditStartAtText(e.target.value)}
-                  placeholder="YYYY-MM-DD HH:mm:ss"
-                  disabled={editingContestPhase !== 'upcoming'}
-                  className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm disabled:bg-slate-100"
-                />
-                {editingContestPhase !== 'upcoming' && (
-                  <p className="mt-1 text-xs text-amber-700">Start time can only be changed for upcoming contests.</p>
-                )}
-              </div>
+                <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <p className="oj-kicker"><Clock3 size={14} /> Schedule</p>
+                  <div className="mt-4 grid gap-4">
+                    <label>
+                      <span className="mb-1 block text-sm font-bold text-slate-700">Start Time</span>
+                      <input
+                        value={editStartAtText}
+                        onChange={(e) => setEditStartAtText(e.target.value)}
+                        placeholder="YYYY-MM-DD HH:mm:ss"
+                        disabled={editingContestPhase !== 'upcoming'}
+                        className="oj-input disabled:bg-slate-100 disabled:text-slate-500"
+                      />
+                      {editingContestPhase !== 'upcoming' && (
+                        <span className="mt-1 block text-xs font-semibold text-amber-700">Start time can only be changed for upcoming contests.</span>
+                      )}
+                    </label>
 
-              <div>
-                <label className="text-xs font-medium text-slate-600">Contest Length (HH:MM)</label>
-                <input
-                  value={editContestLengthText}
-                  onChange={(e) => setEditContestLengthText(e.target.value)}
-                  placeholder="05:00"
-                  className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
-                />
-              </div>
+                    <label>
+                      <span className="mb-1 block text-sm font-bold text-slate-700">Contest Length</span>
+                      <input
+                        value={editContestLengthText}
+                        onChange={(e) => setEditContestLengthText(e.target.value)}
+                        placeholder="05:00"
+                        className="oj-input"
+                      />
+                    </label>
 
-              <div className="rounded-lg border border-slate-200 p-3 bg-slate-50">
-                <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={editFreezeEnabled}
-                    onChange={(e) => setEditFreezeEnabled(e.target.checked)}
-                  />
-                  Enable standing freeze
-                </label>
-
-                {editFreezeEnabled && (
-                  <>
-                    <div className="mt-3 grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs font-medium text-slate-600">Freeze Before End (minutes)</label>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={editFreezeBeforeMinutesText}
-                          onChange={(e) => setEditFreezeBeforeMinutesText(e.target.value)}
-                          className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
-                        />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl bg-slate-50 p-3">
+                        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">End</p>
+                        <p className="mt-1 text-sm font-extrabold text-slate-900">{editComputedEndTime ? editComputedEndTime.toLocaleString() : '-'}</p>
                       </div>
-                      <div className="flex items-end">
-                        <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={editManualUnfreeze}
-                            onChange={(e) => setEditManualUnfreeze(e.target.checked)}
-                          />
-                          Manual unfreeze
-                        </label>
+                      <div className="rounded-xl bg-slate-50 p-3">
+                        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Duration</p>
+                        <p className="mt-1 text-sm font-extrabold text-slate-900">
+                          {editParsedLength ? `${editParsedLength.hours}h ${editParsedLength.minutes}m` : '-'}
+                        </p>
                       </div>
                     </div>
+                  </div>
+                </section>
+              </div>
 
+              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-white">
+                      <Snowflake size={18} />
+                    </span>
+                    <div>
+                      <p className="text-sm font-extrabold text-slate-900">Standing Freeze</p>
+                      <p className="text-xs font-semibold text-slate-500">{editFreezeEnabled ? 'Freeze window configured' : 'Live standings until contest end'}</p>
+                    </div>
+                  </div>
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-extrabold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={editFreezeEnabled}
+                      onChange={(e) => setEditFreezeEnabled(e.target.checked)}
+                    />
+                    Enable freeze
+                  </label>
+                </div>
+
+                {editFreezeEnabled && (
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    <label className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <span className="mb-1 block text-xs font-extrabold uppercase tracking-wide text-slate-500">Freeze before end</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={editFreezeBeforeMinutesText}
+                        onChange={(e) => setEditFreezeBeforeMinutesText(e.target.value)}
+                        className="oj-input"
+                      />
+                      <span className="mt-1 block text-[11px] font-semibold text-slate-500">minutes</span>
+                    </label>
+                    <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-700">
+                      <span>
+                        <span className="block text-sm font-extrabold text-slate-900">Manual unfreeze</span>
+                        <span className="block text-xs font-semibold text-slate-500">Judge releases final standings</span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={editManualUnfreeze}
+                        onChange={(e) => setEditManualUnfreeze(e.target.checked)}
+                      />
+                    </label>
                     {!editManualUnfreeze && (
-                      <div className="mt-3">
-                        <label className="text-xs font-medium text-slate-600">Auto Unfreeze After End (minutes)</label>
+                      <label className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <span className="mb-1 block text-xs font-extrabold uppercase tracking-wide text-slate-500">Auto unfreeze after end</span>
                         <input
                           type="text"
                           inputMode="numeric"
                           value={editFreezeAfterMinutesText}
                           onChange={(e) => setEditFreezeAfterMinutesText(e.target.value)}
-                          className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+                          className="oj-input"
                         />
-                      </div>
+                        <span className="mt-1 block text-[11px] font-semibold text-slate-500">minutes</span>
+                      </label>
                     )}
-                  </>
+                    <div className="rounded-xl border border-slate-200 bg-white p-3 md:col-span-3">
+                      <div className="grid gap-2 text-xs font-semibold text-slate-500 sm:grid-cols-3">
+                        <span>Freeze: {editComputedFreezeStart ? editComputedFreezeStart.toLocaleString() : '-'}</span>
+                        <span>Unfreeze: {editManualUnfreeze ? 'Manual' : (editComputedFreezeEnd ? editComputedFreezeEnd.toLocaleString() : '-')}</span>
+                        <span>Visibility: {editStandingVisibility === 'public' ? 'Public' : 'Private'}</span>
+                      </div>
+                    </div>
+                  </div>
                 )}
-              </div>
+              </section>
 
-              <div className="rounded-lg border border-slate-200 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-slate-800">Contest Problems</h3>
-                  <div className="flex gap-2">
+              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="oj-kicker"><Trophy size={14} /> Problems</p>
+                    <h3 className="mt-3 text-base font-extrabold text-slate-950">Contest Problem Set</h3>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => setShowEditProblemPickerModal(true)}
-                      className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50"
+                      className="oj-btn-secondary px-3 py-2 text-xs"
                     >
-                      Add / Remove Problems
+                      <Plus size={14} />
+                      Add / Remove
                     </button>
                     <button
                       type="button"
                       onClick={randomizeEditSelected}
                       disabled={editingContestPhase !== 'upcoming' || editSelected.length < 2}
-                      className="px-3 py-1.5 text-xs border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
+                      className="oj-btn-secondary px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-50"
                     >
+                      <Shuffle size={14} />
                       Random Arrangement
                     </button>
                   </div>
                 </div>
                 {editingContestPhase === 'running' && (
-                  <p className="mt-2 text-xs text-amber-700">Running contest: existing problem order is locked. You can add or remove problems only.</p>
+                  <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+                    Running contest: existing problem order is locked. You can add or remove problems only.
+                  </p>
                 )}
 
-                <div className="mt-3 border border-slate-200 rounded-md overflow-hidden">
+                <div className="mt-4 space-y-2">
                   {editSelected.map((item, index) => (
                     <div
                       key={item.problemId}
@@ -1271,61 +1387,67 @@ export function JudgeContests() {
                       onDragStart={() => setEditDragIndex(index)}
                       onDragOver={(e) => editingContestPhase === 'upcoming' && e.preventDefault()}
                       onDrop={() => onEditDropAt(index)}
-                      className="grid grid-cols-12 items-center gap-2 px-3 py-2 border-b border-slate-100 last:border-b-0 bg-white"
+                      className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
                     >
-                      <div className="col-span-1 text-slate-400 cursor-grab">
-                        <GripVertical size={16} />
-                      </div>
-                      <div className="col-span-1 text-xs font-semibold text-indigo-700">
+                      <GripVertical size={16} className={`${editingContestPhase === 'upcoming' ? 'cursor-grab' : 'cursor-not-allowed'} text-slate-400`} />
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-950 text-sm font-extrabold text-white">
                         {contestProblemLabel(index)}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-extrabold text-slate-900">{item.title}</p>
+                        <p className="truncate text-xs font-semibold text-slate-500">{item.problemCode ?? item.problemId}</p>
                       </div>
-                      <div className="col-span-7 text-sm text-slate-800">
-                        <p>{item.title}</p>
-                        <p className="text-xs text-slate-500">{item.problemCode ?? item.problemId}</p>
-                      </div>
-                      {editType === 'score_based' && (
-                        <div className="col-span-2">
-                          <input
-                            type="number"
-                            value={item.score ?? 100}
-                            onChange={(e) => {
-                              const value = Number(e.target.value || 0);
-                              setEditSelected((prev) => prev.map((p) => (p.problemId === item.problemId ? { ...p, score: value } : p)));
-                            }}
-                            className="w-full border border-slate-300 rounded-md px-2 py-1 text-xs"
-                          />
-                        </div>
+                      {editType === 'score_based' ? (
+                        <input
+                          type="number"
+                          value={item.score ?? 100}
+                          onChange={(e) => {
+                            const value = Number(e.target.value || 0);
+                            setEditSelected((prev) => prev.map((p) => (p.problemId === item.problemId ? { ...p, score: value } : p)));
+                          }}
+                          className="oj-input !w-24 py-1.5 text-sm"
+                        />
+                      ) : (
+                        <span className="hidden text-xs font-bold text-slate-400 sm:inline">ICPC</span>
                       )}
-                      {editType !== 'score_based' && <div className="col-span-2" />}
-                      <div className="col-span-1 text-right">
-                        <button type="button" onClick={() => removeEditProblem(item.problemId)} className="text-red-500 hover:text-red-700">
-                          <X size={14} />
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeEditProblem(item.problemId)}
+                        className="rounded-lg p-2 text-rose-600 hover:bg-rose-50"
+                        aria-label={`Remove problem ${contestProblemLabel(index)}`}
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   ))}
-                  {!editSelected.length && <p className="text-sm text-slate-500 p-4">Pick problems to include in this contest.</p>}
+                  {!editSelected.length && (
+                    <p className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-sm font-semibold text-slate-400">
+                      Pick problems to include in this contest.
+                    </p>
+                  )}
                 </div>
-              </div>
+              </section>
 
-              <div className="mt-4 flex justify-end gap-2">
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
                 <button
                   type="button"
                   onClick={() => {
                     setShowEditContestModal(false);
                     resetEditContestForm();
                   }}
-                  className="px-4 py-2 border border-slate-300 rounded-md text-sm"
+                  className="oj-btn-secondary px-4 py-2 text-sm"
                 >
+                  <X size={15} />
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={() => updateMutation.mutate()}
                   disabled={updateMutation.isPending}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-md text-sm font-medium"
+                  className="oj-btn-primary px-4 py-2 text-sm disabled:opacity-60"
                 >
-                  {updateMutation.isPending ? 'Saving…' : 'Save Changes'}
+                  <Save size={15} />
+                  {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
             </div>
@@ -1338,36 +1460,37 @@ export function JudgeContests() {
           onClose={() => setShowEditProblemPickerModal(false)}
           maxWidthClass="max-w-3xl"
         >
-          <div className="space-y-3">
-            <div>
+          <div className="space-y-4">
+            <label className="relative block">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 value={editProblemSearchText}
                 onChange={(e) => setEditProblemSearchText(e.target.value)}
                 placeholder="Search by title, problem code, or ID"
-                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+                className="oj-input !pl-10"
               />
-            </div>
+            </label>
 
-            <div className="border border-slate-200 rounded-md max-h-80 overflow-auto divide-y divide-slate-100">
+            <div className="max-h-96 overflow-auto rounded-xl border border-slate-200 bg-white oj-scrollbar">
               {filteredEditProblems.map((problem) => {
                 const checked = editCheckedProblemIds.includes(problem.id);
                 return (
-                  <label key={problem.id} className="flex items-start gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer">
+                  <label key={problem.id} className="flex cursor-pointer items-start gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 hover:bg-slate-50">
                     <input
                       type="checkbox"
                       checked={checked}
                       onChange={() => toggleEditCheckedProblem(problem.id)}
-                      className="mt-1"
+                      className="mt-1 h-4 w-4 accent-teal-700"
                     />
-                    <div>
-                      <p className="text-sm font-medium text-slate-800">{problem.title}</p>
-                      <p className="text-xs text-slate-500">{problem.problemCode ?? problem.id}</p>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-extrabold text-slate-900">{problem.title}</p>
+                      <p className="truncate text-xs font-semibold text-slate-500">{problem.problemCode ?? problem.id}</p>
                     </div>
                   </label>
                 );
               })}
               {!filteredEditProblems.length && (
-                <p className="text-sm text-slate-500 p-4">No matching problems found.</p>
+                <p className="py-8 text-center text-sm font-semibold text-slate-400">No matching problems found.</p>
               )}
             </div>
 
@@ -1375,15 +1498,17 @@ export function JudgeContests() {
               <button
                 type="button"
                 onClick={() => setShowEditProblemPickerModal(false)}
-                className="px-4 py-2 border border-slate-300 rounded-md text-sm"
+                className="oj-btn-secondary px-4 py-2 text-sm"
               >
+                <X size={15} />
                 Close
               </button>
               <button
                 type="button"
                 onClick={addCheckedProblemsForEdit}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm font-medium"
+                className="oj-btn-primary px-4 py-2 text-sm"
               >
+                <Plus size={15} />
                 Add Selected
               </button>
             </div>
