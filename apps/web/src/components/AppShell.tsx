@@ -1,8 +1,10 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -144,6 +146,13 @@ function getOfficeHeaderLabel(pathname: string): string {
   return 'Office Workspace';
 }
 
+type NotificationMenuPosition = {
+  left: number;
+  top: number;
+  width: number;
+  arrowLeft: number;
+};
+
 function NotificationMenu({
   notifications,
   unreadCount,
@@ -151,6 +160,7 @@ function NotificationMenu({
   onNotificationClick,
   onMarkAllRead,
   notificationsHref,
+  position,
 }: {
   notifications: any[];
   unreadCount: number;
@@ -158,85 +168,101 @@ function NotificationMenu({
   onNotificationClick: (notification: any) => void;
   onMarkAllRead: () => void;
   notificationsHref: string;
+  position: NotificationMenuPosition;
 }) {
+  const menuStyle: CSSProperties = {
+    left: position.left,
+    top: position.top,
+    width: position.width,
+  };
+  const arrowStyle: CSSProperties = {
+    left: position.arrowLeft,
+  };
+
   return (
-    <div className="fixed right-4 top-20 z-[100] w-[min(92vw,24rem)] overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_28px_80px_-42px_rgba(15,23,42,0.45)] sm:right-8">
-      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-        <div>
-          <p className="text-sm font-semibold text-slate-900">Notifications</p>
-          <p className="text-xs text-slate-500">
-            {unreadCount ? `${unreadCount} unread` : 'All caught up'}
-          </p>
+    <div className="fixed z-[100]" style={menuStyle}>
+      <div
+        className="absolute -top-2 h-4 w-4 rotate-45 border-l border-t border-slate-200 bg-white"
+        style={arrowStyle}
+      />
+      <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_28px_80px_-42px_rgba(15,23,42,0.45)]">
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Notifications</p>
+            <p className="text-xs text-slate-500">
+              {unreadCount ? `${unreadCount} unread` : 'All caught up'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onMarkAllRead}
+            disabled={!unreadCount}
+            className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <CheckCheck size={13} />
+            Mark all
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onMarkAllRead}
-          disabled={!unreadCount}
-          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <CheckCheck size={13} />
-          Mark all
-        </button>
-      </div>
 
-      <div className="max-h-[28rem] overflow-y-auto p-2">
-        {loading ? (
-          <div className="space-y-2 p-2">
-            {[1, 2, 3, 4].map((item) => (
-              <div
-                key={item}
-                className="h-20 animate-pulse rounded-2xl bg-slate-100"
-              />
-            ))}
-          </div>
-        ) : notifications.length ? (
-          notifications.slice(0, 8).map((notification) => (
-            <button
-              key={notification.id}
-              type="button"
-              onClick={() => onNotificationClick(notification)}
-              className={`flex w-full items-start gap-3 rounded-[20px] px-3 py-3 text-left transition hover:bg-slate-50 ${
-                notification.isRead ? '' : 'bg-sky-50/70'
-              }`}
-            >
-              <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white">
-                <Bell size={16} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="line-clamp-1 text-sm font-semibold text-slate-900">
-                    {notification.title}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    {!notification.isRead && (
-                      <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-sky-500" />
-                    )}
-                    <span className="shrink-0 text-[11px] font-medium text-slate-400">
-                      {formatNotificationTime(notification.createdAt)}
-                    </span>
-                  </div>
+        <div className="max-h-[28rem] overflow-y-auto p-2">
+          {loading ? (
+            <div className="space-y-2 p-2">
+              {[1, 2, 3, 4].map((item) => (
+                <div
+                  key={item}
+                  className="h-20 animate-pulse rounded-2xl bg-slate-100"
+                />
+              ))}
+            </div>
+          ) : notifications.length ? (
+            notifications.slice(0, 8).map((notification) => (
+              <button
+                key={notification.id}
+                type="button"
+                onClick={() => onNotificationClick(notification)}
+                className={`flex w-full items-start gap-3 rounded-[20px] px-3 py-3 text-left transition hover:bg-slate-50 ${
+                  notification.isRead ? '' : 'bg-sky-50/70'
+                }`}
+              >
+                <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white">
+                  <Bell size={16} />
                 </div>
-                <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
-                  {notification.body}
-                </p>
-              </div>
-            </button>
-          ))
-        ) : (
-          <div className="px-4 py-10 text-center">
-            <Bell className="mx-auto text-slate-300" size={22} />
-            <p className="mt-3 text-sm font-medium text-slate-700">No notifications yet</p>
-          </div>
-        )}
-      </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="line-clamp-1 text-sm font-semibold text-slate-900">
+                      {notification.title}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      {!notification.isRead && (
+                        <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-sky-500" />
+                      )}
+                      <span className="shrink-0 text-[11px] font-medium text-slate-400">
+                        {formatNotificationTime(notification.createdAt)}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
+                    {notification.body}
+                  </p>
+                </div>
+              </button>
+            ))
+          ) : (
+            <div className="px-4 py-10 text-center">
+              <Bell className="mx-auto text-slate-300" size={22} />
+              <p className="mt-3 text-sm font-medium text-slate-700">No notifications yet</p>
+            </div>
+          )}
+        </div>
 
-      <div className="border-t border-slate-200 bg-slate-50/80 px-3 py-3">
-        <Link
-          to={notificationsHref}
-          className="block rounded-2xl bg-white px-4 py-2.5 text-center text-sm font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50"
-        >
-          View all
-        </Link>
+        <div className="border-t border-slate-200 bg-slate-50/80 px-3 py-3">
+          <Link
+            to={notificationsHref}
+            className="block rounded-2xl bg-white px-4 py-2.5 text-center text-sm font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50"
+          >
+            View all
+          </Link>
+        </div>
       </div>
     </div>
   );
@@ -251,6 +277,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const notificationRef = useRef<HTMLDivElement | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
+  const [notificationMenuPosition, setNotificationMenuPosition] =
+    useState<NotificationMenuPosition | null>(null);
 
   const notificationsHref =
     user?.role === 'student'
@@ -350,6 +378,30 @@ export function AppShell({ children }: { children: ReactNode }) {
     },
   });
 
+  const updateNotificationMenuPosition = useCallback(() => {
+    const anchor = notificationRef.current?.querySelector('button');
+    if (!anchor) return;
+
+    const rect = anchor.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const margin = 16;
+    const width = Math.min(Math.max(viewportWidth - margin * 2, 0), 384);
+    const maxLeft = Math.max(margin, viewportWidth - width - margin);
+    const left = Math.min(
+      Math.max(rect.right - width, margin),
+      maxLeft,
+    );
+    const iconCenter = rect.left + rect.width/2;
+    const arrowLeft = Math.min(Math.max(iconCenter - left - 26, 16), width - 24);
+
+    setNotificationMenuPosition({
+      left: left+20,
+      top: rect.bottom + 12,
+      width,
+      arrowLeft,
+    });
+  }, []);
+
   useEffect(() => {
     if (!sidebarStorageKey || isTeacherLayout || isStudentLayout) return;
     const storedValue = localStorage.getItem(sidebarStorageKey);
@@ -364,6 +416,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     setUserMenuOpen(false);
     setNotificationMenuOpen(false);
+    setNotificationMenuPosition(null);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -382,6 +435,18 @@ export function AppShell({ children }: { children: ReactNode }) {
     document.addEventListener('mousedown', handlePointerDown);
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [notificationMenuOpen, userMenuOpen]);
+
+  useEffect(() => {
+    if (!notificationMenuOpen) return;
+
+    updateNotificationMenuPosition();
+    window.addEventListener('resize', updateNotificationMenuPosition);
+    window.addEventListener('scroll', updateNotificationMenuPosition, true);
+    return () => {
+      window.removeEventListener('resize', updateNotificationMenuPosition);
+      window.removeEventListener('scroll', updateNotificationMenuPosition, true);
+    };
+  }, [notificationMenuOpen, updateNotificationMenuPosition]);
 
   useEffect(() => {
     if (!user || notificationsHref === '#') return;
@@ -456,7 +521,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         onClick={() => {
           queryClient.invalidateQueries({ queryKey: ['notifications'] });
           queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
-          setNotificationMenuOpen((current) => !current);
+          setNotificationMenuOpen((current) => {
+            if (!current) {
+              updateNotificationMenuPosition();
+            } else {
+              setNotificationMenuPosition(null);
+            }
+            return !current;
+          });
         }}
         className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900"
         aria-label="Notifications"
@@ -469,7 +541,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         )}
       </button>
 
-      {notificationMenuOpen && (
+      {notificationMenuOpen && notificationMenuPosition && (
         <NotificationMenu
           notifications={notifications}
           unreadCount={unreadCount}
@@ -477,6 +549,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           onNotificationClick={handleNotificationClick}
           onMarkAllRead={() => markAllReadMutation.mutate()}
           notificationsHref={notificationsHref}
+          position={notificationMenuPosition}
         />
       )}
     </div>
