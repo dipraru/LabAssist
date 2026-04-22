@@ -7,6 +7,7 @@ import { OfficeModule } from './modules/office/office.module';
 import { CoursesModule } from './modules/courses/courses.module';
 import { AssignmentsModule } from './modules/assignments/assignments.module';
 import { LabTestsModule } from './modules/lab-tests/lab-tests.module';
+import { LabQuizzesModule } from './modules/lab-quizzes/lab-quizzes.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { StorageModule } from './modules/storage/storage.module';
 
@@ -32,6 +33,10 @@ import { LabTest } from './modules/lab-tests/entities/lab-test.entity';
 import { LabTestProblem } from './modules/lab-tests/entities/lab-test-problem.entity';
 import { LabSubmission } from './modules/lab-tests/entities/lab-submission.entity';
 import { LabProctoringEvent } from './modules/lab-tests/entities/lab-proctoring-event.entity';
+import { LabQuiz } from './modules/lab-quizzes/entities/lab-quiz.entity';
+import { LabQuizQuestion } from './modules/lab-quizzes/entities/lab-quiz-question.entity';
+import { LabQuizAttempt } from './modules/lab-quizzes/entities/lab-quiz-attempt.entity';
+import { LabQuizProctoringEvent } from './modules/lab-quizzes/entities/lab-quiz-proctoring-event.entity';
 import { Contest } from './modules/contests/entities/contest.entity';
 import { Problem } from './modules/contests/entities/problem.entity';
 import { ContestProblem } from './modules/contests/entities/contest-problem.entity';
@@ -77,6 +82,10 @@ import { ProfileChangeApplication } from './modules/office/entities/profile-chan
           LabTestProblem,
           LabSubmission,
           LabProctoringEvent,
+          LabQuiz,
+          LabQuizQuestion,
+          LabQuizAttempt,
+          LabQuizProctoringEvent,
           Contest,
           Problem,
           ContestProblem,
@@ -98,6 +107,7 @@ import { ProfileChangeApplication } from './modules/office/entities/profile-chan
     CoursesModule,
     AssignmentsModule,
     LabTestsModule,
+    LabQuizzesModule,
     NotificationsModule,
   ],
 })

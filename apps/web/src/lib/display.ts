@@ -16,6 +16,9 @@ export function semesterLabel(course: any): string {
 
 export function studentDisplayName(studentLike: any): string {
   return (
+    studentLike?.fullName ??
+    studentLike?.user?.fullName ??
+    studentLike?.user?.username ??
     studentLike?.student?.fullName ??
     studentLike?.student?.user?.fullName ??
     studentLike?.student?.user?.username ??
