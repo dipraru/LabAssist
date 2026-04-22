@@ -78,6 +78,39 @@ export class JudgeDispatchService implements OnModuleInit, OnModuleDestroy {
     return Number(this.config.get<string>('JUDGE_MAX_RETRY_COUNT')) || 3;
   }
 
+  private isSubmissionHiddenByFreeze(submission: ContestSubmission): boolean {
+    const contest = submission.contest;
+    if (!contest?.isStandingFrozen || !contest.freezeTime) return false;
+
+    const now = new Date();
+    const freezeStartReached = now >= new Date(contest.freezeTime);
+    const freezeNotEnded =
+      !contest.standingUnfreezeTime ||
+      now < new Date(contest.standingUnfreezeTime);
+
+    return (
+      freezeStartReached &&
+      freezeNotEnded &&
+      submission.submittedAt > new Date(contest.freezeTime)
+    );
+  }
+
+  private emitVerdictEvent(
+    submission: ContestSubmission,
+    payload: Record<string, unknown>,
+  ) {
+    if (this.isSubmissionHiddenByFreeze(submission)) {
+      this.gateway.sendToContest(submission.contestId, 'verdict', {
+        contestId: submission.contestId,
+        hidden: true,
+      });
+      this.gateway.sendToUser(submission.participantId, 'verdict', payload);
+      return;
+    }
+
+    this.gateway.sendToContest(submission.contestId, 'verdict', payload);
+  }
+
   private async ensureJudgeSubmissionSchema() {
     await this.submissionRepo.query(`
       ALTER TABLE "contest_submissions"
@@ -311,7 +344,7 @@ export class JudgeDispatchService implements OnModuleInit, OnModuleDestroy {
   ) {
     const submission = await this.submissionRepo.findOne({
       where: { id: submissionId },
-      relations: ['contestProblem'],
+      relations: ['contest', 'contestProblem'],
     });
     if (!submission) return;
 
@@ -327,7 +360,7 @@ export class JudgeDispatchService implements OnModuleInit, OnModuleDestroy {
     submission.judgeClaimedAt = null;
 
     const saved = await this.submissionRepo.save(submission);
-    this.gateway.sendToContest(saved.contestId, 'verdict', {
+    this.emitVerdictEvent(submission, {
       submissionId: saved.id,
       contestProblemId: saved.contestProblemId,
       participantId: saved.participantId,

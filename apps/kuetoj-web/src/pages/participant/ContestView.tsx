@@ -62,7 +62,7 @@ export function ContestView() {
               <div>
                 <p className="oj-kicker"><Activity size={14} /> Live Status</p>
                 <h1 className="mt-3 text-xl font-extrabold tracking-tight text-slate-950">All Submissions</h1>
-                <p className="mt-1 text-sm font-semibold text-slate-500">Everyone can see verdicts. Only your own submission IDs are clickable.</p>
+                <p className="mt-1 text-sm font-semibold text-slate-500">Frozen-window submissions are hidden from other participants until the standings are released.</p>
               </div>
             </section>
 

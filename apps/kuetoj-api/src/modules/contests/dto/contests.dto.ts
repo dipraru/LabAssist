@@ -144,6 +144,11 @@ export class UpdateContestDto {
   problems?: AddContestProblemDto[];
 }
 
+export class UpdateStandingVisibilityDto {
+  @IsIn(['private', 'public'])
+  standingVisibility: 'private' | 'public';
+}
+
 // ─── Submission ───────────────────────────────────────────────────────────────
 
 export class ContestSubmitDto {

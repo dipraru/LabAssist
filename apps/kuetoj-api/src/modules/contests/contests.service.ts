@@ -94,6 +94,50 @@ export class ContestsService {
     return 'running';
   }
 
+  private getStandingFreezeState(contest: Contest): {
+    isActive: boolean;
+    cutoff: Date | null;
+  } {
+    const now = new Date();
+    const freezeStartReached =
+      !contest.freezeTime || now >= new Date(contest.freezeTime);
+    const freezeNotEnded =
+      !contest.standingUnfreezeTime ||
+      now < new Date(contest.standingUnfreezeTime);
+    const isActive =
+      contest.isStandingFrozen && freezeStartReached && freezeNotEnded;
+
+    return {
+      isActive,
+      cutoff: isActive && contest.freezeTime ? new Date(contest.freezeTime) : null,
+    };
+  }
+
+  private isSubmissionHiddenByFreeze(
+    contest: Contest,
+    submission: Pick<ContestSubmission, 'submittedAt'>,
+  ): boolean {
+    const freezeState = this.getStandingFreezeState(contest);
+    return Boolean(freezeState.cutoff && submission.submittedAt > freezeState.cutoff);
+  }
+
+  private emitContestVerdictEvent(
+    contest: Contest,
+    submission: Pick<ContestSubmission, 'participantId' | 'submittedAt'>,
+    payload: Record<string, unknown>,
+  ) {
+    if (this.isSubmissionHiddenByFreeze(contest, submission)) {
+      this.gateway.sendToContest(contest.id, 'verdict', {
+        contestId: contest.id,
+        hidden: true,
+      });
+      this.gateway.sendToUser(submission.participantId, 'verdict', payload);
+      return;
+    }
+
+    this.gateway.sendToContest(contest.id, 'verdict', payload);
+  }
+
   private formatSubmissionDisplayId(
     submissionNumber: number | null | undefined,
   ): string {
@@ -126,6 +170,7 @@ export class ContestsService {
   private async getContestParticipantMetaMap(
     contestId: string,
   ): Promise<Map<string, { fullName: string; universityName: string | null }>> {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const participants = await this.tpRepo.find({ where: { contestId } });
     return new Map(
       participants.map((participant) => [
@@ -961,18 +1006,12 @@ export class ContestsService {
 
   async getStandings(contestId: string, judgeUserId?: string) {
     await this.contestSchema.ensureProblemBankSchema();
+    await this.contestSchema.ensureContestRuntimeSchema();
     const contest = await this.getContestById(contestId);
-    const now = new Date();
-    const freezeStartReached =
-      !contest.freezeTime || now >= new Date(contest.freezeTime);
-    const freezeNotEnded =
-      !contest.standingUnfreezeTime ||
-      now < new Date(contest.standingUnfreezeTime);
-    const freezeStillActive =
-      contest.isStandingFrozen && freezeStartReached && freezeNotEnded;
+    const freezeState = this.getStandingFreezeState(contest);
 
     // If standings are frozen, only judge sees live standings
-    const showFrozen = freezeStillActive && !judgeUserId;
+    const showFrozen = freezeState.isActive && !judgeUserId;
 
     const problems = await this.cpRepo.find({
       where: { contestId: contest.id },
@@ -997,8 +1036,7 @@ export class ContestsService {
       ]),
     );
 
-    const cutoff =
-      contest.freezeTime && showFrozen ? new Date(contest.freezeTime) : null;
+    const cutoff = showFrozen ? freezeState.cutoff : null;
 
     // Group by participant
     const participantMap = new Map<
@@ -1016,8 +1054,10 @@ export class ContestsService {
             accepted: boolean;
             tries: number;
             attempts: number;
+            hiddenAttempts: number;
             acceptedAt?: Date;
             acceptedAtMinute?: number;
+            isFrozenPending?: boolean;
             score?: number;
           }
         >;
@@ -1050,16 +1090,15 @@ export class ContestsService {
       return null;
     };
 
-    for (const sub of subs) {
-      // Skip submissions after freeze for public view
-      if (cutoff && sub.submittedAt > cutoff) continue;
-
+    const getOrCreateParticipantEntry = (sub: ContestSubmission) => {
       if (!participantMap.has(sub.participantId)) {
         const participantMeta = participantMetaMap.get(sub.participantId);
         participantMap.set(sub.participantId, {
           participantId: sub.participantId,
           participantName:
-            participantMeta?.fullName ?? sub.participantName ?? sub.participantId,
+            participantMeta?.fullName ??
+            sub.participantName ??
+            sub.participantId,
           universityName: participantMeta?.universityName ?? null,
           solved: 0,
           penalty: 0,
@@ -1067,19 +1106,43 @@ export class ContestsService {
           problemStatus: {},
         });
       }
-      const entry = participantMap.get(sub.participantId)!;
-      const problemMeta = problemMap.get(sub.contestProblemId);
-      if (!problemMeta) continue;
-      const pLabel = problemMeta.label;
 
-      if (!entry.problemStatus[pLabel]) {
-        entry.problemStatus[pLabel] = {
+      return participantMap.get(sub.participantId)!;
+    };
+
+    const getOrCreateProblemStatus = (
+      entry: NonNullable<
+        ReturnType<typeof getOrCreateParticipantEntry>
+      >,
+      label: string,
+    ) => {
+      if (!entry.problemStatus[label]) {
+        entry.problemStatus[label] = {
           accepted: false,
           tries: 0,
           attempts: 0,
+          hiddenAttempts: 0,
         };
       }
-      const ps = entry.problemStatus[pLabel];
+
+      return entry.problemStatus[label];
+    };
+
+    for (const sub of subs) {
+      const problemMeta = problemMap.get(sub.contestProblemId);
+      if (!problemMeta) continue;
+      const pLabel = problemMeta.label;
+      const entry = getOrCreateParticipantEntry(sub);
+      const ps = getOrCreateProblemStatus(entry, pLabel);
+
+      if (cutoff && sub.submittedAt > cutoff) {
+        ps.hiddenAttempts += 1;
+        if (!ps.accepted) {
+          ps.isFrozenPending = true;
+        }
+        continue;
+      }
+
       if (ps.accepted) continue; // already accepted
 
       const effectiveVerdict = getEffectiveVerdict(sub);
@@ -1168,7 +1231,7 @@ export class ContestsService {
     return {
       contestId,
       type: contest.type,
-      isFrozen: freezeStillActive,
+      isFrozen: freezeState.isActive,
       problems: problemSummaries,
       rows: rows.map((r, idx) => ({
         rank: idx + 1,
@@ -1186,12 +1249,15 @@ export class ContestsService {
             accepted: false,
             tries: 0,
             attempts: 0,
+            hiddenAttempts: 0,
           };
           return {
             label: problemSummary.label,
             accepted: status.accepted,
             attempts: status.attempts,
             wrongAttempts: status.tries,
+            hiddenAttempts: showFrozen ? status.hiddenAttempts : 0,
+            isFrozenPending: Boolean(showFrozen && status.isFrozenPending),
             acceptedAtMinute: status.acceptedAtMinute ?? null,
             isFirstSolve: Boolean(
               status.accepted &&
@@ -1260,6 +1326,37 @@ export class ContestsService {
     return saved;
   }
 
+  async updateStandingVisibility(
+    contestId: string,
+    standingVisibility: 'private' | 'public',
+    judgeUserId: string,
+  ) {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
+    const contest = await this.resolveContestOrThrow(contestId);
+    if (
+      !(await this.canJudgeManageContest(
+        contest.id,
+        contest.createdById,
+        judgeUserId,
+        judgeProfileId,
+      ))
+    ) {
+      throw new ForbiddenException();
+    }
+
+    const isPublicStanding = standingVisibility === 'public';
+    contest.isPublicStanding = isPublicStanding;
+    contest.publicStandingsKey = isPublicStanding
+      ? (contest.publicStandingsKey ?? this.generatePublicStandingsKey())
+      : null;
+
+    const saved = await this.contestRepo.save(contest);
+    this.gateway.sendToContest(contest.id, 'standings:visibility', {
+      isPublicStanding: saved.isPublicStanding,
+    });
+    return saved;
+  }
+
   // ─── SUBMISSION ───────────────────────────────────────────────────────────────
 
   async submitSolution(
@@ -1325,6 +1422,12 @@ export class ContestsService {
       judgeToken: uuidv4(),
     });
     const saved = await this.subRepo.save(sub);
+    if (this.isSubmissionHiddenByFreeze(contest, saved)) {
+      this.gateway.sendToContest(contest.id, 'verdict', {
+        contestId: contest.id,
+        hidden: true,
+      });
+    }
     return this.serializeSubmission(saved);
   }
 
@@ -1535,6 +1638,7 @@ export class ContestsService {
     contestId: string,
     participantUserId: string,
   ) {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const contest = await this.resolveContestOrThrow(contestId);
     const assigned = await this.tpRepo.findOne({
       where: { contestId: contest.id, userId: participantUserId },
@@ -1550,8 +1654,17 @@ export class ContestsService {
       where: { contestId: contest.id },
       order: { submittedAt: 'DESC' },
     });
+    const freezeState = this.getStandingFreezeState(contest);
+    const hiddenSubmissionCutoff = freezeState.isActive
+      ? freezeState.cutoff
+      : null;
+    const visibleSubmissions = submissions.filter((submission) => {
+      if (submission.participantId === participantUserId) return true;
+      if (!hiddenSubmissionCutoff) return true;
+      return submission.submittedAt <= hiddenSubmissionCutoff;
+    });
 
-    return submissions.map((submission) => {
+    return visibleSubmissions.map((submission) => {
       const isOwn = submission.participantId === participantUserId;
       const fullName =
         participantNameMap.get(submission.participantId) ??
@@ -1686,7 +1799,7 @@ export class ContestsService {
 
     const saved = await this.subRepo.save(sub);
     // Push live update to contest room
-    this.gateway.sendToContest(sub.contestId, 'verdict', {
+    this.emitContestVerdictEvent(sub.contest, sub, {
       submissionId: sub.id,
       contestProblemId: sub.contestProblemId,
       participantId: sub.participantId,
@@ -1702,6 +1815,7 @@ export class ContestsService {
     dto: CreateAnnouncementDto,
     authorId: string,
   ) {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const judgeProfileId = await this.getJudgeProfileId(authorId);
     const c = await this.resolveContestOrThrow(contestId);
     if (
@@ -1804,6 +1918,7 @@ export class ContestsService {
     dto: AskClarificationDto,
     participantUserId: string,
   ) {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const c = await this.resolveContestOrThrow(contestId);
     const participantNameMap = await this.getContestParticipantNameMap(c.id);
     const participantName = participantNameMap.get(participantUserId) ?? null;
@@ -1896,6 +2011,7 @@ export class ContestsService {
     dto: AnswerClarificationDto,
     judgeUserId: string,
   ) {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const clar = await this.clarRepo.findOne({
       where: { id: clarId },
@@ -1945,6 +2061,7 @@ export class ContestsService {
   }
 
   async ignoreClarification(clarId: string, judgeUserId: string) {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const clar = await this.clarRepo.findOne({
       where: { id: clarId },
@@ -2002,6 +2119,7 @@ export class ContestsService {
     dto: CreateTempParticipantsDto,
     judgeUserId: string,
   ) {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const contest = await this.resolveContestOrThrow(dto.contestId);
     if (
@@ -2140,6 +2258,7 @@ export class ContestsService {
   }
 
   async getContestParticipants(contestId: string, judgeUserId: string) {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const contest = await this.resolveContestOrThrow(contestId);
     if (
@@ -2170,6 +2289,7 @@ export class ContestsService {
   }
 
   async getAssignedContestsForParticipant(participantUserId: string) {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const assignments = await this.tpRepo.find({
       where: { userId: participantUserId },
       relations: ['contest'],
@@ -2296,7 +2416,7 @@ export class ContestsService {
     sub.judgeError = null;
     const saved = await this.subRepo.save(sub);
     // Push to contest room
-    this.gateway.sendToContest(sub.contestId, 'verdict', {
+    this.emitContestVerdictEvent(sub.contest, sub, {
       submissionId: sub.id,
       verdict: saved.submissionStatus,
     });
