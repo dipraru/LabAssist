@@ -88,15 +88,76 @@ type HeadingCopy = {
   description?: string;
 };
 
+function countUnquotedDelimiters(line: string, delimiter: string): number {
+  let count = 0;
+  let quoted = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === '"') {
+      if (quoted && next === '"') {
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+      continue;
+    }
+    if (char === delimiter && !quoted) {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
+function detectCsvDelimiter(text: string): string {
+  const sampleLines = text
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+  const candidates = [',', ';', '\t'];
+
+  return candidates.reduce(
+    (best, delimiter) => {
+      const delimiterCounts = sampleLines.map((line) =>
+        countUnquotedDelimiters(line, delimiter),
+      );
+      const rowsWithDelimiter = delimiterCounts.filter((count) => count > 0).length;
+      const totalDelimiters = delimiterCounts.reduce((sum, count) => sum + count, 0);
+      const score = rowsWithDelimiter * 100 + totalDelimiters;
+
+      return score > best.score ? { delimiter, score } : best;
+    },
+    { delimiter: ',', score: 0 },
+  ).delimiter;
+}
+
+function isBulkQuestionHeader(row: string[]): boolean {
+  const firstCell = row[0]?.trim().toLowerCase().replace(/\s+/g, ' ') ?? '';
+  if (!['question', 'questions', 'prompt'].includes(firstCell)) return false;
+  return row
+    .slice(1)
+    .some(
+      (cell) =>
+        /^option(\s*\d+)?$/i.test(cell.trim()) ||
+        /^choice(\s*\d+)?$/i.test(cell.trim()),
+    );
+}
+
 function parseCsvRows(text: string): string[][] {
+  const delimiter = detectCsvDelimiter(text);
+  const normalizedText = text.replace(/^\uFEFF/, '');
   const rows: string[][] = [];
   let current = '';
   let row: string[] = [];
   let quoted = false;
 
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    const next = text[index + 1];
+  for (let index = 0; index < normalizedText.length; index += 1) {
+    const char = normalizedText[index];
+    const next = normalizedText[index + 1];
     if (char === '"') {
       if (quoted && next === '"') {
         current += '"';
@@ -106,7 +167,7 @@ function parseCsvRows(text: string): string[][] {
       }
       continue;
     }
-    if (char === ',' && !quoted) {
+    if (char === delimiter && !quoted) {
       row.push(current.trim());
       current = '';
       continue;
@@ -136,11 +197,13 @@ function parseCsvRows(text: string): string[][] {
 
 function buildBulkQuestionsFromCsv(text: string): QuestionFormData[] {
   const questions: QuestionFormData[] = [];
-  for (const row of parseCsvRows(text)) {
+  const rows = parseCsvRows(text);
+  for (const [index, row] of rows.entries()) {
+    if (index === 0 && isBulkQuestionHeader(row)) continue;
     const prompt = row[0]?.trim() ?? '';
     if (!prompt) continue;
     const options = row.slice(1).map((value) => value.trim()).filter(Boolean);
-    if (options.length >= 2) {
+    if (options.length >= 1) {
       questions.push({
         questionType: 'mcq',
         prompt,
@@ -265,6 +328,17 @@ export function TeacherLabQuizManager({
   const hasShortQuestions = useMemo(
     () => (questions as any[]).some((question) => question.questionType === 'short_answer'),
     [questions],
+  );
+  const bulkQuestionSummary = useMemo(
+    () =>
+      bulkQuestionDrafts.reduce(
+        (summary, question) => ({
+          mcq: summary.mcq + (question.questionType === 'mcq' ? 1 : 0),
+          short: summary.short + (question.questionType === 'short_answer' ? 1 : 0),
+        }),
+        { mcq: 0, short: 0 },
+      ),
+    [bulkQuestionDrafts],
   );
   const attemptRows = attemptsData?.rows ?? [];
   const submittedRows = useMemo(
@@ -1365,6 +1439,8 @@ export function TeacherLabQuizManager({
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
             <p className="font-semibold text-slate-900">CSV format</p>
             <p>Question, Option 1, Option 2, Option 3, ...</p>
+            <p>Comma, semicolon, and tab-separated files are supported.</p>
+            <p>Rows with one or more option columns become MCQ questions.</p>
             <p>Rows with empty option columns become short questions.</p>
             <p>MCQ correct answer defaults to the first option.</p>
           </div>
@@ -1381,7 +1457,12 @@ export function TeacherLabQuizManager({
           </Field>
           {bulkQuestionDrafts.length ? (
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-              {bulkQuestionDrafts.length} questions ready to import
+              <p className="font-semibold text-slate-900">
+                {bulkQuestionDrafts.length} questions ready to import
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {bulkQuestionSummary.mcq} MCQ · {bulkQuestionSummary.short} short
+              </p>
             </div>
           ) : null}
           <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
