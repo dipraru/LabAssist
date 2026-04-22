@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Archive, CalendarClock, Download, FileUp, GripVertical, KeyRound, Pencil, PlayCircle, Plus, Trash2, Trophy, UserPlus, UsersRound, X } from 'lucide-react';
+import { Archive, CalendarClock, Download, FileUp, Globe2, GripVertical, KeyRound, LockKeyhole, Pencil, PlayCircle, Plus, Trash2, Trophy, UserPlus, UsersRound, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import { AppShell } from '../../components/AppShell';
 import { Modal } from '../../components/Modal';
@@ -624,6 +624,21 @@ export function JudgeContests() {
     },
   });
 
+  const standingVisibilityMutation = useMutation({
+    mutationFn: ({ contestId, standingVisibility }: { contestId: string; standingVisibility: 'private' | 'public' }) =>
+      api.patch(`/contests/${contestId}/standing-visibility`, { standingVisibility }),
+    onSuccess: (_res, variables) => {
+      toast.success(`Standings are now ${variables.standingVisibility}`);
+      qc.invalidateQueries({ queryKey: ['judge-contests'] });
+      qc.invalidateQueries({ queryKey: ['contest', variables.contestId] });
+      qc.invalidateQueries({ queryKey: ['contest-standings', variables.contestId] });
+      qc.invalidateQueries({ queryKey: ['public-standings', variables.contestId] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message ?? err.message ?? 'Failed to update standings visibility');
+    },
+  });
+
   const parsedStartAt = useMemo(() => parseDateTimeText(startAtText), [startAtText]);
 
   const parsedLength = useMemo(() => parseDurationText(contestLengthText), [contestLengthText]);
@@ -767,6 +782,11 @@ export function JudgeContests() {
                 <span className={`oj-chip ${PHASE_COLOR[phase] ?? 'bg-slate-100 text-slate-700'}`}>
                   {phaseLabel(phase)}
                 </span>
+                {section === 'past' && (
+                  <span className={`oj-chip ${contest.isPublicStanding ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                    {contest.isPublicStanding ? 'Public standings' : 'Private standings'}
+                  </span>
+                )}
               </div>
 
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -808,6 +828,20 @@ export function JudgeContests() {
                   <button type="button" onClick={() => openParticipantsModal(contest)} className="oj-btn-secondary px-3 py-2 text-xs">
                     <UsersRound size={14} />
                     Participants
+                  </button>
+                )}
+                {section === 'past' && (
+                  <button
+                    type="button"
+                    onClick={() => standingVisibilityMutation.mutate({
+                      contestId: contest.id,
+                      standingVisibility: contest.isPublicStanding ? 'private' : 'public',
+                    })}
+                    disabled={standingVisibilityMutation.isPending}
+                    className="oj-btn-secondary px-3 py-2 text-xs disabled:opacity-60"
+                  >
+                    {contest.isPublicStanding ? <LockKeyhole size={14} /> : <Globe2 size={14} />}
+                    {contest.isPublicStanding ? 'Make Private' : 'Make Public'}
                   </button>
                 )}
                 <button

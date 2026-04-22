@@ -37,6 +37,7 @@ import {
   GradeContestSubmissionDto,
   UpdateAnnouncementPinDto,
   UpdateContestDto,
+  UpdateStandingVisibilityDto,
 } from './dto/contests.dto';
 import { ContestStatus } from '../../common/enums';
 
@@ -150,6 +151,20 @@ export class ContestsController {
   @Post()
   createContest(@Body() dto: CreateContestDto, @CurrentUser() user: any) {
     return this.svc.createContest(dto, user.id);
+  }
+
+  @Roles(UserRole.TEMP_JUDGE)
+  @Patch(':id/standing-visibility')
+  updateStandingVisibility(
+    @Param('id') id: string,
+    @Body() dto: UpdateStandingVisibilityDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.svc.updateStandingVisibility(
+      id,
+      dto.standingVisibility,
+      user.id,
+    );
   }
 
   @Roles(UserRole.TEMP_JUDGE)

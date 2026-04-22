@@ -126,6 +126,7 @@ export class ContestsService {
   private async getContestParticipantMetaMap(
     contestId: string,
   ): Promise<Map<string, { fullName: string; universityName: string | null }>> {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const participants = await this.tpRepo.find({ where: { contestId } });
     return new Map(
       participants.map((participant) => [
@@ -961,6 +962,7 @@ export class ContestsService {
 
   async getStandings(contestId: string, judgeUserId?: string) {
     await this.contestSchema.ensureProblemBankSchema();
+    await this.contestSchema.ensureContestRuntimeSchema();
     const contest = await this.getContestById(contestId);
     const now = new Date();
     const freezeStartReached =
@@ -1260,6 +1262,37 @@ export class ContestsService {
     return saved;
   }
 
+  async updateStandingVisibility(
+    contestId: string,
+    standingVisibility: 'private' | 'public',
+    judgeUserId: string,
+  ) {
+    const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
+    const contest = await this.resolveContestOrThrow(contestId);
+    if (
+      !(await this.canJudgeManageContest(
+        contest.id,
+        contest.createdById,
+        judgeUserId,
+        judgeProfileId,
+      ))
+    ) {
+      throw new ForbiddenException();
+    }
+
+    const isPublicStanding = standingVisibility === 'public';
+    contest.isPublicStanding = isPublicStanding;
+    contest.publicStandingsKey = isPublicStanding
+      ? (contest.publicStandingsKey ?? this.generatePublicStandingsKey())
+      : null;
+
+    const saved = await this.contestRepo.save(contest);
+    this.gateway.sendToContest(contest.id, 'standings:visibility', {
+      isPublicStanding: saved.isPublicStanding,
+    });
+    return saved;
+  }
+
   // ─── SUBMISSION ───────────────────────────────────────────────────────────────
 
   async submitSolution(
@@ -1535,6 +1568,7 @@ export class ContestsService {
     contestId: string,
     participantUserId: string,
   ) {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const contest = await this.resolveContestOrThrow(contestId);
     const assigned = await this.tpRepo.findOne({
       where: { contestId: contest.id, userId: participantUserId },
@@ -1702,6 +1736,7 @@ export class ContestsService {
     dto: CreateAnnouncementDto,
     authorId: string,
   ) {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const judgeProfileId = await this.getJudgeProfileId(authorId);
     const c = await this.resolveContestOrThrow(contestId);
     if (
@@ -1804,6 +1839,7 @@ export class ContestsService {
     dto: AskClarificationDto,
     participantUserId: string,
   ) {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const c = await this.resolveContestOrThrow(contestId);
     const participantNameMap = await this.getContestParticipantNameMap(c.id);
     const participantName = participantNameMap.get(participantUserId) ?? null;
@@ -1896,6 +1932,7 @@ export class ContestsService {
     dto: AnswerClarificationDto,
     judgeUserId: string,
   ) {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const clar = await this.clarRepo.findOne({
       where: { id: clarId },
@@ -1945,6 +1982,7 @@ export class ContestsService {
   }
 
   async ignoreClarification(clarId: string, judgeUserId: string) {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const clar = await this.clarRepo.findOne({
       where: { id: clarId },
@@ -2002,6 +2040,7 @@ export class ContestsService {
     dto: CreateTempParticipantsDto,
     judgeUserId: string,
   ) {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const contest = await this.resolveContestOrThrow(dto.contestId);
     if (
@@ -2140,6 +2179,7 @@ export class ContestsService {
   }
 
   async getContestParticipants(contestId: string, judgeUserId: string) {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const contest = await this.resolveContestOrThrow(contestId);
     if (
@@ -2170,6 +2210,7 @@ export class ContestsService {
   }
 
   async getAssignedContestsForParticipant(participantUserId: string) {
+    await this.contestSchema.ensureContestRuntimeSchema();
     const assignments = await this.tpRepo.find({
       where: { userId: participantUserId },
       relations: ['contest'],
