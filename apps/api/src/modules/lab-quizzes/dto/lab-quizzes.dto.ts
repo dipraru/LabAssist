@@ -12,6 +12,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { LabProctoringEventType } from '../../lab-tests/entities/lab-proctoring-event.entity';
+import { LabQuizQuestionDisplayMode } from '../entities/lab-quiz.entity';
 import { LabQuizQuestionType } from '../entities/lab-quiz-question.entity';
 
 export class CreateLabQuizQuestionDto {
@@ -97,6 +98,10 @@ export class CreateLabQuizDto {
   labClassId?: string;
 
   @IsOptional()
+  @IsEnum(LabQuizQuestionDisplayMode)
+  questionDisplayMode?: LabQuizQuestionDisplayMode;
+
+  @IsOptional()
   @IsBoolean()
   proctoringEnabled?: boolean;
 
@@ -133,6 +138,10 @@ export class UpdateLabQuizDto {
   @IsOptional()
   @IsUUID()
   labClassId?: string;
+
+  @IsOptional()
+  @IsEnum(LabQuizQuestionDisplayMode)
+  questionDisplayMode?: LabQuizQuestionDisplayMode;
 
   @IsOptional()
   @IsBoolean()

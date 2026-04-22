@@ -29,6 +29,7 @@ import {
 } from './dto/lab-quizzes.dto';
 import {
   LabQuiz,
+  LabQuizQuestionDisplayMode,
   LabQuizStatus,
 } from './entities/lab-quiz.entity';
 import {
@@ -326,6 +327,62 @@ export class LabQuizzesService {
     question.correctOptionId = null;
     if (dto.answerKey !== undefined || question.questionType !== nextType) {
       question.answerKey = dto.answerKey?.trim() || null;
+    }
+  }
+
+  private applyQuestionAnswerUpdate(
+    question: LabQuizQuestion,
+    dto: UpdateLabQuizQuestionDto,
+  ) {
+    if (
+      dto.questionType !== undefined ||
+      dto.prompt !== undefined ||
+      dto.options !== undefined ||
+      dto.marks !== undefined
+    ) {
+      throw new BadRequestException(
+        'Only the answer can be changed after the quiz starts',
+      );
+    }
+
+    if (question.questionType === LabQuizQuestionType.MCQ) {
+      if (dto.answerKey !== undefined) {
+        throw new BadRequestException('MCQ answer must be selected from options');
+      }
+      if (dto.correctOptionIndex === undefined) {
+        throw new BadRequestException('Select the correct MCQ answer');
+      }
+      const options = question.options ?? [];
+      if (
+        dto.correctOptionIndex < 0 ||
+        dto.correctOptionIndex >= options.length
+      ) {
+        throw new BadRequestException('Select the correct MCQ answer');
+      }
+      question.correctOptionId = options[dto.correctOptionIndex].id;
+      return;
+    }
+
+    if (dto.correctOptionIndex !== undefined) {
+      throw new BadRequestException('Short answer questions use an answer key');
+    }
+    question.answerKey = dto.answerKey?.trim() || null;
+  }
+
+  private async recalculateSubmittedAttempts(
+    quizId: string,
+    questions: LabQuizQuestion[],
+    teacherUserId?: string,
+  ) {
+    const attempts = await this.attemptRepo.find({ where: { quizId } });
+    for (const attempt of attempts) {
+      if (!attempt.submittedAt) continue;
+      const evaluated = this.calculateAttemptEvaluation(
+        attempt,
+        questions,
+        teacherUserId,
+      );
+      await this.attemptRepo.save(evaluated);
     }
   }
 
@@ -804,6 +861,8 @@ export class LabQuizzesService {
         totalMarks: dto.totalMarks ?? null,
         sectionName: placement.sectionName,
         labClassId: placement.labClassId,
+        questionDisplayMode:
+          dto.questionDisplayMode ?? LabQuizQuestionDisplayMode.ALL,
         proctoringEnabled: this.resolveBooleanFlag(dto.proctoringEnabled, true),
         status: LabQuizStatus.DRAFT,
         startTime: null,
@@ -853,6 +912,9 @@ export class LabQuizzesService {
     }
     if (dto.totalMarks !== undefined) {
       quiz.totalMarks = dto.totalMarks ?? null;
+    }
+    if (dto.questionDisplayMode !== undefined) {
+      quiz.questionDisplayMode = dto.questionDisplayMode;
     }
     if (dto.sectionName !== undefined || dto.labClassId !== undefined) {
       const placement = await this.validateQuizPlacement(
@@ -970,14 +1032,24 @@ export class LabQuizzesService {
     const quiz = await this.quizRepo.findOneBy({ id: quizId });
     if (!quiz) throw new NotFoundException('Lab quiz not found');
     await this.getTeacherCourseAccess(quiz.courseId, teacherUserId);
-    if (quiz.status !== LabQuizStatus.DRAFT) {
-      throw new BadRequestException('Questions can be changed only in draft');
-    }
 
     const question = await this.questionRepo.findOneBy({ id: questionId, quizId });
     if (!question) throw new NotFoundException('Question not found');
-    this.applyQuestionUpdate(question, dto);
-    return this.questionRepo.save(question);
+    if (quiz.status === LabQuizStatus.DRAFT) {
+      this.applyQuestionUpdate(question, dto);
+      return this.questionRepo.save(question);
+    }
+
+    this.applyQuestionAnswerUpdate(question, dto);
+    const saved = await this.questionRepo.save(question);
+    if (quiz.status === LabQuizStatus.ENDED) {
+      const questions = await this.questionRepo.find({
+        where: { quizId },
+        order: { orderIndex: 'ASC' },
+      });
+      await this.recalculateSubmittedAttempts(quizId, questions, teacherUserId);
+    }
+    return saved;
   }
 
   async removeQuestion(
@@ -1019,6 +1091,16 @@ export class LabQuizzesService {
     }
     if (!(quiz.questions ?? []).length) {
       throw new BadRequestException('Add at least one question before starting');
+    }
+    const questionMarksTotal = this.getQuestionMarksTotal(quiz.questions ?? []);
+    const configuredTotal = numericScore(quiz.totalMarks);
+    if (configuredTotal === null) {
+      throw new BadRequestException('Set total marks before starting the quiz');
+    }
+    if (Math.abs(configuredTotal - questionMarksTotal) > 0.001) {
+      throw new BadRequestException(
+        `Total marks (${configuredTotal}) must match question marks (${questionMarksTotal})`,
+      );
     }
 
     const startTime = new Date();

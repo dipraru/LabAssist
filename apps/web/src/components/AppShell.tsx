@@ -417,7 +417,16 @@ export function AppShell({ children }: { children: ReactNode }) {
         : user.role === 'student'
           ? `/student/lab-quizzes/${quiz.id}`
           : null;
-    if (!targetPath || `${location.pathname}${location.search}` === targetPath) return;
+    if (!targetPath) return;
+    const targetPathname = targetPath.split('?')[0];
+    if (
+      user.role === 'student' &&
+      targetPathname &&
+      location.pathname === targetPathname
+    ) {
+      return;
+    }
+    if (`${location.pathname}${location.search}` === targetPath) return;
     navigate(targetPath, { replace: true });
   }, [location.pathname, location.search, navigate, runningLabQuizzes, user]);
 

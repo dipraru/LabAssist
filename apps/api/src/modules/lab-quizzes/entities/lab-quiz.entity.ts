@@ -19,6 +19,11 @@ export enum LabQuizStatus {
   ENDED = 'ended',
 }
 
+export enum LabQuizQuestionDisplayMode {
+  ALL = 'all',
+  ONE_BY_ONE = 'one_by_one',
+}
+
 @Entity('lab_quizzes')
 export class LabQuiz {
   @PrimaryGeneratedColumn('uuid')
@@ -47,6 +52,13 @@ export class LabQuiz {
 
   @Column({ type: 'varchar', nullable: true })
   sectionName: string | null;
+
+  @Column({
+    type: 'enum',
+    enum: LabQuizQuestionDisplayMode,
+    default: LabQuizQuestionDisplayMode.ALL,
+  })
+  questionDisplayMode: LabQuizQuestionDisplayMode;
 
   @Column({ type: 'boolean', default: true })
   proctoringEnabled: boolean;

@@ -38,6 +38,7 @@ const quizSchema = z.object({
   totalMarks: z.number().min(0).optional(),
   sectionName: z.string().trim().min(1, 'Section is required'),
   labClassId: z.string().trim().min(1, 'Lab class is required'),
+  questionDisplayMode: z.enum(['all', 'one_by_one']),
   proctoringEnabled: z.boolean(),
 });
 
@@ -101,6 +102,7 @@ export function TeacherLabQuizManager({
   const [showQuizModal, setShowQuizModal] = useState(false);
   const [showQuestionModal, setShowQuestionModal] = useState(false);
   const [editingQuizId, setEditingQuizId] = useState<string | null>(null);
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const [gradeDrafts, setGradeDrafts] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState<'questions' | 'submissions' | 'evaluations' | 'alerts'>('questions');
   const [alertRollQuery, setAlertRollQuery] = useState('');
@@ -176,6 +178,10 @@ export function TeacherLabQuizManager({
     [questions],
   );
   const attemptRows = attemptsData?.rows ?? [];
+  const submittedRows = useMemo(
+    () => attemptRows.filter((row: any) => Boolean(row.attempt?.submittedAt)),
+    [attemptRows],
+  );
   const alertedStudentIds = useMemo(
     () =>
       new Set(
@@ -209,6 +215,7 @@ export function TeacherLabQuizManager({
       totalMarks: 10,
       sectionName: 'All Students',
       labClassId: '',
+      questionDisplayMode: 'all',
       proctoringEnabled: true,
     },
   });
@@ -245,6 +252,17 @@ export function TeacherLabQuizManager({
   });
   const questionType = questionForm.watch('questionType');
   const correctOptionIndex = questionForm.watch('correctOptionIndex');
+  const editingQuestion = useMemo(
+    () =>
+      (questions as any[]).find((question: any) => question.id === editingQuestionId) ??
+      null,
+    [editingQuestionId, questions],
+  );
+  const answerOnlyQuestionEdit = Boolean(editingQuestion && activeQuiz?.status !== 'draft');
+  const totalMarksMatch = useMemo(() => {
+    const configured = Number(activeQuiz?.totalMarks);
+    return Number.isFinite(configured) && Math.abs(configured - totalQuestionMarks) < 0.001;
+  }, [activeQuiz?.totalMarks, totalQuestionMarks]);
 
   useEffect(() => {
     if (selectedQuizId && (quizzes as any[]).some((quiz: any) => quiz.id === selectedQuizId)) {
@@ -304,11 +322,13 @@ export function TeacherLabQuizManager({
       totalMarks: 10,
       sectionName: sectionNames[0] ?? 'All Students',
       labClassId: availableQuizLabClasses[0]?.id ?? '',
+      questionDisplayMode: 'all',
       proctoringEnabled: true,
     });
   };
 
   const resetQuestionForm = () => {
+    setEditingQuestionId(null);
     questionForm.reset({
       questionType: 'mcq',
       prompt: '',
@@ -329,6 +349,7 @@ export function TeacherLabQuizManager({
         totalMarks: values.totalMarks,
         sectionName: values.sectionName,
         labClassId: values.labClassId,
+        questionDisplayMode: values.questionDisplayMode,
         proctoringEnabled: values.proctoringEnabled,
       }),
     onSuccess: (response) => {
@@ -351,6 +372,7 @@ export function TeacherLabQuizManager({
         totalMarks: values.totalMarks,
         sectionName: values.sectionName,
         labClassId: values.labClassId,
+        questionDisplayMode: values.questionDisplayMode,
         proctoringEnabled: values.proctoringEnabled,
       }),
     onSuccess: () => {
@@ -386,6 +408,48 @@ export function TeacherLabQuizManager({
     },
     onError: (error: any) =>
       toast.error(error.response?.data?.message ?? 'Failed to add question'),
+  });
+
+  const updateQuestionMutation = useMutation({
+    mutationFn: (values: QuestionFormData) => {
+      const payload =
+        activeQuiz?.status === 'draft'
+          ? {
+              questionType: values.questionType,
+              prompt: values.prompt,
+              marks: values.marks,
+              answerKey:
+                values.questionType === 'short_answer'
+                  ? values.answerKey
+                  : undefined,
+              options:
+                values.questionType === 'mcq'
+                  ? values.options
+                      .map((option) => option.text?.trim() ?? '')
+                      .filter(Boolean)
+                  : undefined,
+              correctOptionIndex:
+                values.questionType === 'mcq'
+                  ? values.correctOptionIndex
+                  : undefined,
+            }
+          : values.questionType === 'mcq'
+            ? { correctOptionIndex: values.correctOptionIndex }
+            : { answerKey: values.answerKey };
+
+      return api.patch(
+        `/lab-quizzes/${selectedQuizId}/questions/${editingQuestionId}`,
+        payload,
+      );
+    },
+    onSuccess: () => {
+      toast.success(answerOnlyQuestionEdit ? 'Answer updated' : 'Question updated');
+      invalidateQuizQueries();
+      setShowQuestionModal(false);
+      resetQuestionForm();
+    },
+    onError: (error: any) =>
+      toast.error(error.response?.data?.message ?? 'Failed to update question'),
   });
 
   const removeQuestionMutation = useMutation({
@@ -472,9 +536,36 @@ export function TeacherLabQuizManager({
       totalMarks: activeQuiz.totalMarks ?? totalQuestionMarks,
       sectionName: activeQuiz.sectionName ?? 'All Students',
       labClassId: activeQuiz.labClassId ?? '',
+      questionDisplayMode: activeQuiz.questionDisplayMode ?? 'all',
       proctoringEnabled: activeQuiz.proctoringEnabled ?? true,
     });
     setShowQuizModal(true);
+  };
+
+  const openEditQuestion = (question: any) => {
+    setEditingQuestionId(question.id);
+    questionForm.reset({
+      questionType: question.questionType ?? 'mcq',
+      prompt: question.prompt ?? '',
+      marks: Number(question.marks ?? 1),
+      answerKey: question.answerKey ?? '',
+      correctOptionIndex:
+        question.questionType === 'mcq'
+          ? Math.max(
+              0,
+              (question.options ?? []).findIndex(
+                (option: any) => option.id === question.correctOptionId,
+              ),
+            )
+          : 0,
+      options:
+        question.questionType === 'mcq' && (question.options ?? []).length
+          ? (question.options ?? []).map((option: any) => ({
+              text: option.text ?? '',
+            }))
+          : [{ text: '' }, { text: '' }, { text: '' }, { text: '' }],
+    });
+    setShowQuestionModal(true);
   };
 
   const handleSaveAttemptGrades = (row: any) => {
@@ -517,7 +608,7 @@ export function TeacherLabQuizManager({
   const canDownloadReport = Boolean(attemptsData?.canDownloadReport);
   const tabs = [
     { id: 'questions', label: 'Questions', badge: questions.length },
-    { id: 'submissions', label: 'Submissions', badge: attemptRows.length },
+    { id: 'submissions', label: 'Submissions', badge: submittedRows.length },
     { id: 'evaluations', label: 'Evaluations', badge: pendingEvaluationCount },
     { id: 'alerts', label: 'Alert', badge: (proctoringEvents as any[]).length },
   ] as const;
@@ -647,6 +738,11 @@ export function TeacherLabQuizManager({
                     </span>
                     <span>{questions.length} questions</span>
                     <span>{activeQuiz.totalMarks ?? totalQuestionMarks} marks</span>
+                    {activeQuiz.status === 'draft' && !totalMarksMatch ? (
+                      <span className="font-semibold text-rose-600">
+                        Question marks total {totalQuestionMarks}
+                      </span>
+                    ) : null}
                     {activeQuiz.startTime ? <span>Started {formatDateTime(activeQuiz.startTime)}</span> : null}
                     {activeQuiz.endTime ? <span>Ends {formatDateTime(activeQuiz.endTime)}</span> : null}
                   </div>
@@ -667,7 +763,8 @@ export function TeacherLabQuizManager({
                     <button
                       type="button"
                       onClick={() => startMutation.mutate(activeQuiz.id)}
-                      className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
+                      disabled={!totalMarksMatch || startMutation.isPending}
+                      className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <PlayCircle size={16} />
                       Start
@@ -761,15 +858,29 @@ export function TeacherLabQuizManager({
                                   {question.prompt}
                                 </p>
                               </div>
-                              {canEdit ? (
+                              <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => removeQuestionMutation.mutate(question.id)}
-                                  className="rounded-xl border border-rose-200 bg-white p-2 text-rose-600 transition hover:bg-rose-50"
+                                  onClick={() => openEditQuestion(question)}
+                                  className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-50"
+                                  title={
+                                    activeQuiz.status === 'draft'
+                                      ? 'Edit question'
+                                      : 'Edit answer'
+                                  }
                                 >
-                                  <Trash2 size={15} />
+                                  <PencilLine size={15} />
                                 </button>
-                              ) : null}
+                                {canEdit ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeQuestionMutation.mutate(question.id)}
+                                    className="rounded-xl border border-rose-200 bg-white p-2 text-rose-600 transition hover:bg-rose-50"
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                ) : null}
+                              </div>
                             </div>
                             {question.questionType === 'mcq' ? (
                               <div className="mt-3 space-y-2">
@@ -805,12 +916,12 @@ export function TeacherLabQuizManager({
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <h3 className="text-lg font-semibold text-slate-900">Submissions</h3>
-                        <p className="text-sm text-slate-500">{attemptRows.length} students listed</p>
+                        <p className="text-sm text-slate-500">{submittedRows.length} submitted</p>
                       </div>
                     </div>
                     <div className="mt-4 space-y-3">
-                      {attemptRows.length ? (
-                        attemptRows.map((row: any) => (
+                      {submittedRows.length ? (
+                        submittedRows.map((row: any) => (
                           <StudentQuizRow
                             key={row.student.id}
                             row={row}
@@ -821,7 +932,7 @@ export function TeacherLabQuizManager({
                           />
                         ))
                       ) : (
-                        <EmptyState title="Submissions appear after students open the quiz" />
+                        <EmptyState title="No submissions yet" />
                       )}
                     </div>
                   </div>
@@ -844,32 +955,25 @@ export function TeacherLabQuizManager({
                     </div>
 
                     <div className="mt-4 space-y-3">
-                      {attemptRows.length ? (
-                        attemptRows.map((row: any) => {
-                          const canEvaluate = Boolean(
-                            hasShortQuestions &&
-                              activeQuiz.status === 'ended' &&
-                              row.attempt?.id &&
-                              row.attempt?.submittedAt,
-                          );
-                          return (
-                            <StudentQuizRow
-                              key={row.student.id}
-                              row={row}
-                              warned={alertedStudentIds.has(row.student.id)}
-                              actionLabel={canEvaluate ? 'Manual Evaluate' : 'View'}
-                              actionIcon={canEvaluate ? <Save size={15} /> : <Eye size={15} />}
-                              onAction={() =>
-                                setAnswerSheetTarget({
-                                  row,
-                                  mode: canEvaluate ? 'evaluate' : 'view',
-                                })
-                              }
-                            />
-                          );
-                        })
+                      {submittedRows.length ? (
+                        submittedRows.map((row: any) => (
+                          <StudentQuizRow
+                            key={row.student.id}
+                            row={row}
+                            warned={alertedStudentIds.has(row.student.id)}
+                            actionLabel="Manual Evaluate"
+                            actionIcon={<Save size={15} />}
+                            disabled={activeQuiz.status !== 'ended'}
+                            onAction={() =>
+                              setAnswerSheetTarget({
+                                row,
+                                mode: 'evaluate',
+                              })
+                            }
+                          />
+                        ))
                       ) : (
-                        <EmptyState title="No students found for this quiz" />
+                        <EmptyState title="No submitted papers to evaluate" />
                       )}
                     </div>
                   </div>
@@ -980,6 +1084,12 @@ export function TeacherLabQuizManager({
                 className={inputClass}
               />
             </Field>
+            <Field label="Question Display" error={quizForm.formState.errors.questionDisplayMode?.message}>
+              <select {...quizForm.register('questionDisplayMode')} className={inputClass}>
+                <option value="all">Show all questions</option>
+                <option value="one_by_one">Show one by one</option>
+              </select>
+            </Field>
           </div>
           <Field label="Description" error={quizForm.formState.errors.description?.message}>
             <textarea {...quizForm.register('description')} className={`${inputClass} min-h-24`} />
@@ -1011,16 +1121,30 @@ export function TeacherLabQuizManager({
           setShowQuestionModal(false);
           resetQuestionForm();
         }}
-        title="Add Question"
+        title={
+          editingQuestion
+            ? answerOnlyQuestionEdit
+              ? 'Edit Answer'
+              : 'Edit Question'
+            : 'Add Question'
+        }
         maxWidthClass="max-w-3xl"
       >
         <form
-          onSubmit={questionForm.handleSubmit((values) => addQuestionMutation.mutate(values))}
+          onSubmit={questionForm.handleSubmit((values) =>
+            editingQuestionId
+              ? updateQuestionMutation.mutate(values)
+              : addQuestionMutation.mutate(values),
+          )}
           className="space-y-4"
         >
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Question Type">
-              <select {...questionForm.register('questionType')} className={inputClass}>
+              <select
+                {...questionForm.register('questionType')}
+                disabled={answerOnlyQuestionEdit}
+                className={inputClass}
+              >
                 <option value="mcq">MCQ</option>
                 <option value="short_answer">Short Answer</option>
               </select>
@@ -1031,25 +1155,32 @@ export function TeacherLabQuizManager({
                 {...questionForm.register('marks', {
                   setValueAs: (value) => (value === '' ? undefined : Number(value)),
                 })}
+                disabled={answerOnlyQuestionEdit}
                 className={inputClass}
               />
             </Field>
           </div>
           <Field label="Question" error={questionForm.formState.errors.prompt?.message}>
-            <textarea {...questionForm.register('prompt')} className={`${inputClass} min-h-28`} />
+            <textarea
+              {...questionForm.register('prompt')}
+              disabled={answerOnlyQuestionEdit}
+              className={`${inputClass} min-h-28`}
+            />
           </Field>
 
           {questionType === 'mcq' ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-slate-900">Options</p>
-                <button
-                  type="button"
-                  onClick={() => optionFields.append({ text: '' })}
-                  className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700"
-                >
-                  Add option
-                </button>
+                {!answerOnlyQuestionEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => optionFields.append({ text: '' })}
+                    className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700"
+                  >
+                    Add option
+                  </button>
+                ) : null}
               </div>
               {optionFields.fields.map((field, index) => (
                 <div key={field.id} className="grid gap-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
@@ -1060,16 +1191,19 @@ export function TeacherLabQuizManager({
                   />
                   <input
                     {...questionForm.register(`options.${index}.text`)}
+                    disabled={answerOnlyQuestionEdit}
                     className={inputClass}
                     placeholder={`Option ${index + 1}`}
                   />
-                  <button
-                    type="button"
-                    onClick={() => optionFields.remove(index)}
-                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600"
-                  >
-                    Remove
-                  </button>
+                  {!answerOnlyQuestionEdit ? (
+                    <button
+                      type="button"
+                      onClick={() => optionFields.remove(index)}
+                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600"
+                    >
+                      Remove
+                    </button>
+                  ) : null}
                 </div>
               ))}
               {questionForm.formState.errors.options?.message ? (
@@ -1090,12 +1224,27 @@ export function TeacherLabQuizManager({
           )}
 
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setShowQuestionModal(false)} className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700">
+            <button
+              type="button"
+              onClick={() => {
+                setShowQuestionModal(false);
+                resetQuestionForm();
+              }}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
+            >
               Cancel
             </button>
-            <button type="submit" className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">
+            <button
+              type="submit"
+              disabled={addQuestionMutation.isPending || updateQuestionMutation.isPending}
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
               <Save size={16} />
-              Add Question
+              {editingQuestion
+                ? answerOnlyQuestionEdit
+                  ? 'Save Answer'
+                  : 'Save Question'
+                : 'Add Question'}
             </button>
           </div>
         </form>
@@ -1135,12 +1284,14 @@ function StudentQuizRow({
   warned,
   actionLabel,
   actionIcon,
+  disabled = false,
   onAction,
 }: {
   row: any;
   warned: boolean;
   actionLabel: string;
   actionIcon: ReactNode;
+  disabled?: boolean;
   onAction: () => void;
 }) {
   const attempt = row.attempt ?? {};
@@ -1193,7 +1344,8 @@ function StudentQuizRow({
         <button
           type="button"
           onClick={onAction}
-          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+          disabled={disabled}
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {actionIcon}
           {actionLabel}

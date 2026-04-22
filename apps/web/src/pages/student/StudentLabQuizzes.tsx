@@ -96,7 +96,7 @@ export function StudentLabQuizzes() {
     title: string;
     message: string;
   } | null>(null);
-  const quizShellRef = useRef<HTMLDivElement | null>(null);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const fullscreenStartedRef = useRef(false);
   const lastViolationAtRef = useRef<Record<string, number>>({});
   const autoSubmittedRef = useRef(false);
@@ -139,6 +139,12 @@ export function StudentLabQuizzes() {
   const quiz = session?.quiz;
   const attempt = session?.attempt;
   const questions = quiz?.questions ?? [];
+  const questionDisplayMode = quiz?.questionDisplayMode ?? 'all';
+  const showOneByOne =
+    questionDisplayMode === 'one_by_one' &&
+    quiz?.status === 'running' &&
+    !attempt?.submittedAt;
+  const currentQuestion = questions[currentQuestionIndex] ?? questions[0] ?? null;
   const selectedCourseMeta = useMemo(
     () => (courses as any[]).find((course: any) => course.id === filterCourse) ?? null,
     [courses, filterCourse],
@@ -176,6 +182,17 @@ export function StudentLabQuizzes() {
     setCompletionNotice(null);
   }, [attempt?.id, quizId]);
 
+  useEffect(() => {
+    setCurrentQuestionIndex(0);
+  }, [quizId, questionDisplayMode]);
+
+  useEffect(() => {
+    if (!questions.length) return;
+    setCurrentQuestionIndex((current) =>
+      Math.min(current, Math.max(questions.length - 1, 0)),
+    );
+  }, [questions.length]);
+
   const pushWarning = (message: string) => {
     setWarnings((current) => [message, ...current].slice(0, 4));
   };
@@ -211,7 +228,7 @@ export function StudentLabQuizzes() {
   const requestFullscreen = async () => {
     try {
       if (!document.fullscreenElement) {
-        await (quizShellRef.current ?? document.documentElement).requestFullscreen();
+        await document.documentElement.requestFullscreen();
       }
       fullscreenStartedRef.current = true;
       setFullscreenRequired(false);
@@ -357,13 +374,76 @@ export function StudentLabQuizzes() {
 
   const detailBackHref = `/student/lab-quizzes?courseId=${quiz?.courseId ?? filterCourse}`;
 
+  const renderQuestionCard = (question: any, index: number) => {
+    const answer = answers[question.id] ?? {};
+    const evaluatedAnswer = (attempt?.answers ?? []).find(
+      (item: any) => item.questionId === question.id,
+    );
+    return (
+      <div key={question.id} className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+            Q{index + 1} · {question.questionType === 'mcq' ? 'MCQ' : 'Short'} · {question.marks} marks
+          </span>
+          {quiz?.status === 'ended' && evaluatedAnswer?.evaluated ? (
+            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+              {evaluatedAnswer.score ?? 0} scored
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-4 whitespace-pre-wrap text-base font-semibold leading-7 text-slate-900">
+          {question.prompt}
+        </p>
+
+        {question.questionType === 'mcq' ? (
+          <div className="mt-4 grid gap-2">
+            {(question.options ?? []).map((option: any) => (
+              <label
+                key={option.id}
+                className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition ${
+                  answer.selectedOptionId === option.id
+                    ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                    : 'border-slate-200 bg-white text-slate-700'
+                }`}
+              >
+                <input
+                  type="radio"
+                  disabled={quiz?.status !== 'running' || Boolean(attempt?.submittedAt)}
+                  checked={answer.selectedOptionId === option.id}
+                  onChange={() =>
+                    setAnswers((current) => ({
+                      ...current,
+                      [question.id]: { selectedOptionId: option.id },
+                    }))
+                  }
+                />
+                {option.text}
+              </label>
+            ))}
+          </div>
+        ) : (
+          <textarea
+            value={answer.answerText ?? ''}
+            onChange={(event) =>
+              setAnswers((current) => ({
+                ...current,
+                [question.id]: { answerText: event.target.value },
+              }))
+            }
+            disabled={quiz?.status !== 'running' || Boolean(attempt?.submittedAt)}
+            className="mt-4 min-h-28 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-400 disabled:bg-slate-100"
+          />
+        )}
+      </div>
+    );
+  };
+
   return (
     <AppShell>
       <div
-        ref={isFocusedWorkspace ? quizShellRef : undefined}
         className={
           isFocusedWorkspace
-            ? 'min-h-screen space-y-4 bg-slate-50 px-1 py-1 text-slate-900'
+            ? 'min-h-screen space-y-4 overflow-y-auto bg-slate-50 px-1 py-1 text-slate-900'
             : 'mx-auto max-w-[1560px] space-y-6'
         }
       >
@@ -508,9 +588,6 @@ export function StudentLabQuizzes() {
                         >
                           Enter fullscreen
                         </button>
-                        <Link to={detailBackHref} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700">
-                          Leave quiz
-                        </Link>
                       </div>
                     </div>
                   </div>
@@ -571,6 +648,9 @@ export function StudentLabQuizzes() {
                         <h3 className="text-lg font-semibold text-slate-900">Questions</h3>
                         <p className="text-sm text-slate-500">
                           {questions.length} questions · {quiz.totalMarks ?? 'Total'} marks
+                          {showOneByOne
+                            ? ` · Question ${Math.min(currentQuestionIndex + 1, questions.length)} of ${questions.length}`
+                            : ''}
                         </p>
                       </div>
                     </div>
@@ -583,69 +663,11 @@ export function StudentLabQuizzes() {
                   </div>
 
                   <div className="mt-5 space-y-4">
-                    {(questions as any[]).map((question: any, index: number) => {
-                      const answer = answers[question.id] ?? {};
-                      const evaluatedAnswer = (attempt?.answers ?? []).find(
-                        (item: any) => item.questionId === question.id,
-                      );
-                      return (
-                        <div key={question.id} className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-5">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-                              Q{index + 1} · {question.questionType === 'mcq' ? 'MCQ' : 'Short'} · {question.marks} marks
-                            </span>
-                            {quiz.status === 'ended' && evaluatedAnswer?.evaluated ? (
-                              <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                                {evaluatedAnswer.score ?? 0} scored
-                              </span>
-                            ) : null}
-                          </div>
-                          <p className="mt-4 whitespace-pre-wrap text-base font-semibold leading-7 text-slate-900">
-                            {question.prompt}
-                          </p>
-
-                          {question.questionType === 'mcq' ? (
-                            <div className="mt-4 grid gap-2">
-                              {(question.options ?? []).map((option: any) => (
-                                <label
-                                  key={option.id}
-                                  className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition ${
-                                    answer.selectedOptionId === option.id
-                                      ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                                      : 'border-slate-200 bg-white text-slate-700'
-                                  }`}
-                                >
-                                  <input
-                                    type="radio"
-                                    disabled={quiz.status !== 'running' || Boolean(attempt?.submittedAt)}
-                                    checked={answer.selectedOptionId === option.id}
-                                    onChange={() =>
-                                      setAnswers((current) => ({
-                                        ...current,
-                                        [question.id]: { selectedOptionId: option.id },
-                                      }))
-                                    }
-                                  />
-                                  {option.text}
-                                </label>
-                              ))}
-                            </div>
-                          ) : (
-                            <textarea
-                              value={answer.answerText ?? ''}
-                              onChange={(event) =>
-                                setAnswers((current) => ({
-                                  ...current,
-                                  [question.id]: { answerText: event.target.value },
-                                }))
-                              }
-                              disabled={quiz.status !== 'running' || Boolean(attempt?.submittedAt)}
-                              className="mt-4 min-h-28 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-400 disabled:bg-slate-100"
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
+                    {showOneByOne && currentQuestion
+                      ? renderQuestionCard(currentQuestion, currentQuestionIndex)
+                      : (questions as any[]).map((question: any, index: number) =>
+                          renderQuestionCard(question, index),
+                        )}
                   </div>
 
                   {quiz.status === 'ended' ? (
@@ -660,18 +682,34 @@ export function StudentLabQuizzes() {
                   ) : null}
 
                   <div className="mt-5 flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-4">
-                    <Link to={detailBackHref} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700">
-                      Back
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => submitMutation.mutate({})}
-                      disabled={quiz.status !== 'running' || Boolean(attempt?.submittedAt) || submitMutation.isPending}
-                      className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <Send size={16} />
-                      {submitMutation.isPending ? 'Submitting...' : 'Submit Quiz'}
-                    </button>
+                    {quiz.status === 'running' && !attempt?.submittedAt ? null : (
+                      <Link to={detailBackHref} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700">
+                        Back
+                      </Link>
+                    )}
+                    {showOneByOne && currentQuestionIndex < questions.length - 1 ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCurrentQuestionIndex((current) =>
+                            Math.min(current + 1, questions.length - 1),
+                          )
+                        }
+                        className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800"
+                      >
+                        Next
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => submitMutation.mutate({})}
+                        disabled={quiz.status !== 'running' || Boolean(attempt?.submittedAt) || submitMutation.isPending}
+                        className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <Send size={16} />
+                        {submitMutation.isPending ? 'Submitting...' : 'Submit Quiz'}
+                      </button>
+                    )}
                   </div>
                 </section>
               </>
