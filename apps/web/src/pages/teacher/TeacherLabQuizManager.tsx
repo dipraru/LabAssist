@@ -25,6 +25,7 @@ import {
   ShieldAlert,
   StopCircle,
   Trash2,
+  Upload,
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { Modal } from '../../components/Modal';
@@ -47,7 +48,6 @@ const questionSchema = z
     questionType: z.enum(['mcq', 'short_answer']),
     prompt: z.string().trim().min(2, 'Question is required'),
     marks: z.number().min(0, 'Marks are required'),
-    answerKey: z.string().optional(),
     correctOptionIndex: z.number().int().min(0).optional(),
     options: z.array(
       z.object({
@@ -88,6 +88,93 @@ type HeadingCopy = {
   description?: string;
 };
 
+function parseCsvRows(text: string): string[][] {
+  const rows: string[][] = [];
+  let current = '';
+  let row: string[] = [];
+  let quoted = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (char === '"') {
+      if (quoted && next === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+      continue;
+    }
+    if (char === ',' && !quoted) {
+      row.push(current.trim());
+      current = '';
+      continue;
+    }
+    if ((char === '\n' || char === '\r') && !quoted) {
+      if (char === '\r' && next === '\n') {
+        index += 1;
+      }
+      row.push(current.trim());
+      if (row.some(Boolean)) {
+        rows.push(row);
+      }
+      row = [];
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+
+  row.push(current.trim());
+  if (row.some(Boolean)) {
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function buildBulkQuestionsFromCsv(text: string): QuestionFormData[] {
+  const questions: QuestionFormData[] = [];
+  for (const row of parseCsvRows(text)) {
+    const prompt = row[0]?.trim() ?? '';
+    if (!prompt) continue;
+    const options = row.slice(1).map((value) => value.trim()).filter(Boolean);
+    if (options.length >= 2) {
+      questions.push({
+        questionType: 'mcq',
+        prompt,
+        marks: 1,
+        correctOptionIndex: 0,
+        options: options.map((option) => ({ text: option })),
+      });
+      continue;
+    }
+    questions.push({
+      questionType: 'short_answer',
+      prompt,
+      marks: 1,
+      correctOptionIndex: 0,
+      options: [{ text: '' }, { text: '' }],
+    });
+  }
+  return questions;
+}
+
+function serializeQuestionPayload(values: QuestionFormData) {
+  return {
+    questionType: values.questionType,
+    prompt: values.prompt,
+    marks: values.marks,
+    options:
+      values.questionType === 'mcq'
+        ? values.options.map((option) => option.text?.trim() ?? '').filter(Boolean)
+        : undefined,
+    correctOptionIndex:
+      values.questionType === 'mcq' ? values.correctOptionIndex : undefined,
+  };
+}
+
 export function TeacherLabQuizManager({
   fixedCourseId,
   disableCreation = false,
@@ -101,8 +188,10 @@ export function TeacherLabQuizManager({
   const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
   const [showQuizModal, setShowQuizModal] = useState(false);
   const [showQuestionModal, setShowQuestionModal] = useState(false);
+  const [showBulkQuestionModal, setShowBulkQuestionModal] = useState(false);
   const [editingQuizId, setEditingQuizId] = useState<string | null>(null);
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+  const [bulkQuestionDrafts, setBulkQuestionDrafts] = useState<QuestionFormData[]>([]);
   const [gradeDrafts, setGradeDrafts] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState<'questions' | 'submissions' | 'evaluations' | 'alerts'>('questions');
   const [alertRollQuery, setAlertRollQuery] = useState('');
@@ -240,7 +329,6 @@ export function TeacherLabQuizManager({
       questionType: 'mcq',
       prompt: '',
       marks: 1,
-      answerKey: '',
       correctOptionIndex: 0,
       options: [{ text: '' }, { text: '' }, { text: '' }, { text: '' }],
     },
@@ -333,7 +421,6 @@ export function TeacherLabQuizManager({
       questionType: 'mcq',
       prompt: '',
       marks: 1,
-      answerKey: '',
       correctOptionIndex: 0,
       options: [{ text: '' }, { text: '' }, { text: '' }, { text: '' }],
     });
@@ -388,18 +475,10 @@ export function TeacherLabQuizManager({
 
   const addQuestionMutation = useMutation({
     mutationFn: (values: QuestionFormData) =>
-      api.post(`/lab-quizzes/${selectedQuizId}/questions`, {
-        questionType: values.questionType,
-        prompt: values.prompt,
-        marks: values.marks,
-        answerKey: values.questionType === 'short_answer' ? values.answerKey : undefined,
-        options:
-          values.questionType === 'mcq'
-            ? values.options.map((option) => option.text?.trim() ?? '').filter(Boolean)
-            : undefined,
-        correctOptionIndex:
-          values.questionType === 'mcq' ? values.correctOptionIndex : undefined,
-      }),
+      api.post(
+        `/lab-quizzes/${selectedQuizId}/questions`,
+        serializeQuestionPayload(values),
+      ),
     onSuccess: () => {
       toast.success('Question added');
       invalidateQuizQueries();
@@ -410,32 +489,33 @@ export function TeacherLabQuizManager({
       toast.error(error.response?.data?.message ?? 'Failed to add question'),
   });
 
+  const bulkAddQuestionsMutation = useMutation({
+    mutationFn: async (values: QuestionFormData[]) => {
+      for (const question of values) {
+        await api.post(
+          `/lab-quizzes/${selectedQuizId}/questions`,
+          serializeQuestionPayload(question),
+        );
+      }
+    },
+    onSuccess: () => {
+      toast.success(`${bulkQuestionDrafts.length} questions added`);
+      setBulkQuestionDrafts([]);
+      setShowBulkQuestionModal(false);
+      invalidateQuizQueries();
+    },
+    onError: (error: any) =>
+      toast.error(error.response?.data?.message ?? 'Failed to add questions'),
+  });
+
   const updateQuestionMutation = useMutation({
     mutationFn: (values: QuestionFormData) => {
       const payload =
         activeQuiz?.status === 'draft'
-          ? {
-              questionType: values.questionType,
-              prompt: values.prompt,
-              marks: values.marks,
-              answerKey:
-                values.questionType === 'short_answer'
-                  ? values.answerKey
-                  : undefined,
-              options:
-                values.questionType === 'mcq'
-                  ? values.options
-                      .map((option) => option.text?.trim() ?? '')
-                      .filter(Boolean)
-                  : undefined,
-              correctOptionIndex:
-                values.questionType === 'mcq'
-                  ? values.correctOptionIndex
-                  : undefined,
-            }
+          ? serializeQuestionPayload(values)
           : values.questionType === 'mcq'
             ? { correctOptionIndex: values.correctOptionIndex }
-            : { answerKey: values.answerKey };
+            : {};
 
       return api.patch(
         `/lab-quizzes/${selectedQuizId}/questions/${editingQuestionId}`,
@@ -526,6 +606,27 @@ export function TeacherLabQuizManager({
     setShowQuizModal(true);
   };
 
+  const handleBulkCsvUpload = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const questionsFromCsv = buildBulkQuestionsFromCsv(text);
+      if (!questionsFromCsv.length) {
+        toast.error('No valid questions found in the CSV');
+        return;
+      }
+      setBulkQuestionDrafts(questionsFromCsv);
+      toast.success(`${questionsFromCsv.length} questions imported`);
+    } catch {
+      toast.error('Could not read the CSV file');
+    }
+  };
+
+  const openBulkQuestionModal = () => {
+    setBulkQuestionDrafts([]);
+    setShowBulkQuestionModal(true);
+  };
+
   const openEditQuiz = () => {
     if (!activeQuiz) return;
     setEditingQuizId(activeQuiz.id);
@@ -548,7 +649,6 @@ export function TeacherLabQuizManager({
       questionType: question.questionType ?? 'mcq',
       prompt: question.prompt ?? '',
       marks: Number(question.marks ?? 1),
-      answerKey: question.answerKey ?? '',
       correctOptionIndex:
         question.questionType === 'mcq'
           ? Math.max(
@@ -831,17 +931,27 @@ export function TeacherLabQuizManager({
                         <p className="text-sm text-slate-500">MCQ answers are evaluated automatically.</p>
                       </div>
                       {canEdit ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            resetQuestionForm();
-                            setShowQuestionModal(true);
-                          }}
-                          className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white"
-                        >
-                          <Plus size={15} />
-                          Add
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              resetQuestionForm();
+                              setShowQuestionModal(true);
+                            }}
+                            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+                          >
+                            <Plus size={15} />
+                            Add
+                          </button>
+                          <button
+                            type="button"
+                            onClick={openBulkQuestionModal}
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                          >
+                            <Upload size={15} />
+                            Bulk Add
+                          </button>
+                        </div>
                       ) : null}
                     </div>
 
@@ -897,10 +1007,6 @@ export function TeacherLabQuizManager({
                                   </div>
                                 ))}
                               </div>
-                            ) : question.answerKey ? (
-                              <p className="mt-3 rounded-xl bg-white px-3 py-2 text-xs text-slate-500">
-                                Answer key: {question.answerKey}
-                              </p>
                             ) : null}
                           </div>
                         ))
@@ -1217,11 +1323,7 @@ export function TeacherLabQuizManager({
                 </p>
               ) : null}
             </div>
-          ) : (
-            <Field label="Answer Key">
-              <textarea {...questionForm.register('answerKey')} className={`${inputClass} min-h-24`} />
-            </Field>
-          )}
+          ) : null}
 
           <div className="flex justify-end gap-3">
             <button
@@ -1248,6 +1350,62 @@ export function TeacherLabQuizManager({
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        open={showBulkQuestionModal}
+        onClose={() => {
+          setShowBulkQuestionModal(false);
+          setBulkQuestionDrafts([]);
+        }}
+        title="Bulk Add Questions"
+        maxWidthClass="max-w-lg"
+      >
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+            <p className="font-semibold text-slate-900">CSV format</p>
+            <p>Question, Option 1, Option 2, Option 3, ...</p>
+            <p>Rows with empty option columns become short questions.</p>
+            <p>MCQ correct answer defaults to the first option.</p>
+          </div>
+          <Field label="CSV File">
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(event) => {
+                handleBulkCsvUpload(event.target.files?.[0] ?? null);
+                event.target.value = '';
+              }}
+              className={inputClass}
+            />
+          </Field>
+          {bulkQuestionDrafts.length ? (
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+              {bulkQuestionDrafts.length} questions ready to import
+            </div>
+          ) : null}
+          <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
+            <button
+              type="button"
+              onClick={() => {
+                setShowBulkQuestionModal(false);
+                setBulkQuestionDrafts([]);
+              }}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => bulkAddQuestionsMutation.mutate(bulkQuestionDrafts)}
+              disabled={!bulkQuestionDrafts.length || bulkAddQuestionsMutation.isPending}
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Upload size={15} />
+              {bulkAddQuestionsMutation.isPending ? 'Importing...' : 'Import'}
+            </button>
+          </div>
+        </div>
       </Modal>
 
       <AnswerSheetModal
