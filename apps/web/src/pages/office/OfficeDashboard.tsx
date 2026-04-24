@@ -171,7 +171,7 @@ export function OfficeDashboard() {
                     Keep the academic workflow moving without losing the queue.
                   </h1>
                   <p className="mt-3 max-w-2xl text-sm leading-6 text-cyan-50/85 sm:text-base">
-                    Review pending applications, manage accounts, and keep sessions, batches, and temporary judge access aligned from one place.
+                    Review pending applications, manage accounts, and keep the academic structure and temporary judge access aligned from one place.
                   </p>
                   <p className="mt-4 text-sm font-medium text-cyan-50/80">{today}</p>
                 </div>
@@ -313,22 +313,10 @@ export function OfficeDashboard() {
                 description="Filter by batch, onboard new students, and clean up incomplete accounts."
               />
               <ActionCard
-                href="/office/courses"
-                badge="Courses"
-                label="Open or maintain courses"
-                description="Create sessional courses, assign instructors, and manage safe course deletions."
-              />
-              <ActionCard
-                href="/office/batches"
+                href="/office/academic-structure"
                 badge="Structure"
-                label="Configure batches"
-                description="Set up new intakes and remove empty batches that are no longer needed."
-              />
-              <ActionCard
-                href="/office/semesters"
-                badge="Terms"
-                label="Manage semesters"
-                description="Track active terms and keep deletions limited to empty semesters only."
+                label="Manage academic structure"
+                description="Create batches, add semesters inside them, and open courses from the same hierarchy view."
               />
               <ActionCard
                 href="/office/temp-judges"

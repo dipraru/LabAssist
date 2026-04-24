@@ -6,9 +6,7 @@ import { LoginPage } from './pages/LoginPage';
 import { OfficeDashboard } from './pages/office/OfficeDashboard';
 import { ManageTeachers } from './pages/office/ManageTeachers';
 import { ManageStudents } from './pages/office/ManageStudents';
-import { ManageBatches } from './pages/office/ManageBatches';
-import { ManageCourses } from './pages/office/ManageCourses';
-import { ManageSemesters } from './pages/office/ManageSemesters';
+import { ManageAcademicStructure } from './pages/office/ManageAcademicStructure';
 import { CreateTempJudge } from './pages/office/CreateTempJudge';
 import { ApplicationsPage } from './pages/office/ApplicationsPage';
 import { ChangePasswordPage } from './pages/shared/ChangePasswordPage';
@@ -76,9 +74,19 @@ export default function App() {
         <Route path="/office" element={<OfficeDashboard />} />
         <Route path="/office/teachers" element={<ManageTeachers />} />
         <Route path="/office/students" element={<ManageStudents />} />
-        <Route path="/office/batches" element={<ManageBatches />} />
-        <Route path="/office/courses" element={<ManageCourses />} />
-        <Route path="/office/semesters" element={<ManageSemesters />} />
+        <Route path="/office/academic-structure" element={<ManageAcademicStructure />} />
+        <Route
+          path="/office/batches"
+          element={<Navigate to="/office/academic-structure" replace />}
+        />
+        <Route
+          path="/office/courses"
+          element={<Navigate to="/office/academic-structure" replace />}
+        />
+        <Route
+          path="/office/semesters"
+          element={<Navigate to="/office/academic-structure" replace />}
+        />
         <Route path="/office/temp-judges" element={<CreateTempJudge />} />
         <Route path="/office/application" element={<Navigate to="/office/applications" replace />} />
         <Route path="/office/applications" element={<ApplicationsPage />} />
