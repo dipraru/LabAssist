@@ -12,7 +12,6 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Bell,
   BookOpen,
-  CalendarRange,
   CheckCheck,
   ChevronDown,
   FileStack,
@@ -39,9 +38,7 @@ const roleNavItems: Record<string, { label: string; href: string; icon: ReactNod
     { label: 'Dashboard', href: '/office', icon: <LayoutDashboard size={18} /> },
     { label: 'Teachers', href: '/office/teachers', icon: <GraduationCap size={18} /> },
     { label: 'Students', href: '/office/students', icon: <User size={18} /> },
-    { label: 'Batches', href: '/office/batches', icon: <Layers3 size={18} /> },
-    { label: 'Courses', href: '/office/courses', icon: <BookOpen size={18} /> },
-    { label: 'Semesters', href: '/office/semesters', icon: <CalendarRange size={18} /> },
+    { label: 'Academic Structure', href: '/office/academic-structure', icon: <Layers3 size={18} /> },
     { label: 'Temp Judges', href: '/office/temp-judges', icon: <ShieldUser size={18} /> },
     { label: 'Applications', href: '/office/applications', icon: <FileStack size={18} /> },
   ],
@@ -137,9 +134,14 @@ function getOfficeHeaderLabel(pathname: string): string {
   if (pathname === '/office') return 'Office Dashboard';
   if (pathname.startsWith('/office/teachers')) return 'Teacher Management';
   if (pathname.startsWith('/office/students')) return 'Student Management';
-  if (pathname.startsWith('/office/batches')) return 'Batch Management';
-  if (pathname.startsWith('/office/courses')) return 'Course Management';
-  if (pathname.startsWith('/office/semesters')) return 'Semester Management';
+  if (
+    pathname.startsWith('/office/academic-structure') ||
+    pathname.startsWith('/office/batches') ||
+    pathname.startsWith('/office/courses') ||
+    pathname.startsWith('/office/semesters')
+  ) {
+    return 'Academic Structure';
+  }
   if (pathname.startsWith('/office/temp-judges')) return 'Temporary Judge Access';
   if (pathname.startsWith('/office/applications')) return 'Verified Applications';
   if (pathname.startsWith('/office/change-password')) return 'Account Security';

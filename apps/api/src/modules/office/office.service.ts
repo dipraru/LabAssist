@@ -348,12 +348,42 @@ export class OfficeService {
       order: { startDate: 'ASC', name: 'ASC' },
     });
 
+    const semestersByOrder = [...semesters].sort(
+      (left, right) => getSemesterOrder(left.name) - getSemesterOrder(right.name),
+    );
+
+    for (let index = 0; index < semestersByOrder.length; index += 1) {
+      const semester = semestersByOrder[index];
+      const nextSemester = semestersByOrder[index + 1];
+      const targetEndDate = nextSemester?.startDate
+        ? startOfUtcDay(new Date(nextSemester.startDate))
+        : semester.name === SemesterName.SEMESTER_8 && semester.endDate
+          ? startOfUtcDay(new Date(semester.endDate))
+          : null;
+      const currentEndDate = semester.endDate
+        ? startOfUtcDay(new Date(semester.endDate))
+        : null;
+
+      const shouldUpdateEndDate =
+        (targetEndDate === null && currentEndDate !== null) ||
+        (targetEndDate !== null &&
+          (!currentEndDate ||
+            currentEndDate.getTime() !== targetEndDate.getTime()));
+
+      if (shouldUpdateEndDate) {
+        semester.endDate = targetEndDate;
+        await this.semesterRepo.save(semester);
+      }
+    }
+
     const today = startOfUtcDay(new Date());
     const current = semesters
       .filter(
         (semester) =>
           semester.startDate &&
-          startOfUtcDay(new Date(semester.startDate)) <= today,
+          startOfUtcDay(new Date(semester.startDate)) <= today &&
+          (!semester.endDate ||
+            startOfUtcDay(new Date(semester.endDate)) > today),
       )
       .sort((left, right) => {
         const leftDate = new Date(left.startDate as Date).getTime();
@@ -1410,6 +1440,41 @@ export class OfficeService {
 
     semester.isCurrent = true;
     return this.semesterRepo.save(semester);
+  }
+
+  async endSemester(id: string): Promise<Semester> {
+    const semester = await this.semesterRepo.findOne({ where: { id } });
+    if (!semester) throw new NotFoundException('Semester not found');
+
+    if (semester.name !== SemesterName.SEMESTER_8) {
+      throw new BadRequestException(
+        'Only the 8th semester can be ended manually',
+      );
+    }
+
+    if (!semester.startDate) {
+      throw new BadRequestException('Semester start date is required first');
+    }
+
+    const today = startOfUtcDay(new Date());
+    if (startOfUtcDay(new Date(semester.startDate)) > today) {
+      throw new BadRequestException(
+        'A semester can only be ended after it has started',
+      );
+    }
+
+    if (
+      semester.endDate &&
+      startOfUtcDay(new Date(semester.endDate)).getTime() <= today.getTime()
+    ) {
+      throw new BadRequestException('Semester is already ended');
+    }
+
+    semester.endDate = today;
+    semester.isCurrent = false;
+    const savedSemester = await this.semesterRepo.save(semester);
+    await this.syncBatchCurrentSemester(semester.batchYear);
+    return savedSemester;
   }
 
   async deleteSemester(id: string): Promise<void> {

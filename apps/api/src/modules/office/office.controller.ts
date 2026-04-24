@@ -373,6 +373,11 @@ export class OfficeController {
     return this.officeService.setCurrentSemester(id);
   }
 
+  @Patch('semesters/:id/end')
+  endSemester(@Param('id') id: string) {
+    return this.officeService.endSemester(id);
+  }
+
   @Delete('semesters/:id')
   async deleteSemester(@Param('id') id: string) {
     await this.officeService.deleteSemester(id);
