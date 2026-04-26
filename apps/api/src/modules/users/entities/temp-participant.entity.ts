@@ -19,6 +19,9 @@ export class TempParticipant {
   @Column()
   fullName: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  universityName: string | null;
+
   @Column({ unique: true })
   participantId: string; // auto-generated like TP-001
 

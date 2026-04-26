@@ -170,7 +170,7 @@ export class ContestsService {
   private async getContestParticipantMetaMap(
     contestId: string,
   ): Promise<Map<string, { fullName: string; universityName: string | null }>> {
-    await this.contestSchema.ensureContestRuntimeSchema();
+    await this.contestSchema.ensureContestRuntimeSchema(true);
     const participants = await this.tpRepo.find({ where: { contestId } });
     return new Map(
       participants.map((participant) => [
@@ -2119,7 +2119,7 @@ export class ContestsService {
     dto: CreateTempParticipantsDto,
     judgeUserId: string,
   ) {
-    await this.contestSchema.ensureContestRuntimeSchema();
+    await this.contestSchema.ensureContestRuntimeSchema(true);
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const contest = await this.resolveContestOrThrow(dto.contestId);
     if (
@@ -2258,7 +2258,7 @@ export class ContestsService {
   }
 
   async getContestParticipants(contestId: string, judgeUserId: string) {
-    await this.contestSchema.ensureContestRuntimeSchema();
+    await this.contestSchema.ensureContestRuntimeSchema(true);
     const judgeProfileId = await this.getJudgeProfileId(judgeUserId);
     const contest = await this.resolveContestOrThrow(contestId);
     if (

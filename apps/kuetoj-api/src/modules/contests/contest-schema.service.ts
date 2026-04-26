@@ -25,8 +25,8 @@ export class ContestSchemaService implements OnModuleInit {
     return this.problemBankSchemaPromise;
   }
 
-  ensureContestRuntimeSchema(): Promise<void> {
-    if (!this.contestRuntimeSchemaPromise) {
+  ensureContestRuntimeSchema(refresh = false): Promise<void> {
+    if (refresh || !this.contestRuntimeSchemaPromise) {
       this.contestRuntimeSchemaPromise =
         this.ensureContestRuntimeSchemaInternal().catch((error) => {
           this.contestRuntimeSchemaPromise = null;
